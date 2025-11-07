@@ -69,7 +69,7 @@ class VLM(InstructionGenerator):
         chat_response = self.client.chat.completions.create(
             model="r4b",
             messages=messages,
-            max_tokens=256,
+            max_tokens=512,
             temperature=0.7,
             extra_body={
                 "chat_template_kwargs": {"thinking_mode": "minimal"},
@@ -80,7 +80,9 @@ class VLM(InstructionGenerator):
         LOG.debug(f"VLM response: {chat_response}")
 
         # Parse the instruction from the response
-        instruction = chat_response.choices[0].message.content.strip()
+        # The instruction is after "</think>\n\n"
+        output_text = chat_response.choices[0].message.content.strip()
+        instruction = output_text.split("</think>\n\n", 1)[-1].strip()
 
         # The VLM response is the generated text
         return instruction
