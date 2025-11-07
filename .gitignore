@@ -1,0 +1,9 @@
+# Cache
+__pycache__/
+
+# Virtual environment
+.venv/
+*.egg-info/
+
+# Log files
+*.log
