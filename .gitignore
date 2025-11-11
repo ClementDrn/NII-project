@@ -1,6 +1,9 @@
 # Cache
 __pycache__/
 
+# Config file
+.env
+
 # Virtual environment
 .venv/
 *.egg-info/

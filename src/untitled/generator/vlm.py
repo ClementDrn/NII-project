@@ -1,5 +1,5 @@
-from untitled.instruction_generator import InstructionGenerator
-from untitled.base import PROJECT_ROOT, LOG
+from untitled.generator.instruction_generator import InstructionGenerator
+from untitled.core.base import PROJECT_ROOT, LOG, CONFIG
 
 import base64
 from PIL import Image
@@ -26,10 +26,10 @@ class VLM(InstructionGenerator):
         super().__init__()
 
         # Set OpenAI's API key and API base to use vLLM's API server.
-        openai_api_key = "EMPTY"
-        openai_api_base = "http://localhost:8000/v1"
+        # NOTE: VLM interface is hardcoded as OpenAI-compatible for now.
+        openai_api_base = CONFIG.vlm.host + "/v1"
         self.client = OpenAI(
-            api_key=openai_api_key,
+            api_key=CONFIG.vlm.api_key,
             base_url=openai_api_base,
         )
 
@@ -65,14 +65,24 @@ class VLM(InstructionGenerator):
 
         # Send prompt to VLM and get response
         LOG.debug(f"Sending messages to VLM: {messages}")
+        
+        # Thinking mode
+        # NOTE: R-4B thinking modes: "short" (non-thinking), "auto" (auto-thinking), "long" (thinking)
+        thinking_mode = "short" if CONFIG.vlm.enable_thinking == "false" else (
+            "long" if CONFIG.vlm.enable_thinking == "true" else "auto"
+        )
+
         start_time = time.time()
+        # NOTE: For now, we hardcode parameters for openai client and r4b. Later, parameters will need to depend on config the, as with the values. 
         chat_response = self.client.chat.completions.create(
-            model="r4b",
+            model=CONFIG.vlm.model,
             messages=messages,
-            max_tokens=512,
-            temperature=0.7,
+            max_tokens=CONFIG.vlm.max_tokens,
+            temperature=CONFIG.vlm.temperature,
             extra_body={
-                "chat_template_kwargs": {"thinking_mode": "minimal"},
+                "chat_template_kwargs": {
+                    "thinking_mode": thinking_mode      # NOTE: This parameter is specific to R-4B
+                },
             },
         )
         elapsed_time = time.time() - start_time

@@ -1,5 +1,3 @@
-
-
 # Abstract class
 class InstructionGenerator:
     def __init__(self):

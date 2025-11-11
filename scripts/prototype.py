@@ -1,5 +1,5 @@
-from untitled.base import LOG
-from untitled.vlm import VLM
+from untitled.core.base import LOG
+from untitled.generator.vlm import VLM
 
 
 ### MAIN FUNCTION #############################################################
