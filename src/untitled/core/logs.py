@@ -4,6 +4,9 @@ import colorlog
 
 
 def init_logging(name: str, logs_dir: Path) -> logging.Logger:
+    """
+    Initialize logging for the application.
+    """
     # Create logs directory
     logs_dir.mkdir(parents=True, exist_ok=True)     # Ensure logs directory exists
 

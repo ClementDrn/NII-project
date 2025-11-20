@@ -1,26 +1,33 @@
 from untitled.core.base import LOG
 from untitled.generator.vlm import VLM
+from untitled.simulator.simulator import Simulator
+from untitled.simulator.simulation_data import SimulationData
+
+import signal
 
 
 ### MAIN FUNCTION #############################################################
 def main():
-    # Init simulator
+    # Instatiate pipeline
+    pipeline = Pipeline()
 
-    # Init VLM
-    vlm = VLM()
+    # Define interruption signal handler for graceful shutdown of pipeline
+    def sigint_handler(sig, frame):
+        LOG.info("Caught SIGINT, exiting gracefully...")
+        pipeline.stop()
+        sys.exit(0)
 
-    # Run scenario once
+    # Register signal handler
+    signal.signal(signal.SIGINT, sigint_handler)
 
-    # Fetch results
+    LOG.info("Initializing pipeline...")
+    pipeline.init()
 
-    # Give data to VLM to generate instruction
-    instruction = vlm.generate_instruction_from_images(data=None)
-    LOG.info(f"Generated instruction: {instruction}")
+    LOG.info("Starting pipeline...")
+    pipeline.run()
 
-
-    # Run scenario again with generated instruction
-
-    # Fetch new results
+    LOG.info("Stopping pipeline...")
+    pipeline.stop()
 
 
 if __name__ == "__main__":

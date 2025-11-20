@@ -1,14 +1,16 @@
 from untitled.generator.instruction_generator import InstructionGenerator
 from untitled.core.base import PROJECT_ROOT, LOG, CONFIG
+from untitled.simulator.simulation_data import SimulationData
 
 import base64
 from PIL import Image
 from openai import OpenAI
 import io
 import time
+from pathlib import Path
 
 
-def encode_image_to_base64(image_path: str) -> str:
+def encode_image_to_base64(image_path: Path) -> str:
     """
     Encode an image to a base64 string.
     """
@@ -21,9 +23,18 @@ def encode_image_to_base64(image_path: str) -> str:
         return data_url
 
 
-class VLM(InstructionGenerator):
+class VLM:
+    """
+    Interface to a Vision-Language Model (VLM) service via OpenAI-compatible API.
+    """
+
     def __init__(self):
         super().__init__()
+
+        # Get API parameters from config
+        # Parameters my include model, temperature, max_tokens, etc.
+        self.api_parameters = CONFIG.vlm.get_api_parameters()
+        LOG.debug(f"VLM API parameters: {self.api_parameters}")
 
         # Set OpenAI's API key and API base to use vLLM's API server.
         # NOTE: VLM interface is hardcoded as OpenAI-compatible for now.
@@ -33,66 +44,48 @@ class VLM(InstructionGenerator):
             base_url=openai_api_base,
         )
 
-        # Fetch system task message from its asset file
-        SYSTEM_TASK_PATH = PROJECT_ROOT / "assets" / "prompts" / "system_task.txt"
-        with open(SYSTEM_TASK_PATH, "r") as f:
-            self.system_task_message = f.read()
-        LOG.debug(f"Loaded system task message for VLM. See below:\n{self.system_task_message}")
-
-    def generate_instruction_from_images(self, data) -> str:
+    def prompt(self, system_text: str, user_text: str, user_image_paths: list[Path]) -> str:
         """
-        Generate instruction from images and metadata using a VLM.
+        Send a prompt to the VLM and get the response.
         """
-        # Encode image to base64
-        data_url = encode_image_to_base64(PROJECT_ROOT / "assets" / "images" / "example_frame.jpg")
-
-        # Create prompt for VLM
+        # Append system text to messages
         messages = [
-            {"role": "system", "content": self.system_task_message},
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": data_url
-                        },
-                    },
-                    {"type": "text", "text": "{'speed': 0}"},
-                ],
-            },
+            {"role": "system", "content": system_text},
         ]
 
-        # Send prompt to VLM and get response
-        LOG.debug(f"Sending messages to VLM: {messages}")
+        # Append user images and text to messages
+        user_content = []   # List to hold user messages (text and images)
+        if user_image_paths is not None:
+            for image_path in user_image_paths:
+                data_url = encode_image_to_base64(image_path)
+                user_content.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": data_url
+                    },
+                })
+        if user_text is not None:
+            user_content.append({
+                "type": "text",
+                "text": user_text,
+            })
+        messages.append({
+            "role": "user",
+            "content": user_content,
+        })
+        LOG.debug(f"Messages that will be sent to VLM: {messages}")
         
-        # Thinking mode
-        # NOTE: R-4B thinking modes: "short" (non-thinking), "auto" (auto-thinking), "long" (thinking)
-        thinking_mode = "short" if CONFIG.vlm.enable_thinking == "false" else (
-            "long" if CONFIG.vlm.enable_thinking == "true" else "auto"
-        )
-
+        # Send request to VLM and get response
+        # Processing time is measured for performance monitoring
         start_time = time.time()
-        # NOTE: For now, we hardcode parameters for openai client and r4b. Later, parameters will need to depend on config the, as with the values. 
         chat_response = self.client.chat.completions.create(
-            model=CONFIG.vlm.model,
             messages=messages,
-            max_tokens=CONFIG.vlm.max_tokens,
-            temperature=CONFIG.vlm.temperature,
-            extra_body={
-                "chat_template_kwargs": {
-                    "thinking_mode": thinking_mode      # NOTE: This parameter is specific to R-4B
-                },
-            },
+            **self.api_parameters
         )
         elapsed_time = time.time() - start_time
         LOG.info(f"VLM request completed in {elapsed_time:.2f} seconds")
         LOG.debug(f"VLM response: {chat_response}")
 
-        # Parse the instruction from the response
-        # The instruction is after "</think>\n\n"
-        output_text = chat_response.choices[0].message.content.strip()
-        instruction = output_text.split("</think>\n\n", 1)[-1].strip()
-
-        # The VLM response is the generated text
-        return instruction
+        # Extract and return the response text
+        response_text = chat_response.choices[0].message.content
+        return response_text
