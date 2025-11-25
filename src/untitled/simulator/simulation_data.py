@@ -9,8 +9,12 @@ class SimulationMetadata:
     # TODO: Add more metadata fields as needed
 
 @dataclass
+class SimulationFrameData:
+    image_name: str  # Just the filename, to be combined with image_dir
+    metadata: SimulationMetadata
+
+@dataclass
 class SimulationData:
     image_dir: Path
     frame_count: int
-    images: List[str]
-    metadata: List[SimulationMetadata]
+    frames: List[SimulationFrameData]

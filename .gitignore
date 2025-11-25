@@ -10,3 +10,6 @@ __pycache__/
 
 # Log files
 *.log
+
+# Unrelevant directories
+data/

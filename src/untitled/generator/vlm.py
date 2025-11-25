@@ -22,18 +22,27 @@ def encode_image_to_base64(image_path: Path) -> str:
         data_url = f"data:image/jpeg;base64,{img_base64}"
         return data_url
 
+def parse_vlm_response(chat_response: str) -> str:
+    """
+    Parse the VLM response to extract the relevant content after the reasoning text.
+    """
+    # WARN: Specific to r4b model response format
+    output_text = chat_response.choices[0].message.content.strip()
+    after_reasoning = output_text.split("</think>\n\n", 1)[-1].strip()
+    return after_reasoning
+
 
 class VLM:
     """
     Interface to a Vision-Language Model (VLM) service via OpenAI-compatible API.
     """
 
-    def __init__(self):
+    def __init__(self, api_parameters = {}):
         super().__init__()
 
         # Get API parameters from config
         # Parameters my include model, temperature, max_tokens, etc.
-        self.api_parameters = CONFIG.vlm.get_api_parameters()
+        self.api_parameters = api_parameters
         LOG.debug(f"VLM API parameters: {self.api_parameters}")
 
         # Set OpenAI's API key and API base to use vLLM's API server.

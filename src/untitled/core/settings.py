@@ -33,6 +33,15 @@ class CARLAConfig(BaseSettings):
     output_path: Path = Field(validation_alias="OUTPUT_PATH")
 
 
+class GeneratorConfig(BaseSettings):
+    # Load .env file
+    model_config = SettingsConfigDict(env_file='.env', extra='ignore')
+
+    # Configuration parameters for instruction generators
+    design: str = "single_step_vlm"  # options: single_step_vlm, multi_step_vlm
+    models: list[VLMConfig] = []
+
+
 # Definition of environment variables and configuration settings
 class Settings(BaseSettings):
     # Load .env file
@@ -40,6 +49,7 @@ class Settings(BaseSettings):
     
     # NOTE: Define settings here for type checking and auto-completion    
     vlm: VLMConfig
+    generator: GeneratorConfig
     carla: CARLAConfig
 
 

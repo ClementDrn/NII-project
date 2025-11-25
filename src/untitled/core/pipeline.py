@@ -20,7 +20,7 @@ class Pipeline:
         self.simulator = Simulator()
 
         # Initialize VLM
-        self.generator = VLMInstructionGenerator()
+        self.generator = VLMInstructionGenerator()  # FIXME: Abstract class
 
     def stop(self):
         """
