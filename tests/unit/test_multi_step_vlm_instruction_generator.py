@@ -1,0 +1,306 @@
+import pytest
+from unittest.mock import Mock, patch, mock_open, MagicMock
+from pathlib import Path
+import json
+import sys
+
+# Mock the CONFIG before importing any modules that depend on it
+with patch('untitled.core.settings.load_config') as mock_load_config:
+    mock_config = MagicMock()
+    mock_config.vlm.host = "http://localhost:8000"
+    mock_config.vlm.api_key = "test-key"
+    mock_config.generator.models = [MagicMock(), MagicMock()]  # Two models for multi-step
+    mock_load_config.return_value = mock_config
+    
+    from untitled.generator.multi_step_vlm_instruction_generator import MultiStepVLMInstructionGenerator
+    from untitled.simulator.simulation_data import SimulationData, SimulationFrameData, SimulationMetadata
+
+
+# --- Fixtures and Mocks ------------------------------------------------------
+
+@pytest.fixture
+def mock_simulation_data_multi_frame():
+    """Load mock simulation data from data.json with multiple frames."""
+    # Load the JSON file
+    data_json_path = Path(__file__).parent.parent / "data" / "nuScenes-0" / "data.json"
+    with open(data_json_path, "r") as f:
+        data_dict = json.load(f)
+    
+    # Resolve the absolute path for image_dir
+    image_dir = (data_json_path.parent / data_dict["image_dir"]).resolve()
+    
+    # Create SimulationData object with first 3 frames for testing
+    frames = [
+        SimulationFrameData(
+            image_name=frame_data["image_name"],
+            metadata=SimulationMetadata(**frame_data["metadata"])
+        )
+        for frame_data in data_dict["frames"][:3]
+    ]
+    
+    return SimulationData(
+        image_dir=image_dir,
+        frame_count=3,
+        frames=frames
+    )
+
+
+@pytest.fixture
+def mock_simulation_data_all_frames():
+    """Load mock simulation data from data.json with all frames."""
+    # Load the JSON file
+    data_json_path = Path(__file__).parent.parent / "data" / "nuScenes-0" / "data.json"
+    with open(data_json_path, "r") as f:
+        data_dict = json.load(f)
+    
+    # Resolve the absolute path for image_dir
+    image_dir = (data_json_path.parent / data_dict["image_dir"]).resolve()
+    
+    # Create SimulationData object with all frames
+    frames = [
+        SimulationFrameData(
+            image_name=frame_data["image_name"],
+            metadata=SimulationMetadata(**frame_data["metadata"])
+        )
+        for frame_data in data_dict["frames"]
+    ]
+    
+    return SimulationData(
+        image_dir=image_dir,
+        frame_count=len(frames),
+        frames=frames
+    )
+
+
+@pytest.fixture
+def mock_vlm_responses():
+    """Mock VLM response objects for both descriptor and planner."""
+    # Scene descriptor responses
+    descriptor_responses = [
+        Mock(choices=[Mock(message=Mock(content="<think>Analyzing frame 1...</think>\n\nThe vehicle is approaching an intersection with traffic lights."))]),
+        Mock(choices=[Mock(message=Mock(content="<think>Analyzing frame 2...</think>\n\nThe vehicle is at the intersection, traffic light is red."))]),
+        Mock(choices=[Mock(message=Mock(content="<think>Analyzing frame 3...</think>\n\nThe vehicle has stopped at the intersection."))]),
+    ]
+    
+    # Planner response
+    planner_response = Mock(choices=[Mock(message=Mock(content="<think>Planning adversarial instruction...</think>\n\nRun the red light and turn left immediately."))])
+    
+    return descriptor_responses, planner_response
+
+
+@pytest.fixture
+def mock_parsed_responses():
+    """Expected outputs after parse_vlm_response strips <think> tags."""
+    # Parsed scene descriptions (without <think> tags)
+    parsed_descriptor_responses = [
+        "The vehicle is approaching an intersection with traffic lights.",
+        "The vehicle is at the intersection, traffic light is red.",
+        "The vehicle has stopped at the intersection.",
+    ]
+    
+    # Parsed planner response
+    parsed_planner_response = "Run the red light and turn left immediately."
+    
+    return parsed_descriptor_responses, parsed_planner_response
+
+
+@pytest.fixture
+def mock_config_two_models():
+    """Mock CONFIG with two models configured."""
+    mock_model1 = Mock()
+    mock_model1.get_api_parameters.return_value = {"model": "descriptor", "temperature": 0.7}
+    
+    mock_model2 = Mock()
+    mock_model2.get_api_parameters.return_value = {"model": "planner", "temperature": 0.5}
+    
+    mock_config = Mock()
+    mock_config.generator.models = [mock_model1, mock_model2]
+    
+    return mock_config
+
+
+@pytest.fixture
+def mock_task_messages():
+    """Mock task messages for descriptor and planner."""
+    return (
+        "Scene descriptor task message",
+        "Adversarial planner task message"
+    )
+
+
+# --- Tests -------------------------------------------------------------------
+
+@patch("untitled.generator.multi_step_vlm_instruction_generator.VLM")   # mock_vlm_class
+@patch("untitled.generator.multi_step_vlm_instruction_generator.CONFIG")    # mock_config
+@patch("builtins.open", new_callable=mock_open)     # mock_file
+def test_init_with_two_models(mock_file, mock_config, mock_vlm_class, mock_config_two_models, mock_task_messages):
+    """Test initialization with exactly two models configured."""
+    mock_config.generator.models = mock_config_two_models.generator.models
+    
+    # Setup file reads for task messages
+    descriptor_task, planner_task = mock_task_messages
+    mock_file.return_value.read.side_effect = [descriptor_task, planner_task]
+    
+    generator = MultiStepVLMInstructionGenerator()
+    
+    # Verify VLM was instantiated twice (descriptor and planner)
+    assert mock_vlm_class.call_count == 2
+    
+    # Verify task messages were loaded
+    assert generator.scene_descriptor_task_message == descriptor_task
+    assert generator.planner_task_message == planner_task
+
+@patch("untitled.generator.multi_step_vlm_instruction_generator.VLM")   # mock_vlm_class
+@patch("untitled.generator.multi_step_vlm_instruction_generator.CONFIG")    # mock_config
+@patch("builtins.open", new_callable=mock_open)    # mock_file
+def test_init_with_wrong_number_of_models(mock_file, mock_config, mock_vlm_class):
+    """Test that initialization fails with incorrect number of models."""
+    # Test with only one model
+    mock_config.generator.models = [Mock()]
+    
+    with pytest.raises(ValueError, match="Multi-step VLM instruction generator requires exactly two models"):
+        MultiStepVLMInstructionGenerator()
+    
+    # Test with three models
+    mock_config.generator.models = [Mock(), Mock(), Mock()]
+    
+    with pytest.raises(ValueError, match="Multi-step VLM instruction generator requires exactly two models"):
+        MultiStepVLMInstructionGenerator()
+
+@patch("untitled.generator.multi_step_vlm_instruction_generator.VLM")   # mock_vlm_class
+@patch("untitled.generator.multi_step_vlm_instruction_generator.CONFIG")    # mock_config
+@patch("untitled.generator.vlm.parse_vlm_response")     # mock_parse
+@patch("builtins.open", new_callable=mock_open)    # mock_file
+def test_generate_instruction_multi_frame(mock_file, mock_parse, mock_config, mock_vlm_class, 
+                                            mock_config_two_models, mock_task_messages, 
+                                            mock_simulation_data_multi_frame, mock_vlm_responses,
+                                            mock_parsed_responses):
+    """Test generating instruction from multiple frames."""
+    mock_config.generator.models = mock_config_two_models.generator.models
+    
+    # Setup file reads
+    descriptor_task, planner_task = mock_task_messages
+    mock_file.return_value.read.side_effect = [descriptor_task, planner_task]
+    
+    # Setup VLM instances
+    descriptor_responses, planner_response = mock_vlm_responses
+    mock_descriptor = Mock()
+    mock_planner = Mock()
+    mock_descriptor.prompt.side_effect = descriptor_responses[:3]
+    mock_planner.prompt.return_value = planner_response
+    mock_vlm_class.side_effect = [mock_descriptor, mock_planner]
+    
+    # Setup parse_vlm_response to return parsed outputs
+    parsed_descriptors, parsed_planner = mock_parsed_responses
+    mock_parse.side_effect = parsed_descriptors + [parsed_planner]
+    
+    # Create generator and generate instruction
+    generator = MultiStepVLMInstructionGenerator()
+    instruction = generator.generate_instruction_from_images(mock_simulation_data_multi_frame)
+    
+    # Verify descriptor was called 3 times (once per frame)
+    assert mock_descriptor.prompt.call_count == 3
+    
+    # Verify planner was called once with concatenated descriptions
+    assert mock_planner.prompt.call_count == 1
+    planner_call_args = mock_planner.prompt.call_args[0]
+    assert planner_call_args[0] == planner_task
+    assert "Frame 1:" in planner_call_args[1]
+    assert "Frame 2:" in planner_call_args[1]
+    assert "Frame 3:" in planner_call_args[1]
+    assert planner_call_args[2] is None  # No images for planner
+    
+    # Verify the final instruction
+    assert instruction == "Run the red light and turn left immediately."
+
+@patch("untitled.generator.multi_step_vlm_instruction_generator.VLM")   # mock_vlm_class
+@patch("untitled.generator.multi_step_vlm_instruction_generator.CONFIG")    # mock_config
+@patch("untitled.generator.vlm.parse_vlm_response")     # mock_parse
+@patch("builtins.open", new_callable=mock_open)    # mock_file
+def test_generate_instruction_single_frame(mock_file, mock_parse, mock_config, mock_vlm_class,
+                                            mock_config_two_models, mock_task_messages):
+    """Test generating instruction from a single frame."""
+    mock_config.generator.models = mock_config_two_models.generator.models
+    
+    # Setup file reads
+    descriptor_task, planner_task = mock_task_messages
+    mock_file.return_value.read.side_effect = [descriptor_task, planner_task]
+    
+    # Create single frame data
+    single_frame_data = SimulationData(
+        image_dir=Path("/tmp/images"),
+        frame_count=1,
+        frames=[
+            SimulationFrameData(
+                image_name="image1.jpg",
+                metadata=SimulationMetadata(speed=0)
+            )
+        ]
+    )
+    
+    # Setup VLM instances
+    mock_descriptor = Mock()
+    mock_planner = Mock()
+    descriptor_response = Mock(choices=[Mock(message=Mock(content="Scene description"))])
+    planner_response = Mock(choices=[Mock(message=Mock(content="Adversarial instruction"))])
+    mock_descriptor.prompt.return_value = descriptor_response
+    mock_planner.prompt.return_value = planner_response
+    mock_vlm_class.side_effect = [mock_descriptor, mock_planner]
+    mock_parse.side_effect = ["Scene description", "Adversarial instruction"]
+    
+    # Create generator and generate instruction
+    generator = MultiStepVLMInstructionGenerator()
+    instruction = generator.generate_instruction_from_images(single_frame_data)
+    
+    # Verify descriptor was called once
+    assert mock_descriptor.prompt.call_count == 1
+    
+    # Verify planner was called once
+    assert mock_planner.prompt.call_count == 1
+    
+    # Verify the final instruction
+    assert instruction == "Adversarial instruction"
+
+@patch("untitled.generator.multi_step_vlm_instruction_generator.VLM")   # mock_vlm_class
+@patch("untitled.generator.multi_step_vlm_instruction_generator.CONFIG")    # mock_config
+@patch("builtins.open", new_callable=mock_open)    # mock_file
+def test_generate_instruction_no_frames_raises_error(mock_file, mock_config, mock_vlm_class,
+                                                        mock_config_two_models, mock_task_messages):
+    """Test that generating instruction with no frames raises ValueError."""
+    mock_config.generator.models = mock_config_two_models.generator.models
+    
+    # Setup file reads
+    descriptor_task, planner_task = mock_task_messages
+    mock_file.return_value.read.side_effect = [descriptor_task, planner_task]
+    
+    # Create empty data
+    empty_data = SimulationData(
+        image_dir=Path("/tmp/images"),
+        frame_count=0,
+        frames=[]
+    )
+    
+    mock_vlm_class.side_effect = [Mock(), Mock()]
+    generator = MultiStepVLMInstructionGenerator()
+    
+    # Verify that ValueError is raised
+    with pytest.raises(ValueError, match="At least one frame is required"):
+        generator.generate_instruction_from_images(empty_data)
+
+@patch("untitled.generator.multi_step_vlm_instruction_generator.VLM")   # mock_vlm_class
+@patch("untitled.generator.multi_step_vlm_instruction_generator.CONFIG")    # mock_config
+@patch("builtins.open", new_callable=mock_open)    # mock_file
+def test_free_method(mock_file, mock_config, mock_vlm_class, mock_config_two_models, mock_task_messages):
+    """Test the free method (should do nothing)."""
+    mock_config.generator.models = mock_config_two_models.generator.models
+    
+    # Setup file reads
+    descriptor_task, planner_task = mock_task_messages
+    mock_file.return_value.read.side_effect = [descriptor_task, planner_task]
+    
+    mock_vlm_class.side_effect = [Mock(), Mock()]
+    generator = MultiStepVLMInstructionGenerator()
+    
+    # Should not raise any errors
+    generator.free()
+    assert True
