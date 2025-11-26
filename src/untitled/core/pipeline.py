@@ -1,5 +1,6 @@
 from untitled.core.base import LOG
 from untitled.simulator.simulator import Simulator
+from untitled.simulator.simulation_data import SimulationData
 from untitled.generator.vlm_instruction_generator import VLMInstructionGenerator
 
 class Pipeline:

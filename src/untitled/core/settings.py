@@ -1,12 +1,12 @@
-from pydantic import Field
+from pydantic import Field, ConfigDict
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import yaml
 from pathlib import Path
+import os
 
 
 class VLMConfig(BaseSettings):
-    # Load .env file
-    model_config = SettingsConfigDict(env_file='.env', extra='allow')
+    model_config = SettingsConfigDict(extra='allow')
     
     # Configuration parameters from config.yaml
     model: str
@@ -25,9 +25,8 @@ class VLMConfig(BaseSettings):
 
 
 class CARLAConfig(BaseSettings):
-    # Load .env file
-    model_config = SettingsConfigDict(env_file='.env', extra='ignore')
-
+    model_config = SettingsConfigDict(extra='ignore')
+    
     path: Path = Field(validation_alias="CARLA_PATH")
     username: str = Field(validation_alias="USERNAME")
     output_path: Path = Field(validation_alias="OUTPUT_PATH")
@@ -35,8 +34,7 @@ class CARLAConfig(BaseSettings):
 
 # Definition of environment variables and configuration settings
 class Settings(BaseSettings):
-    # Load .env file
-    model_config = SettingsConfigDict(env_file='.env', extra='ignore')
+    model_config = SettingsConfigDict(extra='ignore')
     
     # NOTE: Define settings here for type checking and auto-completion    
     vlm: VLMConfig
@@ -47,12 +45,27 @@ def load_config(root_path: Path) -> Settings:
     """
     Load configuration from a YAML file and a '.env' file.
     """
+    # Load .env file into environment
+    # We manually load it to avoid pydantic errors.
+    env_file_path = root_path / ".env"
+    if env_file_path.exists():
+        with open(env_file_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, value = line.split('=', 1)
+                    os.environ[key.strip()] = value.strip()
+    
     # Load YAML configuration
     yaml_path = root_path / "config.yaml"
     with open(yaml_path, "r") as f:
         yaml_data = yaml.safe_load(f)
-
-    # Merge YAML data with .env environment variables
-    # .env is automatically loaded by Pydantic when instantiating Settings
+    
+    # Filter out comment fields (fields starting with _) and version
+    yaml_data = {k: v for k, v in yaml_data.items() if not k.startswith('_') and k != 'version'}
+    if 'carla' in yaml_data and isinstance(yaml_data['carla'], dict):
+        yaml_data['carla'] = {k: v for k, v in yaml_data['carla'].items() if not k.startswith('_')}
+    
+    # Create Settings instance (env vars are loaded from os.environ)
     settings = Settings(**yaml_data)
     return settings

@@ -1,9 +1,11 @@
 from untitled.core.base import LOG
+from untitled.core.pipeline import Pipeline
 from untitled.generator.vlm import VLM
 from untitled.simulator.simulator import Simulator
 from untitled.simulator.simulation_data import SimulationData
 
 import signal
+import sys
 
 
 ### MAIN FUNCTION #############################################################
@@ -24,7 +26,7 @@ def main():
     pipeline.init()
 
     LOG.info("Starting pipeline...")
-    pipeline.run()
+    pipeline.start()
 
     LOG.info("Stopping pipeline...")
     pipeline.stop()
