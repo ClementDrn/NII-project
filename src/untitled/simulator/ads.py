@@ -40,98 +40,28 @@ class ADS:
     def _setup_simlingo(self):
         """Setup SimLingo-specific configuration."""
         # Agent file and checkpoint
-        self.agent_file = str(self.agent_root / AGENT_FILE)
-        self.checkpoint = str(self.agent_root / CHECKPOINT)
-        
-        # Benchmark configuration
-        self.benchmark = "bench2drive"
-        self.route_path = str(self.agent_root / "leaderboard" / "data" / "bench2drive_split")
-        
-        # Leaderboard and scenario runner paths
-        self.leaderboard_path = str(self.agent_root / "Bench2Drive" / "leaderboard")
-        self.scenario_runner_path = str(self.agent_root / "Bench2Drive" / "scenario_runner")
-        self.leaderboard_evaluator = str(
-            self.agent_root / "Bench2Drive" / "leaderboard" / 
-            "leaderboard" / "leaderboard_evaluator.py"
-        )
+        self.agent_file = self.agent_root / AGENT_FILE
+        self.checkpoint = self.agent_root / CHECKPOINT
     
-    def get_python_paths(self, carla_root: str) -> list[str]:
+    def get_agent_python_path(self) -> str:
         """
-        Get the PYTHONPATH entries required for this agent.
+        Get the PYTHONPATH entry for this agent.
         
-        Args:
-            carla_root: Path to CARLA root directory
-            
         Returns:
-            List of paths to add to PYTHONPATH
+            Path to add to PYTHONPATH for agent imports
+        """
+        return str(self.agent_root)
+    
+    def get_agent_args(self) -> list[str]:
+        """
+        Get agent-specific command-line arguments.
+        
+        Returns:
+            List of agent-specific command-line arguments
         """
         return [
-            str(self.agent_root),  # Add simlingo root (must be first for relative imports to work)
-            f"{carla_root}/PythonAPI/carla",
-            f"{carla_root}/PythonAPI/carla/dist/carla-0.9.15-py3.7-linux-x86_64.egg",
-            self.leaderboard_path,
-            self.scenario_runner_path,
-        ]
-    
-    def get_environment_vars(self, carla_root: str, viz_path: str) -> Dict[str, str]:
-        """
-        Get environment variables required for this agent.
-        
-        Args:
-            carla_root: Path to CARLA root directory
-            viz_path: Path where visualization outputs should be saved
-            
-        Returns:
-            Dictionary of environment variable names and values
-        """
-        python_paths = self.get_python_paths(carla_root)
-        
-        return {
-            "CARLA_ROOT": carla_root,
-            "PYTHONPATH": ":".join(python_paths),
-            "SCENARIO_RUNNER_ROOT": self.scenario_runner_path,
-            "SAVE_PATH": viz_path,
-        }
-    
-    def get_leaderboard_args(
-        self,
-        route_file: str,
-        result_file: str,
-        seed: int,
-        port: int,
-        tm_port: int,
-        gpu_rank: int = 0,
-        timeout: int = 600,
-        repetitions: int = 1,
-    ) -> list[str]:
-        """
-        Get command-line arguments for the CARLA leaderboard evaluator.
-        
-        Args:
-            route_file: Path to the route XML file
-            result_file: Path where results JSON will be saved
-            seed: Random seed for traffic manager
-            port: CARLA server port
-            tm_port: Traffic manager port
-            gpu_rank: GPU rank to use (default: 0)
-            timeout: Timeout in seconds (default: 600)
-            repetitions: Number of repetitions (default: 1)
-            
-        Returns:
-            List of command-line arguments
-        """
-        return [
-            f"--routes={route_file}",
-            f"--repetitions={repetitions}",
-            "--track=SENSORS",
-            f"--checkpoint={result_file}",
-            f"--timeout={timeout}",
-            f"--agent={self.agent_file}",
-            f"--agent-config={self.checkpoint}",
-            f"--traffic-manager-seed={seed}",
-            f"--port={port}",
-            f"--gpu-rank={gpu_rank}",
-            f"--traffic-manager-port={tm_port}",
+            f"--agent={str(self.agent_file)}",
+            f"--agent-config={str(self.checkpoint)}",
         ]
     
     def get_conda_env(self) -> str:
@@ -152,9 +82,7 @@ class ADS:
         """
         required_paths = [
             self.agent_root,
-            Path(self.agent_file),
-            Path(self.route_path),
-            Path(self.leaderboard_evaluator),
+            self.agent_file,
         ]
         
         missing = []
@@ -169,7 +97,7 @@ class ADS:
             return False
         
         # Check checkpoint (warning only, as it might not exist yet)
-        if not Path(self.checkpoint).exists():
+        if not self.checkpoint.exists():
             LOG.warning(f"Checkpoint not found: {self.checkpoint}")
             LOG.warning("You may need to train or download the model first")
         

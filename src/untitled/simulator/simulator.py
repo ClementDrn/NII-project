@@ -10,6 +10,11 @@ from untitled.core.base import LOG, PROJECT_ROOT, CONFIG
 from untitled.simulator.ads import ADS
 
 
+# Benchmark configuration (Bench2Drive)
+BENCHMARK_ROOT = PROJECT_ROOT / "vendor" / "ads" / "simlingo" / "Bench2Drive"
+ROUTES_ROOT = PROJECT_ROOT / "vendor" / "ads" / "simlingo" / "leaderboard" / "data" / "bench2drive_split"
+
+
 class Simulator:
     """
     CARLA Simulator wrapper for running autonomous driving scenarios.
@@ -42,13 +47,24 @@ class Simulator:
         self.carla_path = CONFIG.carla.path
         self.username = CONFIG.carla.username
         
+        # Benchmark configuration (Bench2Drive)
+        self.benchmark = "bench2drive"
+        self.leaderboard_path = BENCHMARK_ROOT / "leaderboard"
+        self.scenario_runner_path = BENCHMARK_ROOT / "scenario_runner"
+        self.leaderboard_evaluator = (
+            BENCHMARK_ROOT / "leaderboard" / "leaderboard" / "leaderboard_evaluator.py"
+        )
+        
         # Scenario configuration
-        self.route_path = self.ads.route_path
+        self.route_path = ROUTES_ROOT
         self.seed = 1
+        
+        # Validate benchmark installation
+        self._validate_benchmark_installation()
         
         # Output directories
         self.out_root = CONFIG.carla.output_path
-        self.base_dir = self.out_root / self.ads.agent_name / self.ads.benchmark / str(self.seed)
+        self.base_dir = self.out_root / self.ads.agent_name / self.benchmark / str(self.seed)
         
         # Create necessary directories
         self._setup_directories()
@@ -61,7 +77,7 @@ class Simulator:
         if not routes:
             raise ValueError(f"No route files found in {self.route_path}")
         
-        self.current_route = os.path.join(self.route_path, routes[0])
+        self.current_route = self.route_path / routes[0]
         self.route_id = routes[0].split("_")[-1][:-4].zfill(3)
         
         # Ports for CARLA
@@ -83,6 +99,113 @@ class Simulator:
         dirs = ["run", "res", "out", "err", "viz"]
         for d in dirs:
             (self.base_dir / d).mkdir(parents=True, exist_ok=True)
+    
+    def _validate_benchmark_installation(self):
+        """Validate that the benchmark is properly installed."""
+        required_paths = [
+            self.route_path,
+            self.leaderboard_evaluator,
+            self.scenario_runner_path,
+        ]
+        
+        missing = []
+        for path in required_paths:
+            if not path.exists():
+                missing.append(str(path))
+        
+        if missing:
+            LOG.error(f"Missing required benchmark paths:")
+            for path in missing:
+                LOG.error(f"  - {path}")
+            raise ValueError("Benchmark installation validation failed")
+        
+        LOG.info("Benchmark installation validated successfully")
+    
+    def _get_benchmark_python_paths(self, carla_root: str) -> list[str]:
+        """Get PYTHONPATH entries for benchmark and CARLA.
+        
+        Args:
+            carla_root: Path to CARLA root directory
+            
+        Returns:
+            List of paths for benchmark infrastructure and CARLA
+        """
+        return [
+            f"{carla_root}/PythonAPI/carla",
+            f"{carla_root}/PythonAPI/carla/dist/carla-0.9.15-py3.7-linux-x86_64.egg",
+            str(self.leaderboard_path),
+            str(self.scenario_runner_path),
+        ]
+    
+    def _build_environment_vars(self, viz_path: str) -> Dict[str, str]:
+        """Build environment variables for scenario execution.
+        
+        Args:
+            viz_path: Path where visualization outputs should be saved
+            
+        Returns:
+            Dictionary of environment variable names and values
+        """
+        # Get agent Python path
+        agent_path = self.ads.get_agent_python_path()
+        
+        # Get benchmark and CARLA Python paths
+        benchmark_paths = self._get_benchmark_python_paths(self.carla_path)
+        
+        # Combine all Python paths (agent first for proper imports)
+        python_paths = [agent_path] + benchmark_paths
+        
+        return {
+            "CARLA_ROOT": self.carla_path,
+            "PYTHONPATH": ":".join(python_paths),
+            "SCENARIO_RUNNER_ROOT": str(self.scenario_runner_path),
+            "SAVE_PATH": viz_path,
+        }
+    
+    def _build_leaderboard_args(
+        self,
+        route_file: Path,
+        result_file: Path,
+        seed: int,
+        port: int,
+        tm_port: int,
+        gpu_rank: int = 0,
+        timeout: int = 600,
+        repetitions: int = 1,
+    ) -> list[str]:
+        """Build command-line arguments for the CARLA leaderboard evaluator.
+        
+        Args:
+            route_file: Path to the route XML file
+            result_file: Path where results JSON will be saved
+            seed: Random seed for traffic manager
+            port: CARLA server port
+            tm_port: Traffic manager port
+            gpu_rank: GPU rank to use (default: 0)
+            timeout: Timeout in seconds (default: 600)
+            repetitions: Number of repetitions (default: 1)
+            
+        Returns:
+            List of command-line arguments
+        """
+        # Get agent-specific arguments
+        agent_args = self.ads.get_agent_args()
+        
+        # Build benchmark-specific arguments
+        benchmark_args = [
+            f"--routes={str(route_file)}",
+            f"--repetitions={repetitions}",
+            "--track=SENSORS",
+            f"--checkpoint={str(result_file)}",
+            f"--timeout={timeout}",
+            f"--traffic-manager-seed={seed}",
+            f"--port={port}",
+            f"--gpu-rank={gpu_rank}",
+            f"--traffic-manager-port={tm_port}",
+        ]
+        
+        # Combine agent args with benchmark args
+        return benchmark_args + agent_args
     
     def _kill_carla_processes(self):
         """Kill only CARLA server processes."""
@@ -159,19 +282,16 @@ class Simulator:
             # Prepare environment variable for instruction file
             export_lines += f"\nexport CUSTOM_PROMPTS_FILE={instruction_file}"
         
-        # Get environment variables from ADS
-        env_vars = self.ads.get_environment_vars(
-            carla_root=self.carla_path,
-            viz_path=str(self.current_viz_path)
-        )
+        # Build environment variables
+        env_vars = self._build_environment_vars(viz_path=str(self.current_viz_path))
         
         # Build export statements
         export_lines += "\n".join([f"export {key}={value}" for key, value in env_vars.items()])
         
-        # Get leaderboard arguments from ADS
-        leaderboard_args = self.ads.get_leaderboard_args(
+        # Build leaderboard arguments
+        leaderboard_args = self._build_leaderboard_args(
             route_file=self.current_route,
-            result_file=str(self.current_result_file),
+            result_file=self.current_result_file,
             seed=self.seed,
             port=self.port,
             tm_port=self.tm_port,
@@ -189,7 +309,7 @@ class Simulator:
 deactivate 2>/dev/null || true
 
 source ~/.bashrc
-. /home/{self.username}/miniconda3/etc/profile.d/conda.sh   # WARN: will not work if anaconda is installed instead if miniconda
+. /home/{self.username}/miniconda3/etc/profile.d/conda.sh   # WARN: will not work if anaconda is installed instead of miniconda
 conda activate {self.ads.get_conda_env()}
 
 # Debug: check which Python is being used
@@ -200,7 +320,7 @@ cd {self.ads.agent_root}
 
 {export_lines}
 
-python -u {self.ads.leaderboard_evaluator} {args_str} \\
+python -u {str(self.leaderboard_evaluator)} {args_str} \\
 >> {self.current_log_file} 2>> {self.current_err_file}      # NOTE: Temporary change: append to logs instead of overwrite for easier debugging
 """
         
