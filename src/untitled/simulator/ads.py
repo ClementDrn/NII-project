@@ -6,8 +6,8 @@ from untitled.core.base import PROJECT_ROOT, LOG
 
 
 # SimLingo-specific constants
-AGENT_FILE = "team_code/agent_simlingo.py"
-CHECKPOINT = "outputs/simlingo/simlingo/checkpoints/epoch=013.ckpt/pytorch_model.pt"
+AGENT_FILE = Path("team_code/agent_simlingo.py")
+CHECKPOINT = Path("outputs/simlingo/simlingo/checkpoints/epoch=013.ckpt/pytorch_model.pt")
 
 
 class ADS:
@@ -43,14 +43,14 @@ class ADS:
         self.agent_file = self.agent_root / AGENT_FILE
         self.checkpoint = self.agent_root / CHECKPOINT
     
-    def get_agent_python_path(self) -> str:
+    def get_agent_python_path(self) -> Path:
         """
         Get the PYTHONPATH entry for this agent.
         
         Returns:
             Path to add to PYTHONPATH for agent imports
         """
-        return str(self.agent_root)
+        return self.agent_root
     
     def get_agent_args(self) -> list[str]:
         """

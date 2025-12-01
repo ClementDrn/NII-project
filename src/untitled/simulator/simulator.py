@@ -46,6 +46,7 @@ class Simulator:
         # CARLA configuration
         self.carla_path = CONFIG.carla.path
         self.username = CONFIG.carla.username
+        self.frame_rate = 20  # fps
         
         # Benchmark configuration (Bench2Drive)
         self.benchmark = "bench2drive"
@@ -90,6 +91,8 @@ class Simulator:
         self.current_result_file = None
         self.current_log_file = None
         self.current_err_file = None
+        self.current_image_dir = None
+        self.current_metadata_dir = None
         
         LOG.info(f"Simulator initialized with route: {self.current_route}")
         LOG.info(f"Route ID: {self.route_id}")
@@ -121,7 +124,7 @@ class Simulator:
         
         LOG.info("Benchmark installation validated successfully")
     
-    def _get_benchmark_python_paths(self, carla_root: str) -> list[str]:
+    def _get_benchmark_python_paths(self, carla_root: Path) -> list[Path]:
         """Get PYTHONPATH entries for benchmark and CARLA.
         
         Args:
@@ -131,26 +134,29 @@ class Simulator:
             List of paths for benchmark infrastructure and CARLA
         """
         return [
-            f"{carla_root}/PythonAPI/carla",
-            f"{carla_root}/PythonAPI/carla/dist/carla-0.9.15-py3.7-linux-x86_64.egg",
-            str(self.leaderboard_path),
-            str(self.scenario_runner_path),
+            carla_root / "PythonAPI" / "carla",
+            carla_root / "PythonAPI" / "carla" / "dist" / "carla-0.9.15-py3.7-linux-x86_64.egg",
+            self.leaderboard_path,
+            self.scenario_runner_path,
         ]
     
-    def _build_environment_vars(self, viz_path: str) -> Dict[str, str]:
+    def _build_environment_vars(self, viz_path: Path, img_path: Path, metadata_path: Path) -> Dict[str, str]:
         """Build environment variables for scenario execution.
         
         Args:
             viz_path: Path where visualization outputs should be saved
+            img_path: Path where images should be saved
+            metadata_path: Path where metadata should be saved
             
         Returns:
             Dictionary of environment variable names and values
         """
         # Get agent Python path
-        agent_path = self.ads.get_agent_python_path()
+        agent_path = str(self.ads.get_agent_python_path())
         
-        # Get benchmark and CARLA Python paths
+        # Get benchmark and CARLA Python paths and cast to string
         benchmark_paths = self._get_benchmark_python_paths(self.carla_path)
+        benchmark_paths = [str(p) for p in benchmark_paths]
         
         # Combine all Python paths (agent first for proper imports)
         python_paths = [agent_path] + benchmark_paths
@@ -160,6 +166,8 @@ class Simulator:
             "PYTHONPATH": ":".join(python_paths),
             "SCENARIO_RUNNER_ROOT": str(self.scenario_runner_path),
             "SAVE_PATH": viz_path,
+            "SAVE_PATH_IMG": img_path,
+            "SAVE_PATH_METADATA": metadata_path,
         }
     
     def _build_leaderboard_args(
@@ -254,9 +262,14 @@ class Simulator:
         run_id = f"run_{self.run_counter:03d}"
         
         # Setup paths for this run
+        # Directories
         self.current_viz_path = self.base_dir / "viz" / self.route_id / run_id
         self.current_viz_path.mkdir(parents=True, exist_ok=True)
-        
+        self.current_image_dir = self.current_viz_path / "images"
+        self.current_image_dir.mkdir(parents=True, exist_ok=True)
+        self.current_metadata_dir = self.current_viz_path / "metadata"
+        self.current_metadata_dir.mkdir(parents=True, exist_ok=True)
+        # Files
         self.current_result_file = self.base_dir / "res" / f"{self.route_id}_{run_id}_res.json"
         self.current_log_file = self.base_dir / "out" / f"{self.route_id}_{run_id}_out.log"
         self.current_err_file = self.base_dir / "err" / f"{self.route_id}_{run_id}_err.log"
@@ -283,7 +296,7 @@ class Simulator:
             export_lines += f"\nexport CUSTOM_PROMPTS_FILE={instruction_file}"
         
         # Build environment variables
-        env_vars = self._build_environment_vars(viz_path=str(self.current_viz_path))
+        env_vars = self._build_environment_vars(self.current_viz_path, self.current_image_dir, self.current_metadata_dir)
         
         # Build export statements
         export_lines += "\n".join([f"export {key}={value}" for key, value in env_vars.items()])
@@ -309,7 +322,7 @@ class Simulator:
 deactivate 2>/dev/null || true
 
 source ~/.bashrc
-. /home/{self.username}/miniconda3/etc/profile.d/conda.sh   # WARN: will not work if anaconda is installed instead of miniconda
+. /home/{self.username}/miniconda3/etc/profile.d/conda.sh   # TODO: Add CONDA_PATH to .env (will not work if anaconda is installed instead of miniconda)
 conda activate {self.ads.get_conda_env()}
 
 # Debug: check which Python is being used
@@ -321,7 +334,7 @@ cd {self.ads.agent_root}
 {export_lines}
 
 python -u {str(self.leaderboard_evaluator)} {args_str} \\
->> {self.current_log_file} 2>> {self.current_err_file}      # NOTE: Temporary change: append to logs instead of overwrite for easier debugging
+> {self.current_log_file} 2> {self.current_err_file}
 """
         
         with open(job_file, 'w', encoding='utf-8') as f:
@@ -395,38 +408,35 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         Returns:
             Path to the image file, or None if not found
         """
-        if not self.current_viz_path:
+        if not self.current_image_dir:
             LOG.error("No scenario has been run yet. Call run_scenario() first.")
+            return None
+
+        if not self.current_image_dir.exists():
+            LOG.warning(f"Image directory not found: {self.current_image_dir}")
             return None
         
         # CARLA typically saves images with frame numbers
-        # Assuming 20 fps: frame_index = timestep * 20
-        frame_index = int(timestep * 20)
+        frame_index = int(timestep * self.frame_rate)
         
-        # Look for image files in the viz directory
-        # The exact naming convention depends on SimLingo's implementation
+        # Look for image files in the image directory
+        # The exact naming convention depends on the agent's implementation
         # Common patterns: frame_{frame_index}.png, rgb_{frame_index}.jpg, etc.
         possible_patterns = [
-            f"frame_{frame_index:06d}.png",
-            f"rgb_{frame_index:06d}.png",
-            f"rgb_{frame_index:06d}.jpg",
             f"{frame_index:06d}.png",
-            f"frame_{frame_index}.png",
         ]
         
         for pattern in possible_patterns:
-            image_path = self.current_viz_path / pattern
+            image_path = self.current_image_dir / pattern
             if image_path.exists():
-                LOG.info(f"Found image at timestep {timestep}s: {image_path}")
+                LOG.debug(f"Found image at timestep {timestep}s: {image_path}")
                 return image_path
         
         # If exact frame not found, list available files
         LOG.warning(f"Image not found for timestep {timestep}s (frame {frame_index})")
-        if self.current_viz_path.exists():
-            available_files = list(self.current_viz_path.glob("*.png")) + \
-                            list(self.current_viz_path.glob("*.jpg"))
-            if available_files:
-                LOG.info(f"Available image files: {[f.name for f in available_files[:5]]}")
+        available_files = list(self.current_image_dir.glob("*.png")) + list(self.current_image_dir.glob("*.jpg"))
+        if available_files:
+            LOG.debug(f"Sample of available image files: {[f.name for f in available_files[:5]]}")
         
         return None
     
@@ -440,45 +450,32 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         Returns:
             Dictionary containing metadata, or None if not found
         """
-        if not self.current_result_file:
+        if not self.current_metadata_dir:
             LOG.error("No scenario has been run yet. Call run_scenario() first.")
             return None
         
-        if not self.current_result_file.exists():
+        if not self.current_metadata_dir.exists():
             LOG.error(f"Result file not found: {self.current_result_file}")
             return None
+
+        frame_index = int(timestep * self.frame_rate)
+        possible_patterns = [
+            f"{frame_index:06d}.png",
+        ]
         
-        try:
-            with open(self.current_result_file, 'r', encoding='utf-8') as f:
-                evaluation_data = json.load(f)
+        for pattern in possible_patterns:
+            metadata_path = self.current_metadata_dir / pattern
+            if metadata_path.exists():
+                LOG.debug(f"Found metadata at timestep {timestep}s: {metadata_path}")
+                return metadata_path
             
-            # Extract relevant metadata
-            # The structure depends on CARLA leaderboard output format
-            frame_index = int(timestep * 20)  # Assuming 20 fps
-            
-            metadata = {
-                "timestep": timestep,
-                "frame_index": frame_index,
-                "progress": evaluation_data.get("_checkpoint", {}).get("progress", []),
-                "records": evaluation_data.get("_checkpoint", {}).get("records", []),
-            }
-            
-            # Try to find frame-specific data if available
-            # This depends on how SimLingo logs data
-            if "frames" in evaluation_data:
-                frames = evaluation_data["frames"]
-                if frame_index < len(frames):
-                    metadata["frame_data"] = frames[frame_index]
-            
-            LOG.info(f"Retrieved metadata for timestep {timestep}s")
-            return metadata
-            
-        except json.JSONDecodeError as e:
-            LOG.error(f"Failed to parse result file: {e}")
-            return None
-        except Exception as e:
-            LOG.error(f"Error reading metadata: {e}")
-            return None
+        LOG.warning(f"Metadata not found for timestep {timestep}s (frame {frame_index})")
+        available_files = list(self.current_metadata_dir.glob("*.json"))
+        if available_files:
+            LOG.debug(f"Sample of available metadata files: {[f.name for f in available_files[:5]]}")
+
+        return None
+
     
     def free(self):
         """Clean up any running processes."""

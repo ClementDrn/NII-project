@@ -36,12 +36,12 @@ class VLMInstructionGenerator:
         image_path = data.image_dir / data.images[0]
 
         # Send prompt to VLM
-        chat_response = self.vlm.prompt(self.system_task_message, metadata_text, [image_path])
+        response_text = self.vlm.prompt(self.system_task_message, metadata_text, [image_path])
 
         # Parse the instruction from the response
         # The instruction is after "</think>\n\n"
-        output_text = chat_response.choices[0].message.content.strip()
-        instruction = output_text.split("</think>\n\n", 1)[-1].strip()
+        # WARN: This is specific to the R-4B model's response format.
+        instruction = response_text.split("</think>\n\n", 1)[-1].strip()
 
         # The VLM response is the generated text
         return instruction
