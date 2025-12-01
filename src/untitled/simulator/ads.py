@@ -66,6 +66,7 @@ class ADS:
             List of paths to add to PYTHONPATH
         """
         return [
+            str(self.agent_root),  # Add simlingo root (must be first for relative imports to work)
             f"{carla_root}/PythonAPI/carla",
             f"{carla_root}/PythonAPI/carla/dist/carla-0.9.15-py3.7-linux-x86_64.egg",
             self.leaderboard_path,

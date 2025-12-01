@@ -29,8 +29,33 @@ vllm serve yannqi/R-4B \
 
 Clone the repository.
 ```sh
-git clone UNTITLED_REPOSITORY
+git clone --recursive UNTITLED_REPOSITORY
 cd untitled
+```
+
+Set up SimLingo environment.
+```sh
+# Create base environment
+conda env create -f vendor/ads/simlingo/environment.yaml -n simlingo
+conda activate simlingo
+
+# Install PyTorch and flash-attn separately to ensure correct CUDA version
+pip install torch==2.2.0
+pip install flash-attn==2.7.0.post2
+
+# Exit environment not to mix up multiple envs
+conda deactivate
+```
+
+Download SimLingo model's weights (12GB).
+```sh
+# Clone by omitting large files (just clone their pointers)
+GIT_LFS_SKIP_SMUDGE=1 git clone https://huggingface.co/RenzKa/simlingo vendor/ads/simlingo/outputs/simlingo
+
+# Now, download large files (with progress bar)
+cd vendor/ads/simlingo/outputs/simlingo
+git lfs pull
+cd ../../../../..
 ```
 
 Create a virtual environment and install dependencies.
@@ -39,3 +64,7 @@ uv venv --python 3.12
 source .venv/bin/activate
 uv pip install -e .
 ```
+
+### Setup Environement Configuration 
+
+In the `.env` file, change each variable value with your environement settings.

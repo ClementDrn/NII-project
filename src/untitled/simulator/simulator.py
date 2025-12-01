@@ -84,8 +84,8 @@ class Simulator:
         for d in dirs:
             (self.base_dir / d).mkdir(parents=True, exist_ok=True)
     
-    def _kill_all_carla_and_leaderboard(self):
-        """Kill all running CARLA and leaderboard processes."""
+    def _kill_carla_processes(self):
+        """Kill only CARLA server processes."""
         # Kill CarlaUE4.sh processes
         try:
             carla_pids = subprocess.check_output(
@@ -97,7 +97,9 @@ class Simulator:
                 os.kill(int(pid), signal.SIGKILL)
         except subprocess.CalledProcessError:
             LOG.warning("Killing CARLA processes failed or no processes found.")
-        
+
+    def _kill_bench2drive_leaderboard_processes(self):
+        """Kill only Bench2Drive leaderboard processes."""
         # Kill leaderboard_evaluator.py processes
         try:
             leaderboard_pids = subprocess.check_output(
@@ -183,16 +185,23 @@ class Simulator:
         
         # Create bash script
         script_content = f"""#!/bin/bash
+# Deactivate any active virtual environment
+deactivate 2>/dev/null || true
+
 source ~/.bashrc
-. /home/{self.username}/anaconda3/etc/profile.d/conda.sh
+. /home/{self.username}/miniconda3/etc/profile.d/conda.sh   # WARN: will not work if anaconda is installed instead if miniconda
 conda activate {self.ads.get_conda_env()}
+
+# Debug: check which Python is being used
+# echo "Python location: $(which python)" >> {self.current_log_file}
+# echo "Python version: $(python --version)" >> {self.current_log_file}
 
 cd {self.ads.agent_root}
 
 {export_lines}
 
 python -u {self.ads.leaderboard_evaluator} {args_str} \\
-> {self.current_log_file} 2> {self.current_err_file}
+>> {self.current_log_file} 2>> {self.current_err_file}      # NOTE: Temporary change: append to logs instead of overwrite for easier debugging
 """
         
         with open(job_file, 'w', encoding='utf-8') as f:
@@ -212,9 +221,12 @@ python -u {self.ads.leaderboard_evaluator} {args_str} \\
             instruction: Optional text instruction to inject into the scenario
             injection_time: Optional time (in seconds) when to inject the instruction
         """
-        # Clean up any existing processes
-        self._kill_all_carla_and_leaderboard()
+        # Clean up any existing leaderboard processes
+        # But not CARLA, as we want to keep it running between runs
+        self._kill_bench2drive_leaderboard_processes()
         time.sleep(2)
+        
+        # NOTE: CARLA server is started automatically by the Bench2Drive leaderboard evaluator, so we don't need to start it ourselves
         
         # Create and run the scenario script
         job_file = self._create_run_script(instruction, injection_time)
@@ -228,20 +240,32 @@ python -u {self.ads.leaderboard_evaluator} {args_str} \\
         LOG.info(f"Output log: {self.current_log_file}")
         LOG.info(f"Error log: {self.current_err_file}")
         
-        # Run the scenario
-        result = subprocess.run(["bash", job_file], capture_output=False)
+        # Run the scenario with a clean environment (no virtual env interference)
+        # Use bash -l to get a login shell with clean PATH from system defaults
+        result = subprocess.run(
+            ["bash", "-l", job_file], 
+            capture_output=False,
+            env={
+                'HOME': os.environ.get('HOME', ''),
+                'USER': os.environ.get('USER', ''),
+                'LOGNAME': os.environ.get('LOGNAME', ''),
+                'SHELL': os.environ.get('SHELL', '/bin/bash'),
+                'TERM': os.environ.get('TERM', 'xterm'),
+                'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+            }
+        )
         
         if result.returncode != 0:
             LOG.error(f"Scenario execution failed with return code: {result.returncode}")
             LOG.error(f"Check error log: {self.current_err_file}")
         else:
-            LOG.info("Scenario execution completed")
+            LOG.debug("Scenario execution completed")
         
-        # Clean up processes after run
-        time.sleep(3)
-        self._kill_all_carla_and_leaderboard()
+        # Clean up leaderboard processes after run (keep CARLA running)
+        time.sleep(2)
+        self._kill_bench2drive_leaderboard_processes()
     
-    def get_image_log(self, timestep: float) -> Optional[str]:
+    def get_image_log(self, timestep: float) -> Optional[Path]:
         """
         Retrieve the image path from the simulation logs at a specific timestep.
         
@@ -274,7 +298,7 @@ python -u {self.ads.leaderboard_evaluator} {args_str} \\
             image_path = self.current_viz_path / pattern
             if image_path.exists():
                 LOG.info(f"Found image at timestep {timestep}s: {image_path}")
-                return str(image_path)
+                return image_path
         
         # If exact frame not found, list available files
         LOG.warning(f"Image not found for timestep {timestep}s (frame {frame_index})")
@@ -339,7 +363,15 @@ python -u {self.ads.leaderboard_evaluator} {args_str} \\
     def free(self):
         """Clean up any running processes."""
         LOG.info("Cleaning up simulator processes...")
-        self._kill_all_carla_and_leaderboard()
+        
+        # Kill leaderboard processes first
+        self._kill_bench2drive_leaderboard_processes()
+        
+        # Give leaderboard's atexit handler a moment to cleanup CARLA
+        time.sleep(2)
+
+        # Then kill any remaining CARLA processes
+        self._kill_carla_processes()
     
     def __del__(self):
         """Destructor to ensure cleanup."""

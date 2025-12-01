@@ -53,6 +53,10 @@ class Pipeline:
         LOG.info(f"Fetched image at: {image_path}")
         LOG.info(f"Fetched metadata: {metadata}")
 
+        if image_path is None:
+            LOG.error("Failed to get image from simulation. Cannot continue.")
+            return
+        
         simulation_data = SimulationData(
             frame_count=1,
             image_dir=image_path.parent,
