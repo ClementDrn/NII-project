@@ -33,8 +33,8 @@ class Simulator:
             ads: ADS agent configuration. If None, creates default SimLingo agent.
         """
         # Check required environment variables
-        if not CONFIG.carla.path or not CONFIG.carla.username:
-            raise ValueError("USERNAME and CARLA_PATH must be set in .env file")
+        if not CONFIG.carla.path or not CONFIG.carla.conda_path:
+            raise ValueError("CONDA_PATH and CARLA_PATH must be set in .env file")
         
         # Initialize ADS agent (default to SimLingo)
         self.ads = ads if ads is not None else ADS("simlingo")
@@ -44,8 +44,8 @@ class Simulator:
             LOG.warning("ADS installation validation failed. Continuing anyway...")
         
         # CARLA configuration
-        self.carla_path = CONFIG.carla.path
-        self.username = CONFIG.carla.username
+        self.carla_path = Path(CONFIG.carla.path)
+        self.conda_path = Path(CONFIG.carla.conda_path)
         self.frame_rate = 20  # fps
         
         # Benchmark configuration (Bench2Drive)
@@ -162,7 +162,7 @@ class Simulator:
         python_paths = [agent_path] + benchmark_paths
         
         return {
-            "CARLA_ROOT": self.carla_path,
+            "CARLA_ROOT": str(self.carla_path),
             "PYTHONPATH": ":".join(python_paths),
             "SCENARIO_RUNNER_ROOT": str(self.scenario_runner_path),
             "SAVE_PATH": viz_path,
@@ -224,7 +224,7 @@ class Simulator:
                 shell=True
             ).decode().split()
             for pid in carla_pids:
-                LOG.info(f"Killing CARLA process {pid}")
+                LOG.debug(f"Killing CARLA process {pid}")
                 os.kill(int(pid), signal.SIGKILL)
         except subprocess.CalledProcessError:
             LOG.warning("Killing CARLA processes failed or no processes found.")
@@ -238,7 +238,7 @@ class Simulator:
                 shell=True
             ).decode().split()
             for pid in leaderboard_pids:
-                LOG.info(f"Killing leaderboard process {pid}")
+                LOG.debug(f"Killing leaderboard process {pid}")
                 os.kill(int(pid), signal.SIGKILL)
         except subprocess.CalledProcessError:
             LOG.warning("Killing leaderboard processes failed or no processes found.")
@@ -290,7 +290,7 @@ class Simulator:
             }
             with open(instruction_file, 'w', encoding='utf-8') as f:
                 json.dump(instruction_data, f)
-            LOG.info(f"Instruction saved to: {instruction_file}")
+            LOG.debug(f"Instruction saved to: {instruction_file}")
 
             # Prepare environment variable for instruction file
             export_lines += f"\nexport CUSTOM_PROMPTS_FILE={instruction_file}"
@@ -322,7 +322,7 @@ class Simulator:
 deactivate 2>/dev/null || true
 
 source ~/.bashrc
-. /home/{self.username}/miniconda3/etc/profile.d/conda.sh   # TODO: Add CONDA_PATH to .env (will not work if anaconda is installed instead of miniconda)
+. {str(self.conda_path)}/etc/profile.d/conda.sh
 conda activate {self.ads.get_conda_env()}
 
 # Debug: check which Python is being used
@@ -369,9 +369,9 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         else:
             LOG.info(f"Running scenario without instruction")
         
-        LOG.info(f"Executing job script: {job_file}")
-        LOG.info(f"Output log: {self.current_log_file}")
-        LOG.info(f"Error log: {self.current_err_file}")
+        LOG.debug(f"Executing job script: {job_file}")
+        LOG.debug(f"Output log: {self.current_log_file}")
+        LOG.debug(f"Error log: {self.current_err_file}")
         
         # Run the scenario with a clean environment (no virtual env interference)
         # Use bash -l to get a login shell with clean PATH from system defaults
