@@ -8,6 +8,7 @@ from typing import Optional, Dict, Any
 
 from untitled.core.base import LOG, PROJECT_ROOT, CONFIG
 from untitled.simulator.ads import ADS
+from untitled.simulator.simulation_data import SimulationMetadata, load_metadata
 
 
 # Benchmark configuration (Bench2Drive)
@@ -299,7 +300,7 @@ class Simulator:
         env_vars = self._build_environment_vars(self.current_viz_path, self.current_image_dir, self.current_metadata_dir)
         
         # Build export statements
-        export_lines += "\n".join([f"export {key}={value}" for key, value in env_vars.items()])
+        export_lines += "\n" + "\n".join([f"export {key}={value}" for key, value in env_vars.items()])
         
         # Build leaderboard arguments
         leaderboard_args = self._build_leaderboard_args(
@@ -434,13 +435,14 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         
         # If exact frame not found, list available files
         LOG.warning(f"Image not found for timestep {timestep}s (frame {frame_index})")
+        LOG.debug(f"Tried fetching file: {image_path}")
         available_files = list(self.current_image_dir.glob("*.png")) + list(self.current_image_dir.glob("*.jpg"))
         if available_files:
             LOG.debug(f"Sample of available image files: {[f.name for f in available_files[:5]]}")
         
         return None
     
-    def get_metadata_log(self, timestep: float) -> Optional[Dict[str, Any]]:
+    def get_metadata_log(self, timestep: float) -> Optional[SimulationMetadata]:
         """
         Retrieve metadata from the simulation logs at a specific timestep.
         
@@ -460,16 +462,17 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
 
         frame_index = int(timestep * self.frame_rate)
         possible_patterns = [
-            f"{frame_index:06d}.png",
+            f"{frame_index:06d}.json",
         ]
         
         for pattern in possible_patterns:
             metadata_path = self.current_metadata_dir / pattern
             if metadata_path.exists():
                 LOG.debug(f"Found metadata at timestep {timestep}s: {metadata_path}")
-                return metadata_path
+                return load_metadata(metadata_path)
             
         LOG.warning(f"Metadata not found for timestep {timestep}s (frame {frame_index})")
+        LOG.debug(f"Tried fetching file: {metadata_path}")
         available_files = list(self.current_metadata_dir.glob("*.json"))
         if available_files:
             LOG.debug(f"Sample of available metadata files: {[f.name for f in available_files[:5]]}")

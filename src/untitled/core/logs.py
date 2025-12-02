@@ -39,4 +39,7 @@ def init_logging(name: str, logs_dir: Path) -> logging.Logger:
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
 
+    # Initial log message
+    logger.debug("New logging session ---------------------------------------------------")
+
     return logger
