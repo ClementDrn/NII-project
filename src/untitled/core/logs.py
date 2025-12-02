@@ -12,7 +12,10 @@ def init_logging(name: str, logs_dir: Path) -> logging.Logger:
 
     # Configure logging to both file and console
     logger = logging.getLogger(name)
-    logger.setLevel(logging.INFO)
+    logger.setLevel(logging.DEBUG)  # Set to DEBUG so file handler can capture all levels
+    
+    # Clear any existing handlers to prevent duplication
+    logger.handlers.clear()
 
     # Log File handler
     file_handler = logging.FileHandler(logs_dir / f"{name}.log", encoding='utf-8')
