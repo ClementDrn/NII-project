@@ -11,5 +11,5 @@ vlm:
 
 carla:
   # These values are loaded from .env file
-  # Add CARLA_PATH, USERNAME, and OUTPUT_PATH to your .env
-  _comment: "Configuration loaded from environment variables"
+  # NOTE: Add CARLA_PATH, CONDA_PATH, and OUTPUT_PATH to your .env
+  _ignored: "This variable prevents the 'carla' object from being empty."

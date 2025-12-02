@@ -28,7 +28,7 @@ class CARLAConfig(BaseSettings):
     model_config = SettingsConfigDict(extra='ignore')
     
     path: Path = Field(validation_alias="CARLA_PATH")
-    username: str = Field(validation_alias="USERNAME")
+    conda_path: str = Field(validation_alias="CONDA_PATH")
     output_path: Path = Field(validation_alias="OUTPUT_PATH")
 
 
