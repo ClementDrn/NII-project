@@ -12,4 +12,4 @@ vlm:
 carla:
   # These values are loaded from .env file
   # NOTE: Add CARLA_PATH, CONDA_PATH, and OUTPUT_PATH to your .env
-  _ignored: "This variable prevents the 'carla' object from being empty."
+  debug: true  # Enable debug image output from SimLingo agent (set to true to enable)

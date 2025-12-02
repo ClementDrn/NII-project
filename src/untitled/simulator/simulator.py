@@ -9,11 +9,22 @@ from typing import Optional, Dict, Any
 from untitled.core.base import LOG, PROJECT_ROOT, CONFIG
 from untitled.simulator.ads import ADS
 from untitled.simulator.simulation_data import SimulationMetadata, load_metadata
+from untitled.generator.instruction import Instruction
 
 
 # Benchmark configuration (Bench2Drive)
 BENCHMARK_ROOT = PROJECT_ROOT / "vendor" / "ads" / "simlingo" / "Bench2Drive"
 ROUTES_ROOT = PROJECT_ROOT / "vendor" / "ads" / "simlingo" / "leaderboard" / "data" / "bench2drive_split"
+
+# Simulator paths
+IMAGES_DIR_NAME = "images"
+METADATA_DIR_NAME = "metadata"
+VIZ_DIR_NAME = "viz"
+LOG_OUT_FILE_NAME = "out.log"
+LOG_ERR_FILE_NAME = "err.log"
+LOG_RES_FILE_NAME = "res.json"
+SCRIPT_RUN_FILE_NAME = "run.sh"
+INSTRUCTION_FILE_NAME = "custom_prompts.json"
 
 
 class Simulator:
@@ -26,16 +37,20 @@ class Simulator:
     - Retrieving logged images and metadata from simulation runs
     """
     
-    def __init__(self, ads: Optional[ADS] = None):
+    def __init__(self, ads: Optional[ADS] = None, debug: bool = None):
         """
         Initialize the CARLA simulator.
         
         Args:
             ads: ADS agent configuration. If None, creates default SimLingo agent.
+            debug: Enable debug output (images with visualization). If None, uses config setting.
         """
         # Check required environment variables
         if not CONFIG.carla.path or not CONFIG.carla.conda_path:
             raise ValueError("CONDA_PATH and CARLA_PATH must be set in .env file")
+        
+        # Set debug mode (parameter overrides config)
+        self.debug = debug if debug is not None else CONFIG.carla.debug
         
         # Initialize ADS agent (default to SimLingo)
         self.ads = ads if ads is not None else ADS("simlingo")
@@ -68,9 +83,6 @@ class Simulator:
         self.out_root = CONFIG.carla.output_path
         self.base_dir = self.out_root / self.ads.agent_name / self.benchmark / str(self.seed)
         
-        # Create necessary directories
-        self._setup_directories()
-        
         # Get first route (hardcoded scenario)
         routes = sorted(
             [x for x in os.listdir(self.route_path) if x.endswith(".xml")],
@@ -95,14 +107,12 @@ class Simulator:
         self.current_image_dir = None
         self.current_metadata_dir = None
         
+        # Job and scenario context tracking
+        self.current_job_id = None
+        self.current_scenario_id = None
+        
         LOG.info(f"Simulator initialized with route: {self.current_route}")
         LOG.info(f"Route ID: {self.route_id}")
-    
-    def _setup_directories(self):
-        """Create necessary output directories."""
-        dirs = ["run", "res", "out", "err", "viz"]
-        for d in dirs:
-            (self.base_dir / d).mkdir(parents=True, exist_ok=True)
     
     def _validate_benchmark_installation(self):
         """Validate that the benchmark is properly installed."""
@@ -124,6 +134,83 @@ class Simulator:
             raise ValueError("Benchmark installation validation failed")
         
         LOG.info("Benchmark installation validated successfully")
+    
+    def _calculate_scenario_base_dir(self, job_id: int, scenario_id: int) -> Path:
+        """
+        Calculate the base directory for a given scenario.
+        
+        Args:
+            scenario_id: The scenario ID number
+            job_id: The job ID number
+        Returns:
+            Path to the base directory
+        """        
+        job_dir = f"job_{job_id:03d}"
+        sce_dir = f"sce_{scenario_id:03d}"
+        return self.base_dir / job_dir / sce_dir
+    
+    def _calculate_run_base_dir(self, job_id: int, scenario_id: int, run_id: int) -> Path:
+        """
+        Calculate the base directory for a given job, scenario, and run.
+        
+        Args:
+            job_id: The job ID number
+            scenario_id: The scenario ID number
+            run_id: The run ID number
+        Returns:
+            Path to the base directory
+        """
+        run_dir = f"run_{run_id:03d}"
+        return self._calculate_scenario_base_dir(job_id, scenario_id) / run_dir
+
+    def set_job_context(self, job_id: int, scenario_id: int):
+        """
+        Set the current job and scenario context for directory structure.
+        
+        This method should be called before running scenarios to establish
+        the proper directory hierarchy: job_XXX/sce_XXX/run_XXX
+        
+        Args:
+            job_id: The job ID number
+            scenario_id: The scenario ID number
+        """
+        self.current_job_id = job_id
+        self.current_scenario_id = scenario_id
+        LOG.debug(f"Set job context: job_{job_id:03d}/sce_{scenario_id:03d}")
+    
+    def set_scenario(self, scenario_id: int):
+        """
+        Set the current scenario to run.
+        
+        This method dynamically loads the route file for the specified scenario
+        and resets the run counter.
+        
+        Args:
+            scenario_id: The scenario ID (0-219 for Bench2Drive)
+            
+        Raises:
+            ValueError: If scenario_id is out of valid range or file not found
+        """
+        # Validate scenario ID range
+        if not (0 <= scenario_id <= 219):
+            raise ValueError(f"Scenario ID {scenario_id} out of valid range (0-219)")
+        
+        # Build route file path
+        route_file = self.route_path / f"bench2drive_{scenario_id}.xml"
+        
+        # Validate route file exists
+        if not route_file.exists():
+            raise ValueError(f"Route file not found: {route_file}")
+        
+        # Update current route
+        self.current_route = route_file
+        self.route_id = str(scenario_id).zfill(3)
+        self.current_scenario_id = scenario_id
+        
+        # Reset run counter for new scenario
+        self.run_counter = 0
+        
+        LOG.info(f"Set scenario to {scenario_id}: {route_file.name}")
     
     def _get_benchmark_python_paths(self, carla_root: Path) -> list[Path]:
         """Get PYTHONPATH entries for benchmark and CARLA.
@@ -169,6 +256,7 @@ class Simulator:
             "SAVE_PATH": viz_path,
             "SAVE_PATH_IMG": img_path,
             "SAVE_PATH_METADATA": metadata_path,
+            "DEBUG": "true" if self.debug else "false",
         }
     
     def _build_leaderboard_args(
@@ -246,51 +334,58 @@ class Simulator:
     
     def _create_run_script(
         self,
-        instruction: Optional[str] = None,
-        injection_time: Optional[float] = None
+        instruction: Optional[Instruction] = None
     ) -> str:
         """
         Create a bash script to run the CARLA scenario.
         
         Args:
-            instruction: Optional text instruction to inject into the scenario
-            injection_time: Optional time (in seconds) to inject the instruction
+            instruction: Optional Instruction object to inject into the scenario
             
         Returns:
             Path to the created bash script
         """
-        self.run_counter += 1
-        run_id = f"run_{self.run_counter:03d}"
+        if self.current_job_id is None or self.current_scenario_id is None:
+            LOG.error("Job and scenario context must be set before creating run script.")
+            raise ValueError("Job and scenario context must be set before creating run script.")
         
+        # Increment run counter
+        run_id = self.run_counter
+        self.run_counter += 1
+
+        # Build directory structure based on job/scenario context
+        run_base_dir = self._calculate_run_base_dir(self.current_job_id, self.current_scenario_id, run_id)
+
         # Setup paths for this run
         # Directories
-        self.current_viz_path = self.base_dir / "viz" / self.route_id / run_id
+        run_base_dir.mkdir(parents=True, exist_ok=True)
+        self.current_viz_path = run_base_dir / VIZ_DIR_NAME
         self.current_viz_path.mkdir(parents=True, exist_ok=True)
-        self.current_image_dir = self.current_viz_path / "images"
+        self.current_image_dir = run_base_dir / IMAGES_DIR_NAME
         self.current_image_dir.mkdir(parents=True, exist_ok=True)
-        self.current_metadata_dir = self.current_viz_path / "metadata"
+        self.current_metadata_dir = run_base_dir / METADATA_DIR_NAME
         self.current_metadata_dir.mkdir(parents=True, exist_ok=True)
         # Files
-        self.current_result_file = self.base_dir / "res" / f"{self.route_id}_{run_id}_res.json"
-        self.current_log_file = self.base_dir / "out" / f"{self.route_id}_{run_id}_out.log"
-        self.current_err_file = self.base_dir / "err" / f"{self.route_id}_{run_id}_err.log"
-        job_file = self.base_dir / "run" / f"eval_{self.route_id}_{run_id}.sh"
+        self.current_result_file = run_base_dir / LOG_RES_FILE_NAME
+        self.current_log_file = run_base_dir / LOG_OUT_FILE_NAME
+        self.current_err_file = run_base_dir / LOG_ERR_FILE_NAME
+        job_file = run_base_dir / SCRIPT_RUN_FILE_NAME
 
         # Env variables to export
         export_lines = ""
         
         # Handle instruction injection if provided
-        if instruction and injection_time is not None:
+        if instruction is not None:
             # Store instruction in a temporary file
-            instruction_file = self.current_viz_path / "custom_prompts.json"
+            instruction_file = run_base_dir / INSTRUCTION_FILE_NAME
             instruction_data = {
-                "text": instruction,
+                "text": instruction.text,
                 "flag": 2,      # 0: safety, 1: instruction following as extra prompt, 2: instruction following as override, 3: other
-                "injection_time": injection_time,
-                "injection_duration": 0.05  # 1 sec / 20 fps
+                "injection_time": instruction.injection_time,
+                "injection_duration": instruction.injection_duration
             }
             with open(instruction_file, 'w', encoding='utf-8') as f:
-                json.dump(instruction_data, f)
+                json.dump([instruction_data], f)    # Store as array of instructions
             LOG.debug(f"Instruction saved to: {instruction_file}")
 
             # Prepare environment variable for instruction file
@@ -345,28 +440,26 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
     
     def run_scenario(
         self,
-        instruction: Optional[str] = None,
-        injection_time: Optional[float] = None
+        instruction: Optional[Instruction] = None
     ):
         """
         Run a CARLA scenario with the SimLingo agent.
         
         Args:
-            instruction: Optional text instruction to inject into the scenario
-            injection_time: Optional time (in seconds) when to inject the instruction
+            instruction: Optional Instruction object to inject into the scenario
         """
         # Clean up any existing leaderboard processes
-        # But not CARLA, as we want to keep it running between runs
+        # TODO: CARLA is also killed. We may want to keep it running between runs to save time.
         self._kill_bench2drive_leaderboard_processes()
         time.sleep(2)
         
         # NOTE: CARLA server is started automatically by the Bench2Drive leaderboard evaluator, so we don't need to start it ourselves
         
         # Create and run the scenario script
-        job_file = self._create_run_script(instruction, injection_time)
+        job_file = self._create_run_script(instruction)
         
         if instruction:
-            LOG.info(f"Running scenario with instruction at t={injection_time}s: '{instruction}'")
+            LOG.info(f"Running scenario with instruction at t={instruction.injection_time}s: '{instruction.text}'")
         else:
             LOG.info(f"Running scenario without instruction")
         
@@ -399,87 +492,95 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         time.sleep(2)
         self._kill_bench2drive_leaderboard_processes()
     
-    def get_image_log(self, timestep: float) -> Optional[Path]:
+    def get_image_log(self, job_id: int, scenario_id: int, run_id: int, timestep: float) -> Optional[Path]:
         """
         Retrieve the image path from the simulation logs at a specific timestep.
         
         Args:
+            job_id: The ID of the job that was executed
+            scenario_id: The ID of the scenario that was executed
+            run_id: The ID of the run that was executed
             timestep: Time in seconds to retrieve the image from
             
         Returns:
             Path to the image file, or None if not found
         """
-        if not self.current_image_dir:
-            LOG.error("No scenario has been run yet. Call run_scenario() first.")
-            return None
-
-        if not self.current_image_dir.exists():
-            LOG.warning(f"Image directory not found: {self.current_image_dir}")
+        # Check if the image directory exists
+        image_dir = self._calculate_run_base_dir(job_id, scenario_id, run_id) / IMAGES_DIR_NAME
+        if not image_dir.exists():
+            LOG.error(f"Image directory does not exist: {image_dir}")
             return None
         
         # CARLA typically saves images with frame numbers
         frame_index = int(timestep * self.frame_rate)
         
-        # Look for image files in the image directory
+        # Common patterns for images
         # The exact naming convention depends on the agent's implementation
-        # Common patterns: frame_{frame_index}.png, rgb_{frame_index}.jpg, etc.
         possible_patterns = [
             f"{frame_index:06d}.png",
         ]
         
+        # Look for image files in the image directory
+        image_path = None
         for pattern in possible_patterns:
-            image_path = self.current_image_dir / pattern
-            if image_path.exists():
-                LOG.debug(f"Found image at timestep {timestep}s: {image_path}")
-                return image_path
-        
+            image_path_candidate = image_dir / pattern
+            if image_path_candidate.exists():
+                LOG.debug(f"Found image at timestep {timestep}s: {image_path_candidate}")
+                image_path = image_path_candidate
+                break
         # If exact frame not found, list available files
-        LOG.warning(f"Image not found for timestep {timestep}s (frame {frame_index})")
-        LOG.debug(f"Tried fetching file: {image_path}")
-        available_files = list(self.current_image_dir.glob("*.png")) + list(self.current_image_dir.glob("*.jpg"))
-        if available_files:
-            LOG.debug(f"Sample of available image files: {[f.name for f in available_files[:5]]}")
+        else:
+            LOG.warning(f"Image not found for timestep {timestep}s (frame {frame_index})")
+            LOG.debug(f"Tried fetching files: {[str(image_dir / p) for p in possible_patterns]}")
+            available_files = list(image_dir.glob("*.png")) + list(image_dir.glob("*.jpg"))
+            if available_files:
+                LOG.debug(f"Sample of available image files: {[f.name for f in available_files[:5]]}")
         
-        return None
+        return image_path
     
-    def get_metadata_log(self, timestep: float) -> Optional[SimulationMetadata]:
+    def get_metadata_log(self, job_id: int, scenario_id: int, run_id: int, timestep: float) -> Optional[SimulationMetadata]:
         """
         Retrieve metadata from the simulation logs at a specific timestep.
         
         Args:
+            job_id: The ID of the job that was executed
+            scenario_id: The ID of the scenario that was executed
+            run_id: The ID of the run that was executed
             timestep: Time in seconds to retrieve metadata from
             
         Returns:
             Dictionary containing metadata, or None if not found
         """
-        if not self.current_metadata_dir:
-            LOG.error("No scenario has been run yet. Call run_scenario() first.")
-            return None
-        
-        if not self.current_metadata_dir.exists():
-            LOG.error(f"Result file not found: {self.current_result_file}")
+        # Check if the metadata directory exists
+        metadata_dir = self._calculate_run_base_dir(job_id, scenario_id, run_id) / METADATA_DIR_NAME
+        if not metadata_dir.exists():
+            LOG.error(f"Metadata directory does not exist: {metadata_dir}")
             return None
 
+        # Possible metadata file patterns
         frame_index = int(timestep * self.frame_rate)
         possible_patterns = [
             f"{frame_index:06d}.json",
         ]
         
+        # Look for metadata files in the metadata directory
+        metadata_path = None
         for pattern in possible_patterns:
-            metadata_path = self.current_metadata_dir / pattern
-            if metadata_path.exists():
-                LOG.debug(f"Found metadata at timestep {timestep}s: {metadata_path}")
-                return load_metadata(metadata_path)
-            
-        LOG.warning(f"Metadata not found for timestep {timestep}s (frame {frame_index})")
-        LOG.debug(f"Tried fetching file: {metadata_path}")
-        available_files = list(self.current_metadata_dir.glob("*.json"))
-        if available_files:
-            LOG.debug(f"Sample of available metadata files: {[f.name for f in available_files[:5]]}")
+            metadata_path_candidate = metadata_dir / pattern
+            if metadata_path_candidate.exists():
+                LOG.debug(f"Found metadata at timestep {timestep}s: {metadata_path_candidate}")
+                metadata_path = metadata_path_candidate
+                break
+        # If exact frame not found, list available files
+        else:
+            LOG.warning(f"Metadata not found for timestep {timestep}s (frame {frame_index})")
+            LOG.debug(f"Tried fetching files: {[str(metadata_dir / p) for p in possible_patterns]}")
+            available_files = list(metadata_dir.glob("*.json"))
+            if available_files:
+                LOG.debug(f"Sample of available metadata files: {[f.name for f in available_files[:5]]}")
 
-        return None
+        return metadata_path
 
-    
     def free(self):
         """Clean up any running processes."""
         LOG.info("Cleaning up simulator processes...")

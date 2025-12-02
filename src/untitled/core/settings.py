@@ -30,6 +30,7 @@ class CARLAConfig(BaseSettings):
     path: Path = Field(validation_alias="CARLA_PATH")
     conda_path: str = Field(validation_alias="CONDA_PATH")
     output_path: Path = Field(validation_alias="OUTPUT_PATH")
+    debug: bool = False  # Enable debug image output from SimLingo agent
 
 
 # Definition of environment variables and configuration settings

@@ -1,0 +1,17 @@
+# Define jobs to run in this file
+# 
+# Job properties:
+# - name: A name to label the job
+# - scenarios: The scenarios to run (indices, names, or "all" for all scenarios)
+# - ground_truth_count: Number of ground truth runs to perform (default: 1)
+# - experiment_count: Number of times to run the scenario with a custom prompt (default: 1)
+---
+version: "0.0"
+jobs:
+  - name: "Small tests"
+    scenarios: 
+      - 63
+      - 71
+      - 9
+    ground_truth_count: 1
+    experiment_count: 5
