@@ -3,6 +3,7 @@ from untitled.generator.vlm import VLM
 from untitled.core.base import PROJECT_ROOT, LOG, CONFIG
 from untitled.simulator.simulation_data import SimulationData
 
+
 class VLMInstructionGenerator:
     """
     Vision-Language Model (VLM) interface for generating instructions from images and metadata.
@@ -41,9 +42,10 @@ class VLMInstructionGenerator:
         # Parse the instruction from the response
         # The instruction is after "</think>\n\n"
         # WARN: This is specific to the R-4B model's response format.
-        instruction = response_text.split("</think>\n\n", 1)[-1].strip()
-
-        # The VLM response is the generated text
+        split_response = response_text.split("</think>\n\n", 1)
+        if len(split_response) != 2:
+            LOG.warning("VLM response does not contain expected '</think>' delimiter. The token limit may have been reached. Returning an empty instruction.")
+            return ""
+        
+        instruction = split_response[1].strip()
         return instruction
-
-

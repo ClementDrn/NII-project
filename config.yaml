@@ -1,10 +1,10 @@
-version: 1.0
+version: "0.0"
 
 # VLM configuration follows exactly OpenAI chat completion API parameters's format
 vlm:
   model: "r4b"              # options: r4b
   temperature: 0.7          # [0.0, 1.0]
-  max_tokens: 512           # strictly positive integer
+  max_tokens: 1024          # strictly positive integer
   extra_body:
     chat_template_kwargs:
       thinking_mode: "long"  # options for r4b: short (disabled), long (enabled), auto

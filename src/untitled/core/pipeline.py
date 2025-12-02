@@ -66,6 +66,9 @@ class Pipeline:
         
         # Give data to VLM to generate instruction
         instruction = self.generator.generate_instruction_from_images(simulation_data)
+        if not instruction:
+            LOG.error("Failed to generate instruction from VLM. Cannot continue.")
+            return
         LOG.info(f"Generated instruction: {instruction}")
 
         # Run scenario again with generated instruction
