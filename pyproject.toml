@@ -7,11 +7,12 @@ name = "untitled"
 version = "0.0.0"
 dependencies = [
     "colorlog",
-    "pillow",
     "openai",
-    "PyYAML",
+    "pillow",
     "pydantic",
     "pydantic-settings",
+    "python-abc",
+    "PyYAML",
 ]
 
 [tool.setuptools]
