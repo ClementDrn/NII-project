@@ -4,7 +4,7 @@ import yaml
 from pathlib import Path
 import os
 from untitled.core.version import CONFIG_VERSION, are_versions_compatible
-from untitled.core.base import LOG
+import logging
 
 
 class VLMConfig(BaseSettings):
@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     carla: CARLAConfig
 
 
-def load_config(root_path: Path) -> Settings:
+def load_config(root_path: Path, logger: logging.Logger) -> Settings:
     """
     Load configuration from a YAML file and a '.env' file.
     """
@@ -66,11 +66,15 @@ def load_config(root_path: Path) -> Settings:
     
     # Check version compatibility
     if 'version' in yaml_data:
-        if not are_versions_compatible(yaml_data['version'], CONFIG_VERSION):
-            LOG.error(f"Config version {yaml_data['version']} is not compatible with supported version {CONFIG_VERSION}")
-            raise ValueError(f"Incompatible config version: {yaml_data['version']} (supported: {CONFIG_VERSION})")
+        try:
+            if not are_versions_compatible(yaml_data['version'], CONFIG_VERSION):
+                logger.error(f"Config version {yaml_data['version']} is not compatible with supported version {CONFIG_VERSION}")
+                raise ValueError(f"Incompatible config version: {yaml_data['version']} (supported: {CONFIG_VERSION})")
+        except ValueError as e:
+            logger.error(f"Version check failed: {e}")
+            raise
     else:
-        LOG.warning("No version found in config.yaml")
+        logger.warning("No version found in config.yaml")
     
     # Filter out comment fields (fields starting with _) and version
     yaml_data = {k: v for k, v in yaml_data.items() if not k.startswith('_') and k != 'version'}

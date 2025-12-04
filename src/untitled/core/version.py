@@ -1,6 +1,4 @@
 # This file contains the supported versions for various components of the project.
-from untitled.core.base import LOG
-
 
 # Version for configuration files
 CONFIG_VERSION = "1.0"
@@ -15,20 +13,24 @@ def are_versions_compatible(imported_version: str, supported_version: str) -> bo
     Parameters:
     - imported_version (str): The version string from the imported file (e.g., "1.2").
     - supported_version (str): The supported version string (e.g., "2.0").
+    
+    Returns:
+    - bool: True if versions are compatible, False otherwise.
+    
+    Raises:
+    - ValueError: If version format is invalid.
     """
     # Split imported version into major and minor numbers
     split_imported_version = imported_version.split('.')
     if len(split_imported_version) < 1 or len(split_imported_version) > 2:
-        LOG.error(f"Invalid imported version format: {imported_version}")
-        return False
+        raise ValueError(f"Invalid imported version format: {imported_version}")
     imported_major = int(split_imported_version[0])
     imported_minor = int(split_imported_version[1]) if len(split_imported_version) > 1 else 0
 
     # Split supported version into major and minor numbers
     split_supported_version = supported_version.split('.')
     if len(split_supported_version) < 1 or len(split_supported_version) > 2:
-        LOG.error(f"Invalid supported version format: {supported_version}")
-        return False
+        raise ValueError(f"Invalid supported version format: {supported_version}")
     supported_major = int(split_supported_version[0])
     supported_minor = int(split_supported_version[1]) if len(split_supported_version) > 1 else 0
 

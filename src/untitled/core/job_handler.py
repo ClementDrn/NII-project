@@ -90,9 +90,13 @@ class JobHandler:
         
         # Check version compatibility
         if 'version' in data:
-            if not are_versions_compatible(data['version'], JOBS_VERSION):
-                LOG.error(f"Jobs file version {data['version']} is not compatible with supported version {JOBS_VERSION}")
-                raise ValueError(f"Incompatible jobs file version: {data['version']} (supported: {JOBS_VERSION})")
+            try:
+                if not are_versions_compatible(data['version'], JOBS_VERSION):
+                    LOG.error(f"Jobs file version {data['version']} is not compatible with supported version {JOBS_VERSION}")
+                    raise ValueError(f"Incompatible jobs file version: {data['version']} (supported: {JOBS_VERSION})")
+            except ValueError as e:
+                LOG.error(f"Version check failed: {e}")
+                raise
         else:
             LOG.warning(f"No version found in {file_path}")
         
