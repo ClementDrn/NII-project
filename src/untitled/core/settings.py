@@ -3,6 +3,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 import yaml
 from pathlib import Path
 import os
+from untitled.core.version import CONFIG_VERSION, are_versions_compatible
+from untitled.core.base import LOG
 
 
 class VLMConfig(BaseSettings):
@@ -61,6 +63,14 @@ def load_config(root_path: Path) -> Settings:
     yaml_path = root_path / "config.yaml"
     with open(yaml_path, "r") as f:
         yaml_data = yaml.safe_load(f)
+    
+    # Check version compatibility
+    if 'version' in yaml_data:
+        if not are_versions_compatible(yaml_data['version'], CONFIG_VERSION):
+            LOG.error(f"Config version {yaml_data['version']} is not compatible with supported version {CONFIG_VERSION}")
+            raise ValueError(f"Incompatible config version: {yaml_data['version']} (supported: {CONFIG_VERSION})")
+    else:
+        LOG.warning("No version found in config.yaml")
     
     # Filter out comment fields (fields starting with _) and version
     yaml_data = {k: v for k, v in yaml_data.items() if not k.startswith('_') and k != 'version'}

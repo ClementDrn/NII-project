@@ -1,4 +1,5 @@
 from untitled.core.base import LOG
+from untitled.core.version import JOBS_VERSION, are_versions_compatible
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -86,6 +87,14 @@ class JobHandler:
         if not isinstance(data, dict):
             LOG.error("YAML file must contain a dictionary at root level")
             raise ValueError("Invalid YAML structure: expected dictionary at root")
+        
+        # Check version compatibility
+        if 'version' in data:
+            if not are_versions_compatible(data['version'], JOBS_VERSION):
+                LOG.error(f"Jobs file version {data['version']} is not compatible with supported version {JOBS_VERSION}")
+                raise ValueError(f"Incompatible jobs file version: {data['version']} (supported: {JOBS_VERSION})")
+        else:
+            LOG.warning(f"No version found in {file_path}")
         
         if 'jobs' not in data:
             LOG.error("YAML file must contain 'jobs' key")
