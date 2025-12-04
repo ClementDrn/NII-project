@@ -92,7 +92,7 @@ class Simulator:
             raise ValueError(f"No route files found in {self.route_path}")
         
         self.current_route = self.route_path / routes[0]
-        self.route_id = routes[0].split("_")[-1][:-4].zfill(3)
+        self.route_id_str = routes[0].split("_")[-1][:-4].zfill(3)
         
         # Ports for CARLA
         self.port = 2000
@@ -112,7 +112,7 @@ class Simulator:
         self.current_scenario_id = None
         
         LOG.info(f"Simulator initialized with route: {self.current_route}")
-        LOG.info(f"Route ID: {self.route_id}")
+        LOG.info(f"Route ID: {self.route_id_str}")
     
     def _validate_benchmark_installation(self):
         """Validate that the benchmark is properly installed."""
@@ -196,7 +196,8 @@ class Simulator:
             raise ValueError(f"Scenario ID {scenario_id} out of valid range (0-219)")
         
         # Build route file path
-        route_file = self.route_path / f"bench2drive_{scenario_id}.xml"
+        # NOTE: In SimLingo's dataset, scenario IDs are zero-padded to 2 digits
+        route_file = self.route_path / f"bench2drive_{scenario_id:02d}.xml"
         
         # Validate route file exists
         if not route_file.exists():
@@ -204,7 +205,7 @@ class Simulator:
         
         # Update current route
         self.current_route = route_file
-        self.route_id = str(scenario_id).zfill(3)
+        self.route_id_str = str(scenario_id).zfill(3)
         self.current_scenario_id = scenario_id
         
         # Reset run counter for new scenario

@@ -128,11 +128,11 @@ class Pipeline:
             self.simulator.run_scenario(instruction)
             
             LOG.info(f"    Experiment run {run_id} completed")
-            return (2, 0)  # Count both initial and instruction runs
+            return (1, 0)
             
         except Exception as e:
             LOG.error(f"    Experiment run {run_id} failed: {e}")
-            return (0, 1)  # Count runs that were attempted (may be partial)
+            return (0, 1)
 
     def _run_scenario(self, job: Job, scenario_id, timestep):
         """
