@@ -3,8 +3,8 @@ from untitled.core.base import LOG
 
 
 # Version for configuration files
-CONFIG_VERSION = "0.0"
-JOBS_VERSION = "0.0"
+CONFIG_VERSION = "1.0"
+JOBS_VERSION = "1.0"
 
 
 def are_versions_compatible(imported_version: str, supported_version: str) -> bool:
