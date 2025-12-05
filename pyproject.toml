@@ -4,14 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "untitled"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
     "colorlog",
-    "pillow",
     "openai",
-    "PyYAML",
+    "pillow",
     "pydantic",
     "pydantic-settings",
+    "python-abc",
+    "PyYAML",
 ]
 
 [tool.setuptools]
@@ -20,8 +21,15 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[dependency-groups]
+[project.optional-dependencies]
 dev = [
     "pytest",
     "pytest-cov",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "--ignore=vendor"

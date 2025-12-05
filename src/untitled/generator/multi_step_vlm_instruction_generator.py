@@ -1,7 +1,9 @@
 from untitled.generator.instruction_generator import InstructionGenerator
 from untitled.generator.vlm import VLM, parse_vlm_response
+from untitled.generator.instruction import InstructionSet, parse_instructions_from_json
 from untitled.core.base import PROJECT_ROOT, LOG, CONFIG
 from untitled.simulator.simulation_data import SimulationData
+from typing import Optional
 
 
 class MultiStepVLMInstructionGenerator(InstructionGenerator):
@@ -17,9 +19,12 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
         
         # Initialize two VLM instances for the two steps, with their respective configurations
         # NOTE: Only 1 client would be enough, but in this case API parameters are provided at each request (like for the task prompt).
-        # NOTE:  
-        self.descriptor = VLM(CONFIG.generator.models[0].get_api_parameters())
-        self.planner = VLM(CONFIG.generator.models[1].get_api_parameters())
+        descriptor_host = CONFIG.generator.models[0].host
+        descriptor_api_key = CONFIG.generator.models[0].api_key
+        planner_host = CONFIG.generator.models[1].host
+        planner_api_key = CONFIG.generator.models[1].api_key
+        self.descriptor = VLM(descriptor_host, descriptor_api_key, CONFIG.generator.models[0].get_api_parameters())
+        self.planner = VLM(planner_host, planner_api_key, CONFIG.generator.models[1].get_api_parameters())
 
         # Fetch scene descriptor task message from its asset file
         SCENE_DESCRIPTOR_TASK_PATH = PROJECT_ROOT / "assets" / "prompts" / "scene_descriptor_task.txt"
@@ -36,7 +41,7 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
     def free(self):
         pass
 
-    def generate_instruction_from_images(self, data: SimulationData) -> str:
+    def generate_instructions_from_images(self, data: SimulationData) -> Optional[InstructionSet]:
         """
         Generate instruction from images and metadata using a VLM.
         There are two steps:
@@ -72,7 +77,12 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
         # Step 2:
         # Generate an adversarial instruction based on the concatenated scene descriptions
         chat_response = self.planner.prompt(self.planner_task_message, concatenated_descriptions, None)
-        instruction = parse_vlm_response(chat_response)
+        instruction_raw = parse_vlm_response(chat_response)
+        
+        if instruction_raw is None:
+            return None
+        
+        # Parse instruction set from JSON
+        instruction_set = parse_instructions_from_json(instruction_raw)
 
-        # The VLM response is the generated text
-        return instruction
+        return instruction_set

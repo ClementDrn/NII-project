@@ -49,33 +49,27 @@ def api_parameters():
 
 def test_parse_vlm_response_with_think_tags():
     """Test parsing VLM response with <think> tags."""
-    mock_response = Mock()
-    mock_response.choices = [Mock()]
-    mock_response.choices[0].message.content = "<think>Let me analyze this...</think>\n\nTurn left at the intersection."
+    response_text = "<think>Let me analyze this...</think>\n\nTurn left at the intersection."
     
-    result = parse_vlm_response(mock_response)
+    result = parse_vlm_response(response_text)
     
     assert result == "Turn left at the intersection."
 
 
 def test_parse_vlm_response_without_think_tags():
     """Test parsing VLM response without <think> tags."""
-    mock_response = Mock()
-    mock_response.choices = [Mock()]
-    mock_response.choices[0].message.content = "Continue straight ahead."
+    response_text = "Continue straight ahead."
     
-    result = parse_vlm_response(mock_response)
+    result = parse_vlm_response(response_text)
     
     assert result == "Continue straight ahead."
 
 
 def test_parse_vlm_response_strips_whitespace():
     """Test that parse_vlm_response strips leading/trailing whitespace."""
-    mock_response = Mock()
-    mock_response.choices = [Mock()]
-    mock_response.choices[0].message.content = "  <think>Thinking...</think>\n\n  Stop at the red light.  \n"
+    response_text = "  <think>Thinking...</think>\n\n  Stop at the red light.  \n"
     
-    result = parse_vlm_response(mock_response)
+    result = parse_vlm_response(response_text)
     
     assert result == "Stop at the red light."
 
@@ -83,11 +77,9 @@ def test_parse_vlm_response_strips_whitespace():
 # NOTE: This test case should not happen in practice, but we test it for robustness.
 def test_parse_vlm_response_multiple_think_tags():
     """Test parsing response with multiple <think> blocks (only splits on first)."""
-    mock_response = Mock()
-    mock_response.choices = [Mock()]
-    mock_response.choices[0].message.content = "<think>First thought</think>\n\nAnswer with </think> in text."
+    response_text = "<think>First thought</think>\n\nAnswer with </think> in text."
     
-    result = parse_vlm_response(mock_response)
+    result = parse_vlm_response(response_text)
     
     # Should only split on the first occurrence
     assert result == "Answer with </think> in text."
@@ -151,7 +143,7 @@ def test_vlm_init_default_parameters(mock_openai_class):
     mock_client = Mock()
     mock_openai_class.return_value = mock_client
     
-    vlm = VLM()
+    vlm = VLM("http://localhost:8000", "test-key")
     
     # Verify OpenAI client was created with correct parameters
     mock_openai_class.assert_called_once_with(
@@ -170,7 +162,7 @@ def test_vlm_init_with_parameters(mock_openai_class, api_parameters):
     mock_client = Mock()
     mock_openai_class.return_value = mock_client
     
-    vlm = VLM(api_parameters)
+    vlm = VLM("http://localhost:8000", "test-key", api_parameters)
     
     # Verify API parameters are stored
     assert vlm.api_parameters == api_parameters
@@ -183,7 +175,7 @@ def test_vlm_prompt_with_text_only(mock_openai_class, mock_encode, mock_openai_c
     """Test VLM prompt with text only (no images)."""
     mock_openai_class.return_value = mock_openai_client
     
-    vlm = VLM()
+    vlm = VLM("http://localhost:8000", "test-key")
     system_text = "You are a helpful assistant."
     user_text = "What should I do?"
     
@@ -214,7 +206,7 @@ def test_vlm_prompt_with_images(mock_openai_class, mock_encode, mock_openai_clie
     mock_openai_class.return_value = mock_openai_client
     mock_encode.side_effect = ["data:image/jpeg;base64,image1data", "data:image/jpeg;base64,image2data"]
     
-    vlm = VLM()
+    vlm = VLM("http://localhost:8000", "test-key")
     system_text = "You are a helpful assistant."
     user_text = "Describe these images."
     image_paths = [Path("/tmp/image1.jpg"), Path("/tmp/image2.jpg")]
@@ -257,7 +249,7 @@ def test_vlm_prompt_with_api_parameters(mock_openai_class, mock_encode, mock_ope
     """Test that VLM prompt passes API parameters to OpenAI."""
     mock_openai_class.return_value = mock_openai_client
     
-    vlm = VLM(api_parameters)
+    vlm = VLM("http://localhost:8000", "test-key", api_parameters)
     vlm.prompt("System", "User", None)
     
     # Verify API parameters were passed to create
@@ -274,7 +266,7 @@ def test_vlm_prompt_with_none_text(mock_openai_class, mock_encode, mock_openai_c
     mock_openai_class.return_value = mock_openai_client
     mock_encode.return_value = "data:image/jpeg;base64,imagedata"
     
-    vlm = VLM()
+    vlm = VLM("http://localhost:8000", "test-key")
     system_text = "You are a helpful assistant."
     image_paths = [Path("/tmp/image.jpg")]
     
@@ -301,7 +293,7 @@ def test_vlm_prompt_measures_time(mock_openai_class, mock_time, mock_encode, moc
     # Return time for VLM timing and any other calls (like logging)
     mock_time.return_value = 100.0
     
-    vlm = VLM()
+    vlm = VLM("http://localhost:8000", "test-key")
     vlm.prompt("System", "User", None)
     
     # Verify time.time was called at least twice (start and end of timing)
@@ -319,7 +311,7 @@ def test_vlm_prompt_extracts_message_content(mock_openai_class, mock_encode):
     mock_client.chat.completions.create.return_value = mock_response
     mock_openai_class.return_value = mock_client
     
-    vlm = VLM()
+    vlm = VLM("http://localhost:8000", "test-key")
     result = vlm.prompt("System", "User", None)
     
     assert result == "Custom response text"

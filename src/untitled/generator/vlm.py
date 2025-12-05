@@ -26,9 +26,10 @@ def parse_vlm_response(chat_response: str) -> str:
     """
     Parse the VLM response to extract the relevant content after the reasoning text.
     """
+    # We do not want the thinking part, before "</think>\n\n"
     # WARN: Specific to r4b model response format
-    output_text = chat_response.choices[0].message.content.strip()
-    after_reasoning = output_text.split("</think>\n\n", 1)[-1].strip()
+    split_response = chat_response.split("</think>\n\n", 1)
+    after_reasoning = split_response[-1].strip()
     return after_reasoning
 
 
@@ -37,7 +38,7 @@ class VLM:
     Interface to a Vision-Language Model (VLM) service via OpenAI-compatible API.
     """
 
-    def __init__(self, api_parameters = {}):
+    def __init__(self, host, api_key, api_parameters = {}):
         super().__init__()
 
         # Get API parameters from config
@@ -47,9 +48,9 @@ class VLM:
 
         # Set OpenAI's API key and API base to use vLLM's API server.
         # NOTE: VLM interface is hardcoded as OpenAI-compatible for now.
-        openai_api_base = CONFIG.vlm.host + "/v1"
+        openai_api_base = host + "/v1"
         self.client = OpenAI(
-            api_key=CONFIG.vlm.api_key,
+            api_key=api_key,
             base_url=openai_api_base,
         )
 

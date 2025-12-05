@@ -1,3 +1,4 @@
+from untitled.generator.instruction import InstructionSet
 from abc import ABC, abstractmethod
 
 
@@ -10,5 +11,5 @@ class InstructionGenerator(ABC):
         pass
 
     @abstractmethod
-    def generate_instruction_from_images(self, data) -> str:
+    def generate_instructions_from_images(self, data) -> InstructionSet:
         pass
