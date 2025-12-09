@@ -69,6 +69,10 @@ class Pipeline:
         Returns:
             Tuple of (successful_count, failed_count)
         """
+        # Skip ground truth run if its logs are already cached
+        if self.job_handler.is_ground_truth_cached(job.id, scenario_id, run_id):
+            LOG.info(f"  Ground truth run {run_id} is already cached. Skipping.")
+            return (1, 0)
         try:
             LOG.info(f"  Ground truth run {run_id} ({run_id + 1} / {job.ground_truth_count})")
             self.simulator.run_scenario()

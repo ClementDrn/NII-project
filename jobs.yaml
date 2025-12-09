@@ -21,12 +21,20 @@
 #     ground_truth_count: 1
 #     experiment_count: 10
 ---
-version: "1.0"
+version: "1.1-dev"
 jobs:
-  - name: "Small tests"
+  - name: "Data Augmentation"
     scenarios: 
+      - 5
+      - 7
+    ground_truth_count: 9
+    experiment_count: 0
+    ground_truth_cache_dir: "cache"
+  - name: "New Data"
+    scenarios: 
+      - 8
       - 9
-      # - 63
-      # - 71
-    ground_truth_count: 1
-    experiment_count: 1
+      - 10
+      - 11
+    ground_truth_count: 10
+    experiment_count: 0

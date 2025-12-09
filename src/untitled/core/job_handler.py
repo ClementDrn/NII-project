@@ -18,12 +18,14 @@ class Job:
         scenarios: List of scenario IDs to run
         ground_truth_count: Number of baseline runs without instructions
         experiment_count: Number of runs with VLM-generated instructions
+        ground_truth_cache_dir: Optional path to directory containing cached ground truth logs
     """
     id: int
     name: str
     scenarios: List[int]
     ground_truth_count: int = 1
     experiment_count: int = 1
+    ground_truth_cache_dir: str = ""
 
 
 class JobHandler:
@@ -135,6 +137,7 @@ class JobHandler:
                     scenarios=scenarios,
                     ground_truth_count=job_data.get('ground_truth_count', 1),
                     experiment_count=job_data.get('experiment_count', 1),
+                    ground_truth_cache_dir=job_data.get('ground_truth_cache_dir', ''),
                 )
                 
                 self.jobs.append(job)
@@ -163,4 +166,42 @@ class JobHandler:
             Number of jobs
         """
         return len(self.jobs)
+    
+    def is_ground_truth_cached(self, job_id: int, scenario_id: int, run_id: int) -> bool:
+        """
+        Check if ground truth logs for a specific scenario and run are already cached.
+        
+        Args:
+            job_id: The job ID
+            scenario_id: The scenario ID
+            run_id: The run ID (0-based)
+            
+        Returns:
+            True if cached logs exist, False otherwise
+        """
+        # Find the job with the given ID
+        job = None
+        for j in self.jobs:
+            if j.id == job_id:
+                job = j
+                break
+        
+        if not job:
+            LOG.warning(f"Job {job_id} not found")
+            return False
+        
+        # If no cache directory is specified, return False
+        if not job.ground_truth_cache_dir:
+            return False
+        
+        # Build the expected cache path: ${cache_dir}/sce_XXX/run_YYY
+        cache_path = Path(job.ground_truth_cache_dir) / f"sce_{scenario_id:03d}" / f"run_{run_id:03d}"
+        
+        # Check if the directory exists
+        exists = cache_path.exists() and cache_path.is_dir()
+        
+        if exists:
+            LOG.debug(f"Found cached ground truth at: {cache_path}")
+        
+        return exists
         
