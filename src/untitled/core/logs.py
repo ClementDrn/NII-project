@@ -3,7 +3,7 @@ import logging
 import colorlog
 
 
-def init_logging(name: str, logs_dir: Path) -> logging.Logger:
+def init_logging(name: str, logs_dir: Path, console_level = logging.INFO) -> logging.Logger:
     """
     Initialize logging for the application.
     """
@@ -25,7 +25,7 @@ def init_logging(name: str, logs_dir: Path) -> logging.Logger:
 
     # Log Console handler with colors
     console_handler = colorlog.StreamHandler()
-    console_handler.setLevel(logging.INFO)
+    console_handler.setLevel(console_level)
     console_formatter = colorlog.ColoredFormatter(
         '%(log_color)s%(levelname)s%(reset)s - %(message)s',
         log_colors={
