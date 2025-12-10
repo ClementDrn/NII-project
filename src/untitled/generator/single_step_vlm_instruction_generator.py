@@ -4,6 +4,7 @@ from untitled.core.base import PROJECT_ROOT, LOG, CONFIG
 from untitled.simulator.simulation_data import SimulationData
 from untitled.generator.instruction import InstructionSet, parse_instructions_from_json
 from typing import Optional
+import asyncio
 
 
 class SingleStepVLMInstructionGenerator(InstructionGenerator):
@@ -54,7 +55,7 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
         image_path = data.image_dir / data.frames[fixed_frame_index].image_name
 
         # Send prompt to VLM
-        response_text = self.vlm.prompt(self.system_task_message, metadata_text, [image_path])
+        response_text = asyncio.run(self.vlm.prompt(self.system_task_message, metadata_text, [image_path]))
 
         # Remove the thinking part from response
         instruction_raw = parse_vlm_response(response_text)

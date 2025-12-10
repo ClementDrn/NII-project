@@ -4,12 +4,18 @@
 
 ### Setup VLM server
 
-Setup virtual environment with Astral-uv and install `vllm`.
+Setup virtual environment with Astral-uv.
 ```sh
 sudo snap install astral-uv --classic
 uv venv --python 3.12
 source .venv/bin/activate
-uv pip install vllm
+```
+
+Install `vllm` from source to have the latest version (compatible with R-4B).
+```sh
+git clone https://github.com/vllm-project/vllm.git
+cd vllm
+VLLM_USE_PRECOMPILED=1 uv pip install --editable .
 ```
 
 Run VLM server with `vllm`.

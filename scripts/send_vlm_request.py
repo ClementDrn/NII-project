@@ -2,6 +2,7 @@ from untitled.core.base import LOG, CONFIG
 from untitled.generator.vlm import VLM
 
 from pathlib import Path
+import asyncio
 
 
 # --- SET ARGUMENTS BELOW FOR TESTING PURPOSES ---
@@ -17,12 +18,18 @@ system_prompt = "You are a helpful assistant that analyzes images."
 user_prompt = "Describe the contents of the first, second, and third images."
 # ------------------------------------------------
 
-vlm_config = CONFIG.generator.models[0]
 
-# Send request to VLM
-vlm = VLM(host=vlm_config.host, api_key=vlm_config.api_key, api_parameters=vlm_config.get_api_parameters())
-response = vlm.prompt(system_text=system_prompt, user_text=user_prompt, user_image_paths=images)
+async def main():
+    vlm_config = CONFIG.generator.models[0]
 
-# Print the raw response
-LOG.info("Raw VLM Response:")
-LOG.info(response)
+    # Send request to VLM
+    vlm = VLM(host=vlm_config.host, api_key=vlm_config.api_key, api_parameters=vlm_config.get_api_parameters())
+    response = await vlm.prompt(system_text=system_prompt, user_text=user_prompt, user_image_paths=images)
+
+    # Print the raw response
+    LOG.info("Raw VLM Response:")
+    LOG.info(response)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

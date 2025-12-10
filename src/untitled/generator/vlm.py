@@ -4,7 +4,7 @@ from untitled.simulator.simulation_data import SimulationData
 
 import base64
 from PIL import Image
-from openai import OpenAI
+from openai import AsyncOpenAI
 import io
 import time
 from pathlib import Path
@@ -49,12 +49,12 @@ class VLM:
         # Set OpenAI's API key and API base to use vLLM's API server.
         # NOTE: VLM interface is hardcoded as OpenAI-compatible for now.
         openai_api_base = host + "/v1"
-        self.client = OpenAI(
+        self.client = AsyncOpenAI(
             api_key=api_key,
             base_url=openai_api_base,
         )
 
-    def prompt(self, system_text: str, user_text: str, user_image_paths: list[Path]) -> str:
+    async def prompt(self, system_text: str, user_text: str, user_image_paths: list[Path]) -> str:
         """
         Send a prompt to the VLM and get the response.
         """
@@ -88,7 +88,7 @@ class VLM:
         # Send request to VLM and get response
         # Processing time is measured for performance monitoring
         start_time = time.time()
-        chat_response = self.client.chat.completions.create(
+        chat_response = await self.client.chat.completions.create(
             messages=messages,
             **self.api_parameters
         )
