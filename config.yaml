@@ -44,23 +44,52 @@ version: "2.0-dev"
 
 generator:
   design: "multi_step_vlm"  # options: single_step_vlm, multi_step_vlm
-  models:
-    # Model for the description step (multi-step only)
-    - model: "r4b"            
-      temperature: 0.7
+  steps:
+    # Description step
+    - id: "description"
+      model_name: "r4b"
+      temperature: 0.0
       max_tokens: 1024
       extra_body:
         chat_template_kwargs:
           thinking_mode: "short"
-    # Model for the planning step (multi-step only)
-    - model: "r4b"            
+    # Planning step
+    - id: "planning"
+      model_name: "r4b"
       temperature: 0.7
       max_tokens: 1024
       extra_body:
         chat_template_kwargs:
           thinking_mode: "long"
 
+# All available model instances
+model_instances:
+  # High-performance local instance
+  - id: "r4b_0"
+    model_name: "r4b"
+    type: "vlm"
+    step_ids:
+      - "description"
+      - "planning"
+    local_config:
+      gpu_id: 0
+      is_parallel_to_simulator: false  # True means that we can run the VLM parallely with the simulator
+      tensor_parallel_size: 1
+      gpu_memory_utilization: 0.95
+      max_num_seqs: 64
+      enable_chunked_prefill: true
+      enable_prefix_caching: false
+      dtype: "bfloat16"
+  # Low-performance remote instance
+  - id: "r4b_1"
+    model_name: "r4b"
+    type: "vlm"
+    step_ids:
+      - "description"
+    remote_config:
+      host_id: "v100_vlm"   # Defined in hosts.yaml
 
 
 carla:
   debug: true  # Enable debug image output from SimLingo agent (set to true to enable)
+  gpu_id: 0

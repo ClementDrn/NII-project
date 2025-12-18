@@ -24,6 +24,7 @@ where = ["src"]
 [project.optional-dependencies]
 dev = [
     "pytest",
+    "pytest-asyncio",
     "pytest-cov",
 ]
 

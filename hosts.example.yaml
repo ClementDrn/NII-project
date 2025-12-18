@@ -1,0 +1,11 @@
+
+---
+version: "1.0-dev"
+
+hosts: 
+  - id: "hosted_vlm"
+    host: "https://hosted-vlm-service.com/api"
+    api_key: "YOUR_KEY_HERE"
+  - id: "private_vlm"
+    host: "http://192.168.1.100:8000"
+    api_key: "EMPTY"

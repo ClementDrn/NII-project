@@ -3,6 +3,7 @@
 # Version for configuration files
 CONFIG_VERSION = "2.0-dev"
 JOBS_VERSION = "1.1-dev"
+HOSTS_VERSION = "1.0-dev"
 
 
 def are_versions_compatible(imported_version: str, supported_version: str) -> bool:

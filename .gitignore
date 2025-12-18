@@ -1,8 +1,9 @@
 # Cache
 __pycache__/
 
-# Config file
+# Secret config files
 .env
+hosts.yaml
 
 # Virtual environment
 .venv/

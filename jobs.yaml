@@ -23,18 +23,13 @@
 ---
 version: "1.1-dev"
 jobs:
-  - name: "Data Augmentation"
+  - name: "Little Tests"
     scenarios: 
       - 5
-      - 7
-    ground_truth_count: 9
-    experiment_count: 0
+      # - 7
+      # - 8
+      # - 9
+      # - 10
+    ground_truth_count: 1
+    experiment_count: 1
     ground_truth_cache_dir: "cache"
-  - name: "New Data"
-    scenarios: 
-      - 8
-      - 9
-      - 10
-      - 11
-    ground_truth_count: 10
-    experiment_count: 0
