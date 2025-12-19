@@ -3,7 +3,7 @@ from untitled.core.version import JOBS_VERSION, are_versions_compatible
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 import yaml
 
 
@@ -179,6 +179,22 @@ class JobHandler:
         Returns:
             True if cached logs exist, False otherwise
         """
+        # Return True if cache directory exists
+        cache_dir = self.get_ground_truth_cache_dir(job_id, scenario_id, run_id)
+        return bool(cache_dir)
+        
+    def get_ground_truth_cache_dir(self, job_id: int, scenario_id: int, run_id: int) -> Optional[Path]:
+        """
+        Get the cache directory for a specific ground truth run if it exists.
+        
+        Args:
+            job_id: The job ID
+            scenario_id: The scenario ID
+            run_id: The run ID
+
+        Returns:
+            The ground truth cache directory path, or empty string if not set
+        """
         # Find the job with the given ID
         job = None
         for j in self.jobs:
@@ -188,20 +204,15 @@ class JobHandler:
         
         if not job:
             LOG.warning(f"Job {job_id} not found")
-            return False
+            return ""
         
-        # If no cache directory is specified, return False
+        # If no cache directory is specified, return None
         if not job.ground_truth_cache_dir:
-            return False
+            return None
         
         # Build the expected cache path: ${cache_dir}/sce_XXX/run_YYY
         cache_path = Path(job.ground_truth_cache_dir) / f"sce_{scenario_id:03d}" / f"run_{run_id:03d}"
         
-        # Check if the directory exists
+        # Return cache path if the directory exists
         exists = cache_path.exists() and cache_path.is_dir()
-        
-        if exists:
-            LOG.debug(f"Found cached ground truth at: {cache_path}")
-        
-        return exists
-        
+        return cache_path if exists else None

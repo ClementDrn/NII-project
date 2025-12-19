@@ -1,36 +1,43 @@
 from untitled.core.base import LOG
 from untitled.core.pipeline import Pipeline
-from untitled.generator.vlm import VLM
-from untitled.simulator.simulator import Simulator
-from untitled.simulator.simulation_data import SimulationData
 
+import asyncio
 import signal
 import sys
 
 
 ### MAIN FUNCTION #############################################################
-def main():
-    # Instatiate pipeline
+async def main():
+    # Instantiate pipeline
     pipeline = Pipeline()
 
-    # Define interruption signal handler for graceful shutdown of pipeline
+    # Define interruption signal handler
+    # It does not exit immediately on first SIGINT to allow graceful shutdown
+    shutdown_requested = False
     def sigint_handler(sig, frame):
-        LOG.info("Caught SIGINT, exiting gracefully...")
-        pipeline.stop()
-        sys.exit(0)
+        nonlocal shutdown_requested
+        if not shutdown_requested:
+            LOG.info("Caught SIGINT, initiating graceful shutdown...")
+            shutdown_requested = True
+        else:
+            LOG.warning("Force exit requested")
+            sys.exit(1)
 
     # Register signal handler
     signal.signal(signal.SIGINT, sigint_handler)
 
-    LOG.info("Initializing pipeline...")
-    pipeline.init()
+    try:
+        LOG.info("Initializing pipeline...")
+        pipeline.init()
 
-    LOG.info("Starting pipeline...")
-    pipeline.start()
-
-    LOG.info("Stopping pipeline...")
-    pipeline.stop()
+        LOG.info("Starting pipeline...")
+        await pipeline.start()
+    except KeyboardInterrupt:
+        LOG.info("Pipeline interrupted")
+    finally:    # Ensure pipeline is stopped
+        LOG.info("Stopping pipeline...")
+        await pipeline.stop()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

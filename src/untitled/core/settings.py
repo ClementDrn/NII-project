@@ -11,6 +11,7 @@ class LocalVLMConfig(BaseSettings):
     """Configuration for local VLM instances."""
     model_config = ConfigDict(extra='ignore')
     
+    port: int = 8000
     gpu_id: int = 0
     is_parallel_to_simulator: bool = False
     tensor_parallel_size: int = 1
@@ -155,3 +156,22 @@ def load_config(root_path: Path, logger: logging.Logger) -> Settings:
     # Create Settings instance (env vars are loaded from os.environ)
     settings = Settings(**yaml_data)
     return settings
+
+def get_host_config_by_id(settings: Settings, host_id: str) -> HostConfig:
+    """
+    Get HostConfig by its ID.
+    """
+    for host in settings.hosts:
+        if host.id == host_id:
+            return host
+    raise ValueError(f"Host with ID '{host_id}' not found in configuration.")
+
+def get_model_instances_config_by_step_id(settings: Settings, step_id: str) -> list[ModelInstanceConfig]:
+    """
+    Get list of ModelInstanceConfig that reference the given step ID.
+    """
+    instances = []
+    for instance in settings.model_instances:
+        if step_id in instance.step_ids:
+            instances.append(instance)
+    return instances

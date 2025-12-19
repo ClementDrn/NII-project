@@ -72,6 +72,7 @@ model_instances:
       - "description"
       - "planning"
     local_config:
+      port: 8000
       gpu_id: 0
       is_parallel_to_simulator: false  # True means that we can run the VLM parallely with the simulator
       tensor_parallel_size: 1
@@ -88,7 +89,6 @@ model_instances:
       - "description"
     remote_config:
       host_id: "v100_vlm"   # Defined in hosts.yaml
-
 
 carla:
   debug: true  # Enable debug image output from SimLingo agent (set to true to enable)

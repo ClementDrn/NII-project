@@ -1,4 +1,4 @@
-import time
+import asyncio
 from untitled.core.base import LOG, PROJECT_ROOT, CONFIG
 from untitled.core.job_handler import Job, JobHandler
 from untitled.simulator.simulator import Simulator
@@ -6,6 +6,10 @@ from untitled.simulator.simulation_data import SimulationData
 from untitled.generator.single_step_vlm_instruction_generator import SingleStepVLMInstructionGenerator
 from untitled.generator.multi_step_vlm_instruction_generator import MultiStepVLMInstructionGenerator
 from untitled.simulator.simulation_data import SimulationFrameData
+from untitled.generator.instruction import Instruction
+
+from typing import Dict, Tuple
+import time
 
 
 class Pipeline:
@@ -42,7 +46,7 @@ class Pipeline:
         else:
             raise ValueError(f"Unknown generator design: {CONFIG.generator.design}")
 
-    def stop(self):
+    async def stop(self):
         """
         Stop and free all pipeline components.
         """
@@ -53,10 +57,10 @@ class Pipeline:
 
         # Free VLM
         if self.generator:
-            self.generator.free()
+            await self.generator.free()
             self.generator = None
 
-    def _run_ground_truth(self, job: Job, scenario_id: int, run_id: int):
+    def _run_ground_truth(self, job: Job, scenario_id: int, run_id: int) -> Tuple[int, int]:
         """
         Run a single ground truth (baseline) scenario without instructions.
         
@@ -64,7 +68,6 @@ class Pipeline:
             job: The job being executed
             scenario_id: The ID of the scenario being executed
             run_id: The run index (0-based)
-            ground_truth_count: Total number of ground truth runs
             
         Returns:
             Tuple of (successful_count, failed_count)
@@ -82,32 +85,30 @@ class Pipeline:
             LOG.error(f"    Ground truth run {run_id} failed: {e}")
             return (0, 1)
 
-    def _run_experiment(self, job: Job, scenario_id: int, run_id: int):
+    async def _generate_instruction_for_experiment(self, job: Job, scenario_id: int, experiment_index: int) -> Tuple[bool, Instruction]:
         """
-        Run a single experiment with VLM-generated instruction.
-        
-        This involves:
-        1. Fetching image and metadata from ground truth runs
-        2. Generating instruction with VLM
-        3. Running scenario again with instruction
+        Generate VLM instruction for a single experiment (async, queues the prompt).
         
         Args:
             job: The job being executed
             scenario_id: The ID of the scenario being executed
-            run_id: The experiment run index (0-based)
+            experiment_index: The experiment index (0-based, relative to experiments only)
             
         Returns:
-            Tuple of (successful_count, failed_count)
+            Tuple of (success, instruction or None)
         """
         try:
-            LOG.info(f"  Experiment run {run_id} ({run_id - job.ground_truth_count + 1} / {job.experiment_count})")
+            LOG.info(f"  Generating instruction for experiment {experiment_index} ({experiment_index + 1} / {job.experiment_count})")
             
-            # Step 1: Get image and metadata from previously collected ground truth
-            # WARN: Ground truth run index is hardcoded to 0 for now. Later, we may want to select the ground truth based on how the current experiment run is performing.
+            # Get ground truth cache directory if it exists 
+            # WARN: Ground truth run index is hardcoded to 0 for now
             ground_truth_index = 0
-            LOG.debug(f"    Step 1: Fetching images and metadata from ground truth run {ground_truth_index}...")
-            image_path_list = self.simulator.get_image_logs(job.id, scenario_id, ground_truth_index)
-            metadata_list = self.simulator.get_metadata_logs(job.id, scenario_id, ground_truth_index)
+            cache_dir = self.job_handler.get_ground_truth_cache_dir(job.id, scenario_id, ground_truth_index)
+            
+            # Get image and metadata from previously collected ground truth
+            LOG.debug(f"    Fetching images and metadata from ground truth run {ground_truth_index}...")
+            image_path_list = self.simulator.get_image_logs(job.id, scenario_id, ground_truth_index, cache_dir)
+            metadata_list = self.simulator.get_metadata_logs(job.id, scenario_id, ground_truth_index, cache_dir)
             
             if not image_path_list:
                 LOG.error(f"    Failed to get images from simulation logs")
@@ -122,8 +123,8 @@ class Pipeline:
                 LOG.error(f"    Mismatch between number of images ({len(image_path_list)}) and metadata entries ({len(metadata_list)})")
                 raise RuntimeError("Mismatch between images and metadata counts")
             
-            # Step 2: Generate instruction with VLM
-            LOG.debug(f"    Step 2: Generating instruction with VLM...")
+            # Generate instruction with VLM (queued)
+            LOG.debug(f"    Generating instruction with VLM...")
             simulation_data = SimulationData(
                 frame_count=len(image_path_list),
                 image_dir=image_path_list[0].parent,
@@ -131,7 +132,7 @@ class Pipeline:
                         for i, img_path in enumerate(image_path_list)]
             )
             
-            instruction_set = self.generator.generate_instructions_from_images(simulation_data)
+            instruction_set = await self.generator.generate_instructions_from_images(simulation_data)
             if not instruction_set:
                 LOG.error(f"    Failed to generate instruction from VLM")
                 raise RuntimeError("VLM instruction generation failed")
@@ -146,10 +147,37 @@ class Pipeline:
             LOG.debug(f"    Using top-ranked instruction (rank {top_instruction.rank}): '{top_instruction.adversarial_instruction}'")
             LOG.debug(f"    Target: {top_instruction.target_module_logic}")
             LOG.debug(f"    Injection window: {top_instruction.injection_window.start_timestamp}s - {top_instruction.injection_window.end_timestamp}s")
+            
+            return (True, top_instruction)
+            
+        except Exception as e:
+            LOG.error(f"    Instruction generation for experiment {experiment_index} failed: {e}")
+            return (False, None)
 
-            # Step 3: Run scenario again with instruction
-            LOG.debug(f"    Step 3: Running scenario with instruction...")
-            self.simulator.run_scenario(top_instruction)
+    def _run_experiment(self, job: Job, scenario_id: int, run_id: int, instruction: Instruction) -> Tuple[int, int]:
+        """
+        Run a single experiment with a pre-generated VLM instruction.
+        
+        Args:
+            job: The job being executed
+            scenario_id: The ID of the scenario being executed
+            run_id: The experiment run index (0-based, absolute)
+            instruction: The instruction to use
+            
+        Returns:
+            Tuple of (successful_count, failed_count)
+        """
+        try:
+            experiment_index = run_id - job.ground_truth_count
+            LOG.info(f"  Experiment run {run_id} ({experiment_index + 1} / {job.experiment_count})")
+            
+            if instruction is None:
+                LOG.error(f"    No instruction available for this experiment")
+                return (0, 1)
+            
+            # Run scenario with instruction
+            LOG.debug(f"    Running scenario with instruction...")
+            self.simulator.run_scenario(instruction)
             
             LOG.info(f"    Experiment run {run_id} completed")
             return (1, 0)
@@ -158,9 +186,9 @@ class Pipeline:
             LOG.error(f"    Experiment run {run_id} failed: {e}")
             return (0, 1)
 
-    def _run_scenario(self, job: Job, scenario_id):
+    def _run_scenario_ground_truths(self, job: Job, scenario_id: int) -> Tuple[int, int]:
         """
-        Run a single scenario with all its ground truth and experiment runs.
+        Run all ground truth runs for a single scenario (Stage 1: CARLA only).
         
         Args:
             job: The job being executed
@@ -170,7 +198,7 @@ class Pipeline:
             Tuple of (successful_count, failed_count)
         """
         LOG.info("-" * 80)
-        LOG.info(f"Job {job.id} | Scenario {scenario_id}")
+        LOG.info(f"Job {job.id} | Scenario {scenario_id} | Ground Truth Stage")
         LOG.info("-" * 80)
         
         successful = 0
@@ -180,37 +208,105 @@ class Pipeline:
             # Set job and scenario context for directory structure
             self.simulator.set_job_context(job.id, scenario_id)
             self.simulator.set_scenario(scenario_id)
-
-            run_index = 0
-            run_total = job.ground_truth_count + job.experiment_count
             
             # Run ground truth (baseline) runs
             LOG.info(f"Running {job.ground_truth_count} ground truth run(s)...")
-            while run_index < job.ground_truth_count:
+            for run_index in range(job.ground_truth_count):
                 gt_success, gt_failed = self._run_ground_truth(job, scenario_id, run_index)
                 successful += gt_success
                 failed += gt_failed
-                run_index += 1
             
-            # Run experiment runs with VLM-generated instructions
-            LOG.info(f"Running {job.experiment_count} experiment run(s)...")
-            while run_index < run_total:
-                exp_success, exp_failed = self._run_experiment(job, scenario_id, run_index)
-                successful += exp_success
-                failed += exp_failed
-                run_index += 1
-            
-            LOG.info(f"Scenario {scenario_id} completed")
+            LOG.info(f"Scenario {scenario_id} ground truth stage completed")
             
         except Exception as e:
-            LOG.error(f"Scenario {scenario_id} failed: {e}")
-            LOG.error(f"Skipping remaining runs for this scenario")
+            LOG.error(f"Scenario {scenario_id} ground truth stage failed: {e}")
         
         return (successful, failed)
 
-    def _run_job(self, job: Job):
+    async def _generate_scenario_instructions(self, job: Job, scenario_id: int) -> Dict[int, Instruction]:
         """
-        Run a single job with all its scenarios.
+        Generate VLM instructions for all experiments in a scenario (Stage 2: VLM only).
+        
+        Args:
+            job: The job being executed
+            scenario_id: The scenario ID
+            
+        Returns:
+            Dictionary mapping experiment_index to Instruction
+        """
+        LOG.info("-" * 80)
+        LOG.info(f"Job {job.id} | Scenario {scenario_id} | VLM Instruction Generation Stage")
+        LOG.info("-" * 80)
+        
+        instructions = {}
+        
+        try:
+            # Set job and scenario context
+            self.simulator.set_job_context(job.id, scenario_id)
+            self.simulator.set_scenario(scenario_id)
+            
+            # Generate instructions for all experiments
+            LOG.info(f"Generating instructions for {job.experiment_count} experiment(s)...")
+            for experiment_index in range(job.experiment_count):
+                success, instruction = await self._generate_instruction_for_experiment(job, scenario_id, experiment_index)
+                if success:
+                    instructions[experiment_index] = instruction
+                else:
+                    instructions[experiment_index] = None
+            
+            LOG.info(f"Scenario {scenario_id} instruction generation completed")
+            
+        except Exception as e:
+            LOG.error(f"Scenario {scenario_id} instruction generation failed: {e}")
+        
+        return instructions
+
+    def _run_scenario_experiments(self, job: Job, scenario_id: int, instructions: Dict[int, Instruction]) -> Tuple[int, int]:
+        """
+        Run all experiment runs for a single scenario with pre-generated instructions (Stage 3: CARLA again).
+        
+        Args:
+            job: The job being executed
+            scenario_id: The scenario ID to run
+            instructions: Dictionary mapping experiment_index to Instruction
+            
+        Returns:
+            Tuple of (successful_count, failed_count)
+        """
+        LOG.info("-" * 80)
+        LOG.info(f"Job {job.id} | Scenario {scenario_id} | Experiment Execution Stage")
+        LOG.info("-" * 80)
+        
+        successful = 0
+        failed = 0
+        
+        try:
+            # Set job and scenario context
+            self.simulator.set_job_context(job.id, scenario_id)
+            self.simulator.set_scenario(scenario_id)
+            
+            # Run experiment runs with pre-generated instructions
+            LOG.info(f"Running {job.experiment_count} experiment run(s)...")
+            for experiment_index in range(job.experiment_count):
+                run_id = job.ground_truth_count + experiment_index
+                instruction = instructions.get(experiment_index)
+                exp_success, exp_failed = self._run_experiment(job, scenario_id, run_id, instruction)
+                successful += exp_success
+                failed += exp_failed
+            
+            LOG.info(f"Scenario {scenario_id} experiment stage completed")
+            
+        except Exception as e:
+            LOG.error(f"Scenario {scenario_id} experiment stage failed: {e}")
+        
+        return (successful, failed)
+
+    async def _run_job(self, job: Job) -> Tuple[int, int]:
+        """
+        Run a single job with all its scenarios using 3-stage approach:
+        1. CARLA Stage: Run all ground truths for all scenarios
+        2. VLM Stage: Generate instructions for all experiments (activates VLM if needed)
+        3. CARLA Stage: Run all experiments with generated instructions
         
         Args:
             job: The job to execute
@@ -227,14 +323,49 @@ class Pipeline:
         job_successful = 0
         job_failed = 0
         
-        # Iterate through all scenarios in this job
+        # Stage 1: CARLA - Run all ground truths for all scenarios
+        LOG.info("")
+        LOG.info("=" * 80)
+        LOG.info("STAGE 1: CARLA Ground Truth Runs")
+        LOG.info("=" * 80)
+        # TODO: Add parallelized VLM instruction generation during ground truth runs
         for scenario_id in job.scenarios:
-            scenario_success, scenario_failed = self._run_scenario(job, scenario_id)
-            job_successful += scenario_success
-            job_failed += scenario_failed
+            gt_success, gt_failed = self._run_scenario_ground_truths(job, scenario_id)
+            job_successful += gt_success
+            job_failed += gt_failed
+        
+        # Stage 2: VLM - Generate instructions for all experiments
+        LOG.info("")
+        LOG.info("=" * 80)
+        LOG.info("STAGE 2: VLM Instruction Generation")
+        LOG.info("=" * 80)
+        
+        # Enable generator's full speed mode as the simulator is idle now (async)
+        enable_full_speed_mode_task = asyncio.create_task(self.generator.enable_full_speed_mode())
+        
+        # Generate instructions for all scenarios
+        all_instructions = {}  # Map: scenario_id -> {experiment_index -> Instruction}
+        for scenario_id in job.scenarios:
+            scenario_instructions = await self._generate_scenario_instructions(job, scenario_id)
+            all_instructions[scenario_id] = scenario_instructions
+        
+        # Disable full speed mode once all instructions are generated
+        await enable_full_speed_mode_task
+        await self.generator.disable_full_speed_mode()
+        
+        # Stage 3: CARLA - Run all experiments with generated instructions
+        LOG.info("")
+        LOG.info("=" * 80)
+        LOG.info("STAGE 3: CARLA Experiment Runs")
+        LOG.info("=" * 80)
+        for scenario_id in job.scenarios:
+            exp_success, exp_failed = self._run_scenario_experiments(job, scenario_id, all_instructions[scenario_id])
+            job_successful += exp_success
+            job_failed += exp_failed
         
         # Job summary
         job_elapsed = time.time() - job_start_time
+        LOG.info("")
         LOG.info("=" * 80)
         LOG.info(f"Job {job.id} '{job.name}' completed in {job_elapsed:.1f}s")
         LOG.info(f"  Successful: {job_successful}, Failed: {job_failed}")
@@ -242,13 +373,14 @@ class Pipeline:
         
         return (job_successful, job_failed)
 
-    def start(self):
+    async def start(self):
         """
         Start the pipeline execution.
         
-        Executes all jobs defined in jobs.yaml, running each scenario with:
-        1. Ground truth runs (baseline without instructions)
-        2. Experiment runs (with VLM-generated instructions)
+        Executes all jobs defined in jobs.yaml using a 3-stage approach:
+        1. CARLA Stage: Run all ground truths
+        2. VLM Stage: Generate instructions (with GPU if local)
+        3. CARLA Stage: Run all experiments
         """
         if not self.job_handler or not self.job_handler.get_jobs():
             LOG.error("No jobs loaded. Cannot start pipeline.")
@@ -262,7 +394,7 @@ class Pipeline:
         try:
             # Iterate through all jobs
             for job in self.job_handler.get_jobs():
-                job_successful, job_failed = self._run_job(job)
+                job_successful, job_failed = await self._run_job(job)
                 total_runs += job_successful + job_failed
                 successful_runs += job_successful
                 failed_runs += job_failed
@@ -289,4 +421,3 @@ class Pipeline:
                 success_rate = (successful_runs / total_runs) * 100
                 LOG.info(f"Success rate: {success_rate:.1f}%")
             LOG.info("=" * 80)
-

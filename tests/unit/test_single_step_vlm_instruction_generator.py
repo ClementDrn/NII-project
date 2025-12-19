@@ -1,19 +1,12 @@
 import pytest
-from unittest.mock import Mock, patch, mock_open, MagicMock
+from unittest.mock import Mock, patch, mock_open, MagicMock, AsyncMock
 from pathlib import Path
 import json
-import sys
+import asyncio
 
-# Mock the CONFIG before importing any modules that depend on it
-with patch('untitled.core.settings.load_config') as mock_load_config:
-    mock_config = MagicMock()
-    mock_config.vlm.host = "http://localhost:8000"
-    mock_config.vlm.api_key = "test-key"
-    mock_config.generator.models = [MagicMock()]  # One model for single-step
-    mock_load_config.return_value = mock_config
-    
-    from untitled.generator.single_step_vlm_instruction_generator import SingleStepVLMInstructionGenerator
-    from untitled.simulator.simulation_data import SimulationData, SimulationFrameData, SimulationMetadata
+from untitled.simulator.simulation_data import SimulationData, SimulationFrameData, SimulationMetadata
+from untitled.generator.vlm import VLMClient
+from untitled.core.settings import GeneratorStepConfig, ModelInstanceConfig, LocalVLMConfig
 
 
 # --- Fixtures and Mocks ------------------------------------------------------
@@ -72,34 +65,90 @@ def mock_system_task():
 
 # --- Tests -------------------------------------------------------------------
 
-@patch("untitled.generator.single_step_vlm_instruction_generator.CONFIG")  # mock_config
-@patch("untitled.generator.single_step_vlm_instruction_generator.VLM")  # mock_vlm_class
-@patch("untitled.generator.single_step_vlm_instruction_generator.parse_vlm_response")  # mock_parse
-@patch("builtins.open", new_callable=mock_open, read_data="Test system task message")  # mock_file
-def test_init(mock_file, mock_parse, mock_vlm_class, mock_config):
+@patch("untitled.generator.single_step_vlm_instruction_generator.PromptDispatcher")
+@patch("untitled.generator.single_step_vlm_instruction_generator.VLMClientFactory")
+@patch("untitled.generator.vlm.get_model_config")
+@patch("untitled.generator.single_step_vlm_instruction_generator.CONFIG")
+@patch("builtins.open", new_callable=mock_open, read_data="Test system task message")
+def test_init(mock_file, mock_config, mock_get_model_config, mock_factory, mock_dispatcher):
     """Test initialization of SingleStepVLMInstructionGenerator."""
-    mock_config.generator.models = [MagicMock()]
+    # Setup CONFIG with proper steps and model_instances
+    step = GeneratorStepConfig(
+        id="step-1",
+        model_name="test-model",
+        temperature=0.7,
+        max_tokens=512
+    )
+    mock_config.generator.steps = [step]
+    
+    instance = ModelInstanceConfig(
+        id="instance-1",
+        model_name="test-model",
+        type="vlm",
+        step_ids=["step-1"],
+        local_config=LocalVLMConfig(port=8000)
+    )
+    mock_config.model_instances = [instance]
+    
+    mock_model_config = MagicMock()
+    mock_get_model_config.return_value = mock_model_config
+    
+    mock_vlm = MagicMock()
+    mock_vlm.is_parallelizable.return_value = False
+    mock_factory.create.return_value = mock_vlm
+    
+    from untitled.generator.single_step_vlm_instruction_generator import SingleStepVLMInstructionGenerator
     generator = SingleStepVLMInstructionGenerator()
     
-    # Verify VLM was instantiated
-    mock_vlm_class.assert_called_once()
+    # Verify VLM client was created
+    mock_factory.create.assert_called_once()
     
     # Verify system task message was loaded
-    assert generator.system_task_message == "Test system task message"
+    assert generator._system_task_message == "Test system task message"
     mock_file.assert_called_once()
 
-@patch("untitled.generator.single_step_vlm_instruction_generator.CONFIG")  # mock_config
-@patch("untitled.generator.single_step_vlm_instruction_generator.parse_instructions_from_json")  # mock_parse_instruction
-@patch("untitled.generator.single_step_vlm_instruction_generator.VLM")  # mock_vlm_class
-@patch("untitled.generator.single_step_vlm_instruction_generator.parse_vlm_response")  # mock_parse
-@patch("builtins.open", new_callable=mock_open, read_data="Test system task")  # mock_file
-def test_generate_instruction_single_frame(mock_file, mock_parse, mock_vlm_class, mock_parse_instruction, mock_config, mock_simulation_data_single_frame, mock_vlm_response):
+@pytest.mark.asyncio
+@patch("untitled.generator.single_step_vlm_instruction_generator.parse_instructions_from_json")
+@patch("untitled.generator.single_step_vlm_instruction_generator.parse_vlm_response")
+@patch("untitled.generator.single_step_vlm_instruction_generator.PromptDispatcher")
+@patch("untitled.generator.single_step_vlm_instruction_generator.VLMClientFactory")
+@patch("untitled.generator.vlm.get_model_config")
+@patch("untitled.generator.single_step_vlm_instruction_generator.CONFIG")
+@patch("builtins.open", new_callable=mock_open, read_data="Test system task")
+async def test_generate_instruction_single_frame(mock_file, mock_config, mock_get_model_config, mock_factory, 
+                                                  mock_dispatcher, mock_parse, mock_parse_instruction, 
+                                                  mock_simulation_data_single_frame):
     """Test generating instruction from a single frame."""
     from untitled.generator.instruction import Instruction, InstructionSet, InjectionWindow
+    from untitled.generator.single_step_vlm_instruction_generator import SingleStepVLMInstructionGenerator
     
-    mock_config.generator.models = [MagicMock()]
-    # Setup mock VLM
-    mock_vlm_instance = Mock()
+    # Setup CONFIG with proper steps and model_instances
+    step = GeneratorStepConfig(
+        id="step-1",
+        model_name="test-model",
+        temperature=0.7,
+        max_tokens=512
+    )
+    mock_config.generator.steps = [step]
+    
+    instance = ModelInstanceConfig(
+        id="instance-1",
+        model_name="test-model",
+        type="vlm",
+        step_ids=["step-1"],
+        local_config=LocalVLMConfig(port=8000)
+    )
+    mock_config.model_instances = [instance]
+    
+    mock_get_model_config.return_value = MagicMock()
+    
+    # Mock VLM client
+    mock_vlm = MagicMock()
+    mock_vlm.is_parallelizable.return_value = False
+    mock_vlm.get_status.return_value = MagicMock()
+    mock_factory.create.return_value = mock_vlm
+
+    # Mock prompt dispatcher
     json_response = '''[{
         "rank": 1,
         "injection_window": {"start_timestamp": 1.5, "end_timestamp": 2.0},
@@ -107,13 +156,14 @@ def test_generate_instruction_single_frame(mock_file, mock_parse, mock_vlm_class
         "target_module_logic": "Override lane keeping",
         "reasoning": "Critical moment"
     }]'''
-    mock_vlm_instance.prompt.return_value = f"<think>Analyzing...</think>\n\n{json_response}"
-    mock_vlm_class.return_value = mock_vlm_instance
-    
-    # Setup parse_vlm_response to return JSON response
+
+    mock_dispatcher_instance = MagicMock()
+    mock_dispatcher.return_value = mock_dispatcher_instance
+
+    # Setup parse_vlm_response
     mock_parse.return_value = json_response
-    
-    # Setup parse_instructions_from_json to return an InstructionSet object
+
+    # Setup parse_instructions_from_json
     window = InjectionWindow(start_timestamp=1.5, end_timestamp=2.0)
     instruction = Instruction(
         rank=1,
@@ -124,33 +174,64 @@ def test_generate_instruction_single_frame(mock_file, mock_parse, mock_vlm_class
     )
     expected_instruction_set = InstructionSet(instructions=[instruction])
     mock_parse_instruction.return_value = expected_instruction_set
-    
+
     # Create generator and generate instruction
     generator = SingleStepVLMInstructionGenerator()
-    instruction_set = generator.generate_instructions_from_images(mock_simulation_data_single_frame)
+
+    # Mock the dispatcher's add method to immediately resolve the future
+    def mock_add_side_effect(prompt_request):
+        prompt_request.future.set_result(f"<think>Analyzing...</think>\n\n{json_response}")
     
+    generator._prompt_dispatcher.add = mock_add_side_effect
+
+    instruction_set = await generator.generate_instructions_from_images(mock_simulation_data_single_frame)
+
     # Verify the instruction set was returned
     assert instruction_set == expected_instruction_set
     assert len(instruction_set.instructions) == 1
     assert instruction_set.instructions[0].adversarial_instruction == "Turn left at the intersection"
-    
-    # Verify VLM prompt was called with correct arguments
-    mock_vlm_instance.prompt.assert_called_once()
-    call_args = mock_vlm_instance.prompt.call_args
-    assert call_args[0][0] == "Test system task"  # system_task_message
-    assert "speed" in call_args[0][1].lower()  # metadata_text contains speed
-    assert len(call_args[0][2]) == 1  # one image path
 
-@patch("untitled.generator.single_step_vlm_instruction_generator.CONFIG")  # mock_config
-@patch("untitled.generator.single_step_vlm_instruction_generator.parse_instructions_from_json")  # mock_parse_instruction
-@patch("untitled.generator.single_step_vlm_instruction_generator.VLM")  # mock_vlm_class
-@patch("untitled.generator.single_step_vlm_instruction_generator.parse_vlm_response")  # mock_parse
-@patch("builtins.open", new_callable=mock_open, read_data="Test system task")  # mock_file
-def test_generate_instruction_multiple_frames_uses_first_frame(mock_file, mock_parse, mock_vlm_class, mock_parse_instruction, mock_config):
+@pytest.mark.asyncio
+@patch("untitled.generator.single_step_vlm_instruction_generator.parse_instructions_from_json")
+@patch("untitled.generator.single_step_vlm_instruction_generator.parse_vlm_response")
+@patch("untitled.generator.single_step_vlm_instruction_generator.PromptDispatcher")
+@patch("untitled.generator.single_step_vlm_instruction_generator.VLMClientFactory")
+@patch("untitled.generator.vlm.get_model_config")
+@patch("untitled.generator.single_step_vlm_instruction_generator.CONFIG")
+@patch("builtins.open", new_callable=mock_open, read_data="Test system task")
+async def test_generate_instruction_multiple_frames_uses_first_frame(mock_file, mock_config, mock_get_model_config,
+                                                                      mock_factory, mock_dispatcher, mock_parse,
+                                                                      mock_parse_instruction):
     """Test that generating instruction with insufficient frames falls back to first frame."""
     from untitled.generator.instruction import Instruction, InstructionSet, InjectionWindow
+    from untitled.generator.single_step_vlm_instruction_generator import SingleStepVLMInstructionGenerator
     
-    mock_config.generator.models = [MagicMock()]
+    # Setup CONFIG with proper steps and model_instances
+    step = GeneratorStepConfig(
+        id="step-1",
+        model_name="test-model",
+        temperature=0.7,
+        max_tokens=512
+    )
+    mock_config.generator.steps = [step]
+    
+    instance = ModelInstanceConfig(
+        id="instance-1",
+        model_name="test-model",
+        type="vlm",
+        step_ids=["step-1"],
+        local_config=LocalVLMConfig(port=8000)
+    )
+    mock_config.model_instances = [instance]
+    
+    mock_get_model_config.return_value = MagicMock()
+    
+    # Mock VLM client
+    mock_vlm = MagicMock()
+    mock_vlm.is_parallelizable.return_value = False
+    mock_vlm.get_status.return_value = MagicMock()
+    mock_factory.create.return_value = mock_vlm
+    
     # Create multi-frame simulation data
     frames = [
         SimulationFrameData(
@@ -191,7 +272,6 @@ def test_generate_instruction_multiple_frames_uses_first_frame(mock_file, mock_p
     )
     
     # Setup mocks
-    mock_vlm_instance = Mock()
     json_response = '''[{
         "rank": 1,
         "injection_window": {"start_timestamp": 0.0, "end_timestamp": 0.1},
@@ -199,10 +279,12 @@ def test_generate_instruction_multiple_frames_uses_first_frame(mock_file, mock_p
         "target_module_logic": "Test logic",
         "reasoning": "Test reasoning"
     }]'''
-    mock_vlm_instance.prompt.return_value = json_response
-    mock_vlm_class.return_value = mock_vlm_instance
+
+    mock_dispatcher_instance = MagicMock()
+    mock_dispatcher.return_value = mock_dispatcher_instance
+
     mock_parse.return_value = json_response
-    
+
     # Setup parse_instructions_from_json to return an InstructionSet
     window = InjectionWindow(start_timestamp=0.0, end_timestamp=0.1)
     instruction = Instruction(
@@ -214,28 +296,64 @@ def test_generate_instruction_multiple_frames_uses_first_frame(mock_file, mock_p
     )
     expected_instruction_set = InstructionSet(instructions=[instruction])
     mock_parse_instruction.return_value = expected_instruction_set
-    
+
     generator = SingleStepVLMInstructionGenerator()
+
+    # Mock the dispatcher's add method to immediately resolve the future
+    def mock_add_side_effect(prompt_request):
+        prompt_request.future.set_result(json_response)
     
+    generator._prompt_dispatcher.add = mock_add_side_effect
+
     # Should use first frame without raising an error
-    instruction_set = generator.generate_instructions_from_images(multi_frame_data)
-    
+    instruction_set = await generator.generate_instructions_from_images(multi_frame_data)
+
     # Verify it returns a valid instruction set
     assert instruction_set is not None
     assert len(instruction_set.instructions) == 1
 
-@patch("untitled.generator.single_step_vlm_instruction_generator.CONFIG")  # mock_config
-@patch("untitled.generator.single_step_vlm_instruction_generator.parse_instructions_from_json")  # mock_parse_instruction
-@patch("untitled.generator.single_step_vlm_instruction_generator.VLM")  # mock_vlm_class
-@patch("untitled.generator.single_step_vlm_instruction_generator.parse_vlm_response")  # mock_parse
-@patch("builtins.open", new_callable=mock_open, read_data="Test system task")  # mock_file
-def test_generate_instruction_no_think_tags(mock_file, mock_parse, mock_vlm_class, mock_parse_instruction, mock_config, mock_simulation_data_single_frame):
+@pytest.mark.asyncio
+@patch("untitled.generator.single_step_vlm_instruction_generator.parse_instructions_from_json")
+@patch("untitled.generator.single_step_vlm_instruction_generator.parse_vlm_response")
+@patch("untitled.generator.single_step_vlm_instruction_generator.PromptDispatcher")
+@patch("untitled.generator.single_step_vlm_instruction_generator.VLMClientFactory")
+@patch("untitled.generator.vlm.get_model_config")
+@patch("untitled.generator.single_step_vlm_instruction_generator.CONFIG")
+@patch("builtins.open", new_callable=mock_open, read_data="Test system task")
+async def test_generate_instruction_no_think_tags(mock_file, mock_config, mock_get_model_config, mock_factory,
+                                                   mock_dispatcher, mock_parse, mock_parse_instruction,
+                                                   mock_simulation_data_single_frame):
     """Test parsing instruction when response has no <think> tags."""
     from untitled.generator.instruction import Instruction, InstructionSet, InjectionWindow
+    from untitled.generator.single_step_vlm_instruction_generator import SingleStepVLMInstructionGenerator
     
-    mock_config.generator.models = [MagicMock()]
+    # Setup CONFIG with proper steps and model_instances
+    step = GeneratorStepConfig(
+        id="step-1",
+        model_name="test-model",
+        temperature=0.7,
+        max_tokens=512
+    )
+    mock_config.generator.steps = [step]
+    
+    instance = ModelInstanceConfig(
+        id="instance-1",
+        model_name="test-model",
+        type="vlm",
+        step_ids=["step-1"],
+        local_config=LocalVLMConfig(port=8000)
+    )
+    mock_config.model_instances = [instance]
+    
+    mock_get_model_config.return_value = MagicMock()
+    
+    # Mock VLM client
+    mock_vlm = MagicMock()
+    mock_vlm.is_parallelizable.return_value = False
+    mock_vlm.get_status.return_value = MagicMock()
+    mock_factory.create.return_value = mock_vlm
+    
     # Setup mock VLM with response without think tags
-    mock_vlm_instance = Mock()
     json_response = '''[{
         "rank": 1,
         "injection_window": {"start_timestamp": 2.0, "end_timestamp": 2.5},
@@ -243,8 +361,11 @@ def test_generate_instruction_no_think_tags(mock_file, mock_parse, mock_vlm_clas
         "target_module_logic": "Override path planning",
         "reasoning": "Testing moment"
     }]'''
-    mock_vlm_instance.prompt.return_value = json_response
-    mock_vlm_class.return_value = mock_vlm_instance
+    
+    mock_dispatcher_instance = MagicMock()
+    mock_dispatcher_instance.add = MagicMock()
+    mock_dispatcher_instance.flush = AsyncMock()
+    mock_dispatcher.return_value = mock_dispatcher_instance
     
     # Setup parse_vlm_response to return JSON (no think tags)
     mock_parse.return_value = json_response
@@ -263,22 +384,67 @@ def test_generate_instruction_no_think_tags(mock_file, mock_parse, mock_vlm_clas
     
     # Create generator and generate instruction
     generator = SingleStepVLMInstructionGenerator()
-    instruction_set = generator.generate_instructions_from_images(mock_simulation_data_single_frame)
+    
+    # Mock the prompt request to return our future
+    with patch.object(generator._prompt_dispatcher, 'add') as mock_add:
+        def set_future(prompt_request):
+            prompt_request.future.set_result(json_response)
+        mock_add.side_effect = set_future
+        
+        instruction_set = await generator.generate_instructions_from_images(mock_simulation_data_single_frame)
     
     # Verify the instruction set was returned
     assert instruction_set == expected_instruction_set
     assert instruction_set.instructions[0].adversarial_instruction == "Continue straight ahead"
 
-@patch("untitled.generator.single_step_vlm_instruction_generator.CONFIG")  # mock_config
-@patch("untitled.generator.single_step_vlm_instruction_generator.VLM")  # mock_vlm_class
-@patch("untitled.generator.single_step_vlm_instruction_generator.parse_vlm_response")  # mock_parse
-@patch("builtins.open", new_callable=mock_open, read_data="Test system task")  # mock_file
-def test_free_method(mock_file, mock_parse, mock_vlm_class, mock_config):
-    """Test the free method (should do nothing)."""
-    mock_config.generator.models = [MagicMock()]
-    mock_vlm_class.return_value = Mock()
-    generator = SingleStepVLMInstructionGenerator()
+@pytest.mark.asyncio
+@patch("untitled.generator.single_step_vlm_instruction_generator.PromptDispatcher")
+@patch("untitled.generator.single_step_vlm_instruction_generator.VLMClientFactory")
+@patch("untitled.generator.vlm.get_model_config")
+@patch("untitled.generator.single_step_vlm_instruction_generator.CONFIG")
+@patch("builtins.open", new_callable=mock_open, read_data="Test system task")
+async def test_free_method(mock_file, mock_config, mock_get_model_config, mock_factory, mock_dispatcher):
+    """Test the free method shuts down dispatcher and stops VLM."""
+    from untitled.generator.single_step_vlm_instruction_generator import SingleStepVLMInstructionGenerator
     
-    # Should not raise any errors
-    generator.free()
-    assert True
+    # Setup CONFIG with proper steps and model_instances
+    step = GeneratorStepConfig(
+        id="step-1",
+        model_name="test-model",
+        temperature=0.7,
+        max_tokens=512
+    )
+    mock_config.generator.steps = [step]
+    
+    instance = ModelInstanceConfig(
+        id="instance-1",
+        model_name="test-model",
+        type="vlm",
+        step_ids=["step-1"],
+        local_config=LocalVLMConfig(port=8000)
+    )
+    mock_config.model_instances = [instance]
+    
+    mock_get_model_config.return_value = MagicMock()
+    
+    # Mock VLM client
+    mock_vlm = MagicMock()
+    mock_vlm.is_parallelizable.return_value = False
+    mock_vlm.get_state.return_value = VLMClient.State.STARTED
+    mock_vlm.close_connection = AsyncMock()
+    mock_vlm.stop = AsyncMock()
+    mock_factory.create.return_value = mock_vlm
+
+    # Mock dispatcher
+    mock_dispatcher_instance = MagicMock()
+    mock_dispatcher_instance.stop = AsyncMock()
+    mock_dispatcher.return_value = mock_dispatcher_instance
+
+    generator = SingleStepVLMInstructionGenerator()
+
+    # Test free method
+    await generator.free()
+
+    # Verify dispatcher stop and VLM stop were called
+    mock_dispatcher_instance.stop.assert_called_once()
+    mock_vlm.stop.assert_called_once()
