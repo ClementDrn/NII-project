@@ -64,6 +64,7 @@ class Simulator:
         self.carla_path = Path(CONFIG.carla.path)
         self.conda_path = Path(CONFIG.carla.conda_path)
         self.frame_rate = 20  # fps
+        self.log_frame_rate = 4   # fps for logging
         
         # Benchmark configuration (Bench2Drive)
         self.benchmark = "bench2drive"
@@ -546,7 +547,7 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         
         return image_path
 
-    def get_image_logs(self, job_id: int, scenario_id: int, run_id: int, run_base_dir: Path = None) -> List[Path]:
+    def get_image_logs(self, job_id: int, scenario_id: int, run_id: int, run_base_dir: Path = None, frames_per_minute: int = 0) -> List[Path]:
         """
         Retrieve all image paths from the simulation logs for a specific run.
         
@@ -555,6 +556,7 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
             scenario_id: The ID of the scenario that was executed
             run_id: The ID of the run that was executed
             run_base_dir: Optional directory to override the run base directory
+            frames_per_minute: Optional number of logs to fetch for each minute of simulation (defaults to 0, for all frames)
 
         Returns:
             List of Paths to the image files
@@ -580,6 +582,18 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         else:
             LOG.debug(f"Found {len(sorted_image_files)} image files in directory: {image_dir}")
         
+        # Filter out frames if frames_per_minute is specified
+        log_frame_total_per_minute = self.log_frame_rate * 60
+        if frames_per_minute > 0:
+            if frames_per_minute > log_frame_total_per_minute:
+                LOG.warning(f"Requested frames_per_minute {frames_per_minute} exceeds total frames per minute {log_frame_total_per_minute}. Returning all frames.")
+            else:
+                interval = log_frame_total_per_minute / frames_per_minute
+                sorted_image_files = [
+                    img for idx, img in enumerate(sorted_image_files) if idx % int(interval) == 0
+                ]
+                LOG.debug(f"Filtered image files to {len(sorted_image_files)} using frames_per_minute={frames_per_minute}")
+
         return sorted_image_files
     
     def get_metadata_log(self, job_id: int, scenario_id: int, run_id: int, timestamp: float, run_base_dir: Path = None) -> Optional[SimulationMetadata]:
@@ -630,7 +644,7 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
 
         return metadata_path
 
-    def get_metadata_logs(self, job_id: int, scenario_id: int, run_id: int, run_base_dir: Path = None) -> List[SimulationMetadata]:
+    def get_metadata_logs(self, job_id: int, scenario_id: int, run_id: int, run_base_dir: Path = None, frames_per_minute: int = 0) -> List[SimulationMetadata]:
         """
         Retrieve all metadata from the simulation logs for a specific run.
         
@@ -639,6 +653,7 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
             scenario_id: The ID of the scenario that was executed
             run_id: The ID of the run that was executed
             run_base_dir: Optional directory to override the run base directory
+            frames_per_minute: Optional number of logs to fetch for each minute of simulation (defaults to 0, for all frames)
 
         Returns:
             List of SimulationMetadata objects
@@ -662,6 +677,20 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         if not sorted_metadata_files:
             LOG.warning(f"No metadata files found in directory: {metadata_dir}")
             return []
+        else:
+            LOG.debug(f"Found {len(sorted_metadata_files)} metadata files in directory: {metadata_dir}")
+        
+        # Filter out frames if frames_per_minute is specified
+        log_frame_total_per_minute = self.log_frame_rate * 60
+        if frames_per_minute > 0:
+            if frames_per_minute > log_frame_total_per_minute:
+                LOG.warning(f"Requested frames_per_minute {frames_per_minute} exceeds total frames per minute {log_frame_total_per_minute}. Returning all metadata.")
+            else:
+                interval = log_frame_total_per_minute / frames_per_minute
+                sorted_metadata_files = [
+                    md for idx, md in enumerate(sorted_metadata_files) if idx % int(interval) == 0
+                ]
+                LOG.debug(f"Filtered metadata files to {len(sorted_metadata_files)} using frames_per_minute={frames_per_minute}")
         
         # Load metadata from files
         metadata_list = []

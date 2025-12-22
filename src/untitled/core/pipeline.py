@@ -106,9 +106,10 @@ class Pipeline:
             cache_dir = self.job_handler.get_ground_truth_cache_dir(job.id, scenario_id, ground_truth_index)
             
             # Get image and metadata from previously collected ground truth
+            fpm = 4
             LOG.debug(f"    Fetching images and metadata from ground truth run {ground_truth_index}...")
-            image_path_list = self.simulator.get_image_logs(job.id, scenario_id, ground_truth_index, cache_dir)
-            metadata_list = self.simulator.get_metadata_logs(job.id, scenario_id, ground_truth_index, cache_dir)
+            image_path_list = self.simulator.get_image_logs(job.id, scenario_id, ground_truth_index, cache_dir, fpm)
+            metadata_list = self.simulator.get_metadata_logs(job.id, scenario_id, ground_truth_index, cache_dir, fpm)
             
             if not image_path_list:
                 LOG.error(f"    Failed to get images from simulation logs")
