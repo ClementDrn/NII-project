@@ -136,7 +136,7 @@ class Simulator:
         
         LOG.info("Benchmark installation validated successfully")
     
-    def _calculate_scenario_base_dir(self, job_id: int, scenario_id: int) -> Path:
+    def _calculate_scenario_base_dir(self, base_dir: Path, job_id: int, scenario_id: int) -> Path:
         """
         Calculate the base directory for a given scenario.
         
@@ -148,13 +148,14 @@ class Simulator:
         """        
         job_dir = f"job_{job_id:03d}"
         sce_dir = f"sce_{scenario_id:03d}"
-        return self.base_dir / job_dir / sce_dir
+        return base_dir / job_dir / sce_dir
     
-    def _calculate_run_base_dir(self, job_id: int, scenario_id: int, run_id: int) -> Path:
+    def _calculate_run_base_dir(self, base_dir: Path, job_id: int, scenario_id: int, run_id: int) -> Path:
         """
         Calculate the base directory for a given job, scenario, and run.
         
         Args:
+            base_dir: The root base directory
             job_id: The job ID number
             scenario_id: The scenario ID number
             run_id: The run ID number
@@ -162,7 +163,7 @@ class Simulator:
             Path to the base directory
         """
         run_dir = f"run_{run_id:03d}"
-        return self._calculate_scenario_base_dir(job_id, scenario_id) / run_dir
+        return self._calculate_scenario_base_dir(base_dir, job_id, scenario_id) / run_dir
 
     def set_job_context(self, job_id: int, scenario_id: int):
         """
@@ -356,7 +357,7 @@ class Simulator:
         self.run_counter += 1
 
         # Build directory structure based on job/scenario context
-        run_base_dir = self._calculate_run_base_dir(self.current_job_id, self.current_scenario_id, run_id)
+        run_base_dir = self._calculate_run_base_dir(self.base_dir, self.current_job_id, self.current_scenario_id, run_id)
 
         # Setup paths for this run
         # Directories
@@ -494,7 +495,7 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         time.sleep(2)
         self._kill_bench2drive_leaderboard_processes()
     
-    def get_image_log(self, job_id: int, scenario_id: int, run_id: int, timestamp: float) -> Optional[Path]:
+    def get_image_log(self, job_id: int, scenario_id: int, run_id: int, timestamp: float, run_base_dir: Path = None) -> Optional[Path]:
         """
         Retrieve the image path from the simulation logs at a specific timestamp.
         
@@ -503,12 +504,17 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
             scenario_id: The ID of the scenario that was executed
             run_id: The ID of the run that was executed
             timestamp: Time in seconds to retrieve the image from
+            run_base_dir: Optional directory to override the run base directory
             
         Returns:
             Path to the image file, or None if not found
         """
+        # Calculate run base directory if it was not provided
+        if run_base_dir is None:
+            run_base_dir = self._calculate_run_base_dir(self.base_dir, job_id, scenario_id, run_id)
+
         # Check if the image directory exists
-        image_dir = self._calculate_run_base_dir(job_id, scenario_id, run_id) / IMAGES_DIR_NAME
+        image_dir = run_base_dir / IMAGES_DIR_NAME
         if not image_dir.exists():
             LOG.error(f"Image directory does not exist: {image_dir}")
             return None
@@ -540,7 +546,7 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         
         return image_path
 
-    def get_image_logs(self, job_id: int, scenario_id: int, run_id: int) -> List[Path]:
+    def get_image_logs(self, job_id: int, scenario_id: int, run_id: int, run_base_dir: Path = None) -> List[Path]:
         """
         Retrieve all image paths from the simulation logs for a specific run.
         
@@ -548,12 +554,17 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
             job_id: The ID of the job that was executed
             scenario_id: The ID of the scenario that was executed
             run_id: The ID of the run that was executed
+            run_base_dir: Optional directory to override the run base directory
 
         Returns:
             List of Paths to the image files
         """
+        # Calculate run base directory if it was not provided
+        if run_base_dir is None:
+            run_base_dir = self._calculate_run_base_dir(self.base_dir, job_id, scenario_id, run_id)
+        
         # Check if the image directory exists
-        image_dir = self._calculate_run_base_dir(job_id, scenario_id, run_id) / IMAGES_DIR_NAME
+        image_dir = run_base_dir / IMAGES_DIR_NAME
         if not image_dir.exists():
             LOG.error(f"Image directory does not exist: {image_dir}")
             return []
@@ -571,7 +582,7 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         
         return sorted_image_files
     
-    def get_metadata_log(self, job_id: int, scenario_id: int, run_id: int, timestamp: float) -> Optional[SimulationMetadata]:
+    def get_metadata_log(self, job_id: int, scenario_id: int, run_id: int, timestamp: float, run_base_dir: Path = None) -> Optional[SimulationMetadata]:
         """
         Retrieve metadata from the simulation logs at a specific timestamp.
         
@@ -580,12 +591,17 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
             scenario_id: The ID of the scenario that was executed
             run_id: The ID of the run that was executed
             timestamp: Time in seconds to retrieve metadata from
+            run_base_dir: Optional directory to override the run base directory
             
         Returns:
             Dictionary containing metadata, or None if not found
         """
+        # Calculate run base directory if it was not provided
+        if run_base_dir is None:
+            run_base_dir = self._calculate_run_base_dir(self.base_dir, job_id, scenario_id, run_id)
+        
         # Check if the metadata directory exists
-        metadata_dir = self._calculate_run_base_dir(job_id, scenario_id, run_id) / METADATA_DIR_NAME
+        metadata_dir = run_base_dir / METADATA_DIR_NAME
         if not metadata_dir.exists():
             LOG.error(f"Metadata directory does not exist: {metadata_dir}")
             return None
@@ -614,7 +630,7 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
 
         return metadata_path
 
-    def get_metadata_logs(self, job_id: int, scenario_id: int, run_id: int) -> List[SimulationMetadata]:
+    def get_metadata_logs(self, job_id: int, scenario_id: int, run_id: int, run_base_dir: Path = None) -> List[SimulationMetadata]:
         """
         Retrieve all metadata from the simulation logs for a specific run.
         
@@ -622,12 +638,17 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
             job_id: The ID of the job that was executed
             scenario_id: The ID of the scenario that was executed
             run_id: The ID of the run that was executed
+            run_base_dir: Optional directory to override the run base directory
 
         Returns:
             List of SimulationMetadata objects
         """
+        # Calculate run base directory if it was not provided
+        if run_base_dir is None:
+            run_base_dir = self._calculate_run_base_dir(self.base_dir, job_id, scenario_id, run_id)
+        
         # Check if the metadata directory exists
-        metadata_dir = self._calculate_run_base_dir(job_id, scenario_id, run_id) / METADATA_DIR_NAME
+        metadata_dir = run_base_dir / METADATA_DIR_NAME
         if not metadata_dir.exists():
             LOG.error(f"Metadata directory does not exist: {metadata_dir}")
             return []
