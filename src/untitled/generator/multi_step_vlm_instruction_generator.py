@@ -6,7 +6,7 @@ from untitled.generator.vlm import create_vlm_client, parse_vlm_response, VLMCli
 from untitled.generator.instruction import InstructionSet, parse_instructions_from_json
 from untitled.core.base import PROJECT_ROOT, LOG, CONFIG
 from untitled.simulator.simulation_data import SimulationData
-from typing import List, Optional
+from typing import List, Optional, override
 
 
 class MultiStepVLMInstructionGenerator(InstructionGenerator):
@@ -55,7 +55,6 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
                 vlm.open_connection()   # start + connect
             parallel_descriptor_vlm_list.append(vlm)
         self._descriptor_dispatcher: PromptDispatcher = PromptDispatcher(parallel_descriptor_vlm_list)
-        self._descriptor_dispatcher.start()
 
         parallel_planner_vlm_list = []
         for vlm in self._planner_clients:
@@ -63,7 +62,6 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
                 vlm.open_connection()   # start + connect
             parallel_planner_vlm_list.append(vlm)
         self._planner_dispatcher: PromptDispatcher = PromptDispatcher(parallel_planner_vlm_list)
-        self._planner_dispatcher.start()
 
         # Fetch scene descriptor task message from its asset file
         SCENE_DESCRIPTOR_TASK_PATH = PROJECT_ROOT / "assets" / "prompts" / "scene_descriptor_task.txt"
@@ -77,6 +75,16 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
             self._planner_task_message = f.read()
         LOG.debug(f"Loaded adversarial planner task message for VLM. See below:\n{self._planner_task_message}")
 
+    @override
+    async def init(self):
+        """
+        Initialize VLM resources.
+        """
+        # Start both prompt dispatchers
+        await self._descriptor_dispatcher.start()
+        await self._planner_dispatcher.start()
+
+    @override
     async def free(self):
         """
         Free VLM resources.
@@ -104,6 +112,7 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
                 await vlm.stop()
         self._planner_clients = []
 
+    @override
     async def generate_instructions_from_images(self, data: SimulationData) -> Optional[InstructionSet]:
         """
         Generate instruction from images and metadata using a VLM.
@@ -134,12 +143,12 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
                 user_image_paths=[image_path],
                 future=descriptor_future
             )
-            self._descriptor_dispatcher.add(prompt_request)
+            await self._descriptor_dispatcher.add(prompt_request)
             futures.append(descriptor_future)
 
         # Wait for all scene descriptions
         for future in futures:
-            chat_response = await future
+            chat_response = await future    # FIXME: Infinite wait here
             scene_description = parse_vlm_response(chat_response)
             scene_descriptions.append(scene_description)
 
@@ -159,7 +168,7 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
             user_image_paths=None,
             future=planner_future
         )
-        self._planner_dispatcher.add(prompt_request)
+        await self._planner_dispatcher.add(prompt_request)
         chat_response = await planner_future
         instruction_raw = parse_vlm_response(chat_response)
         
@@ -171,6 +180,7 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
 
         return instruction_set
 
+    @override
     async def enable_full_speed_mode(self):
         """
         Enable full speed operation.
@@ -191,9 +201,12 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
                 new_planner_clients.append(vlm)
         
         # Add new clients to prompt dispatchers
+        LOG.debug(f"Adding {len(new_descriptor_clients)} descriptor VLM clients and {len(new_planner_clients)} planner VLM clients to prompt dispatchers for full speed mode.")
         await self._descriptor_dispatcher.add_clients(new_descriptor_clients)
         await self._planner_dispatcher.add_clients(new_planner_clients)
+        LOG.debug("Full speed mode enabled.")
 
+    @override
     async def disable_full_speed_mode(self):
         """
         Disable full speed operation.

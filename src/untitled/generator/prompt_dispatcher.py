@@ -35,8 +35,10 @@ class PromptDispatcher:
             """Compare by client priority for PriorityQueue ordering."""
             return self.client.priority < other.client.priority
 
-    def __init__(self, vlm_clients: List[VLMClient]):
+    def __init__(self, vlm_clients: List[VLMClient] = []):
         # List of all VLM clients to use for processing prompts
+        if vlm_clients is None:
+            vlm_clients = []
         self._all_clients: List[PromptDispatcher.ClientResource] = [
             self.ClientResource(client=client, is_idle=asyncio.Event()) 
             for client in vlm_clients
@@ -47,6 +49,9 @@ class PromptDispatcher:
         self._free_clients: asyncio.PriorityQueue[PromptDispatcher.ClientResource] = asyncio.PriorityQueue()    # sorted by client priority
         for resource in self._all_clients:
             self._free_clients.put_nowait(resource)
+
+        # Queue of prompts to be processed
+        self._prompt_queue: asyncio.Queue[PromptRequest] = asyncio.Queue()
 
         # Dispatcher task
         self._dispatcher_task: asyncio.Task = None
@@ -87,21 +92,26 @@ class PromptDispatcher:
         try:
             while True:
                 # 1. Wait for a prompt to be available
+                LOG.debug("Prompt dispatcher waiting for a prompt...")
                 prompt = await self._prompt_queue.get()
+                LOG.debug("Prompt dispatcher fetched a prompt from the queue.")
 
                 # 2. Wait for an available client resource
                 # The fetched client has the highest priority (lowest priority value)
                 client_resource: PromptDispatcher.ClientResource = None
                 while client_resource is None:
                     client_resource = await self._free_clients.get()
+                    LOG.debug(f"Prompt dispatcher found client.")
                     # If this client is being removed, skip it
                     if client_resource.is_removal_requested:
                         client_resource = None
                 
                 # Mark client as busy
+                LOG.debug(f"Prompt dispatcher clearing idle status for client...")
                 client_resource.is_idle.clear()
 
                 # 3. Fetch as many prompts as the client can handle
+                LOG.debug(f"Prompt dispatcher preparing prompts for client...")
                 prompts = [prompt]
                 prompt_max_count = client_resource.client.batch_size
                 for _ in range(prompt_max_count - 1):
@@ -112,7 +122,9 @@ class PromptDispatcher:
                         break
                 
                 # 4. Dispatch prompts to the VLM client (don't wait)
+                LOG.debug(f"Prompt dispatcher dispatching {len(prompts)} prompts to client...")
                 asyncio.create_task(self._dispatch_prompts_to_client(prompts, client_resource))
+                LOG.debug(f"Prompt dispatcher finished one loop iteration.")
         except asyncio.CancelledError:
             LOG.debug("Prompt dispatcher loop cancelled.")
 
@@ -153,6 +165,12 @@ class PromptDispatcher:
         await asyncio.gather(*[
             resource.is_idle.wait() for resource in self._all_clients
         ])
+
+    async def is_running(self) -> bool:
+        """
+        Check if the prompt dispatcher is running.
+        """
+        return self._dispatcher_task is not None and not self._dispatcher_task.done()
 
     async def add(self, prompt: PromptRequest):
         """
@@ -203,6 +221,12 @@ class PromptDispatcher:
 
         # Remove clients from the main list
         self._all_clients = resources_to_keep
+
+    async def get_clients(self) -> List[VLMClient]:
+        """
+        Get the list of currently registered VLM clients.
+        """
+        return [resource.client for resource in self._all_clients]
 
     async def wait_until_all_prompts_processed(self):
         """

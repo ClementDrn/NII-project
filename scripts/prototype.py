@@ -28,7 +28,7 @@ async def main():
 
     try:
         LOG.info("Initializing pipeline...")
-        pipeline.init()
+        await pipeline.init()
 
         LOG.info("Starting pipeline...")
         await pipeline.start()

@@ -69,6 +69,9 @@ class VLMClient(ABC):
         # Priority for prompt dispatcher
         self.priority = 0   # TODO: Make configurable
 
+        # Optimal number of prompts to batch together
+        self.batch_size = 8  # TODO: Make configurable
+
 
     async def _send_prompt(self, system_text: str, user_text: str, user_image_paths: list[Path]) -> str:
         """
@@ -190,11 +193,7 @@ class VLMClient(ABC):
         Returns:
             True if connection is successful and server responds, False otherwise
         """
-        # Check if connected
-        if self.state != VLMClient.State.CONNECTED:
-            LOG.warning("VLM client state is not CONNECTED while testing connection. Returning False.")
-            return False
-
+        # Send a simple test prompt
         try:
             LOG.info("Testing VLM connection...")
             response = await self.client.chat.completions.create(

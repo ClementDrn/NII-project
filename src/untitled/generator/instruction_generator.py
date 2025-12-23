@@ -8,6 +8,12 @@ class InstructionGenerator(ABC):
     def __init__(self):
         pass
 
+    async def init(self):
+        """
+        Initialize resources (async to support VLM clients).
+        """
+        pass
+
     async def free(self):
         """
         Free resources (async to support VLM clients).

@@ -26,7 +26,7 @@ class Pipeline:
         self.generator = None
         self.job_handler = None
 
-    def init(self):
+    async def init(self):
         """
         Initialize all pipeline components.
         """
@@ -41,8 +41,10 @@ class Pipeline:
         # Initialize instruction generator based on config
         if CONFIG.generator.design == "single_step_vlm":
             self.generator = SingleStepVLMInstructionGenerator()
+            await self.generator.init()
         elif CONFIG.generator.design == "multi_step_vlm":
             self.generator = MultiStepVLMInstructionGenerator()
+            await self.generator.init()
         else:
             raise ValueError(f"Unknown generator design: {CONFIG.generator.design}")
 
@@ -133,6 +135,7 @@ class Pipeline:
                         for i, img_path in enumerate(image_path_list)]
             )
             
+            LOG.debug(f"    Generating instructions from images...")
             instruction_set = await self.generator.generate_instructions_from_images(simulation_data)
             if not instruction_set:
                 LOG.error(f"    Failed to generate instruction from VLM")
@@ -343,15 +346,17 @@ class Pipeline:
         
         # Enable generator's full speed mode as the simulator is idle now (async)
         enable_full_speed_mode_task = asyncio.create_task(self.generator.enable_full_speed_mode())
+        await enable_full_speed_mode_task
         
         # Generate instructions for all scenarios
         all_instructions = {}  # Map: scenario_id -> {experiment_index -> Instruction}
         for scenario_id in job.scenarios:
+            LOG.debug(f"Generating instructions for scenario {scenario_id}...")
             scenario_instructions = await self._generate_scenario_instructions(job, scenario_id)
             all_instructions[scenario_id] = scenario_instructions
         
         # Disable full speed mode once all instructions are generated
-        await enable_full_speed_mode_task
+        # await enable_full_speed_mode_task
         await self.generator.disable_full_speed_mode()
         
         # Stage 3: CARLA - Run all experiments with generated instructions

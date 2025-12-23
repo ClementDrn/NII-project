@@ -18,6 +18,65 @@ class FakeClient:
         self.calls.append((system_text, user_text))
         return f"{self.name}:{self.response}"
 
+@pytest.mark.asyncio
+async def test_prompt_dispatcher_init_and_getters():
+    # Create clients and dispatcher
+    client1 = FakeClient("c1", "ok")
+    client2 = FakeClient("c2", "ok")
+    dispatcher = PromptDispatcher([client1, client2])
+
+    # Check that clients are registered
+    clients = await dispatcher.get_clients()
+    assert len(clients) == 2
+    assert client1 in clients
+    assert client2 in clients
+
+@pytest.mark.asyncio
+async def test_prompt_dispatcher_add_and_remove_clients():
+    # Initial dispatcher with one client
+    client1 = FakeClient("c1", "ok")
+    dispatcher = PromptDispatcher([client1])
+
+    # Add clients
+    client2 = FakeClient("c2", "ok")
+    client3 = FakeClient("c3", "ok")
+    await dispatcher.add_clients([client2, client3])
+
+    # Check that clients are added
+    clients = await dispatcher.get_clients()
+    assert len(clients) == 3
+    assert client1 in clients
+    assert client2 in clients
+    assert client3 in clients
+
+    # Remove a client
+    await dispatcher.remove_clients([client2])
+
+    # Check that client2 is removed
+    clients = await dispatcher.get_clients()
+    assert len(clients) == 2
+    assert client1 in clients
+    assert client2 not in clients
+    assert client3 in clients
+
+@pytest.mark.asyncio
+async def test_prompt_dispatcher_start_and_stop():
+    client = FakeClient("c1", "ok")
+    dispatcher = PromptDispatcher([client])
+
+    # Start
+    await dispatcher.start()
+    assert await dispatcher.is_running()
+
+    # Subsequent start calls should not raise
+    await dispatcher.start()
+
+    # Stop
+    await dispatcher.stop()
+    assert not await dispatcher.is_running()
+
+    # Subsequent stop calls should not raise
+    await dispatcher.stop()
 
 @pytest.mark.asyncio
 async def test_prompt_dispatcher_processes_single_prompt():
@@ -37,6 +96,42 @@ async def test_prompt_dispatcher_processes_single_prompt():
 
     await dispatcher.stop()
 
+@pytest.mark.asyncio
+async def test_prompt_dispatcher_processes_single_prompt_without_wait():
+    loop = asyncio.get_running_loop()
+    client = FakeClient("c1", "ok")
+    dispatcher = PromptDispatcher([client])
+
+    await dispatcher.start()
+
+    future = loop.create_future()
+    await dispatcher.add(PromptRequest("sys", "user", [], future))
+
+    result = await future
+    assert result == "c1:ok"
+    assert client.calls == [("sys", "user")]
+
+    await dispatcher.stop()
+
+@pytest.mark.asyncio
+async def test_prompt_dispatcher_processes_single_prompt_with_late_client():
+    loop = asyncio.get_running_loop()
+    dispatcher = PromptDispatcher()
+    await dispatcher.start()
+
+    # Add prompt to dispatcher
+    future = loop.create_future()
+    await dispatcher.add(PromptRequest("sys", "user", [], future))
+
+    # Add client after prompt
+    client = FakeClient("c1", "ok")
+    await dispatcher.add_clients([client])
+
+    result = await future
+    assert result == "c1:ok"
+    assert client.calls == [("sys", "user")]
+
+    await dispatcher.stop()
 
 @pytest.mark.asyncio
 async def test_prompt_dispatcher_honours_extra_clients():
@@ -58,14 +153,3 @@ async def test_prompt_dispatcher_honours_extra_clients():
     assert sorted(results) == ["primary:ok", "secondary:ok"]
     assert len(client_a.calls) == 1
     assert len(client_b.calls) == 1
-
-@pytest.mark.asyncio
-async def test_prompt_dispatcher_shutdown_stops_thread():
-    client = FakeClient("c1", "ok")
-    dispatcher = PromptDispatcher([client])
-
-    await dispatcher.start()
-    await dispatcher.stop()
-
-    # Subsequent stop calls should not raise
-    await dispatcher.stop()

@@ -5,7 +5,7 @@ from untitled.generator.vlm import create_vlm_client, parse_vlm_response, VLMCli
 from untitled.core.base import PROJECT_ROOT, LOG, CONFIG
 from untitled.simulator.simulation_data import SimulationData
 from untitled.generator.instruction import InstructionSet, parse_instructions_from_json
-from typing import List, Optional
+from typing import List, Optional, override
 import asyncio
 
 
@@ -43,7 +43,6 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
                 vlm.open_connection()   # start + connect
             parallel_vlm_list.append(vlm)
         self._prompt_dispatcher: PromptDispatcher = PromptDispatcher(parallel_vlm_list)
-        self._prompt_dispatcher.start()
 
         # Fetch system task message from its asset file
         SYSTEM_TASK_PATH = PROJECT_ROOT / "assets" / "prompts" / "single_frame_adversarial_generator_task.txt"
@@ -51,6 +50,15 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
             self._system_task_message = f.read()
         LOG.debug(f"Loaded system task message for VLM. See below:\n{self._system_task_message}")
 
+    @override
+    async def init(self):
+        """
+        Initialize VLM resources.
+        """
+        # Start the prompt dispatcher
+        await self._prompt_dispatcher.start()
+
+    @override
     async def free(self):
         """
         Free VLM resources.
@@ -68,6 +76,7 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
                 await vlm.stop()
         self._clients = []
 
+    @override
     async def generate_instructions_from_images(self, data: SimulationData) -> Optional[InstructionSet]:
         """
         Generate instruction from images and metadata using a VLM.
@@ -99,7 +108,7 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
             user_image_paths=[image_path],
             future=future
         )
-        self._prompt_dispatcher.add(prompt_request)
+        await self._prompt_dispatcher.add(prompt_request)
         
         # Wait for response
         response_text = await future
@@ -119,6 +128,7 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
 
         return instruction_set
 
+    @override
     async def enable_full_speed_mode(self):
         """
         Enable full speed operation.
@@ -134,6 +144,7 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
         # Add new clients to prompt dispatcher
         await self._prompt_dispatcher.add_clients(new_clients)
 
+    @override
     async def disable_full_speed_mode(self):
         """
         Disable full speed operation.
