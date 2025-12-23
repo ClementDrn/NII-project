@@ -16,3 +16,7 @@ hosts.yaml
 data/
 cache/
 tmp/
+
+# IDE
+.vscode/
+.idea/
