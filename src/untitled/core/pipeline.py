@@ -1,12 +1,15 @@
 import asyncio
 from untitled.core.base import LOG, PROJECT_ROOT, CONFIG
 from untitled.core.job_handler import Job, JobHandler
+from untitled.generator.instruction_generator import InstructionGenerator
 from untitled.simulator.simulator import Simulator
 from untitled.simulator.simulation_data import SimulationData
 from untitled.generator.single_step_vlm_instruction_generator import SingleStepVLMInstructionGenerator
 from untitled.generator.multi_step_vlm_instruction_generator import MultiStepVLMInstructionGenerator
 from untitled.simulator.simulation_data import SimulationFrameData
 from untitled.generator.instruction import Instruction
+from untitled.generator.filter.filter import cluster_frames
+from untitled.generator.filter.embedder import DINOEmbedder, Embedder
 
 from typing import Dict, Tuple
 import time
@@ -22,9 +25,10 @@ class Pipeline:
 
     def __init__(self):
         """Initialize pipeline components."""
-        self.simulator = None
-        self.generator = None
-        self.job_handler = None
+        self.simulator: Simulator = None
+        self.filter_embedder: Embedder = None
+        self.generator: InstructionGenerator = None
+        self.job_handler: JobHandler = None
 
     async def init(self):
         """
@@ -47,6 +51,9 @@ class Pipeline:
             await self.generator.init()
         else:
             raise ValueError(f"Unknown generator design: {CONFIG.generator.design}")
+
+        # Initialize filter embedder
+        self.filter_embedder = DINOEmbedder()
 
     async def stop(self):
         """
@@ -134,9 +141,19 @@ class Pipeline:
                 frames=[SimulationFrameData(image_name=img_path.name, metadata=metadata_list[i])
                         for i, img_path in enumerate(image_path_list)]
             )
+
+            # Cluster similar frames to reduce redundancy
+            threshold = 0.990
+            clusters = cluster_frames(simulation_data, self.filter_embedder, threshold)
+            filtered_simulation_data = SimulationData(
+                image_dir=simulation_data.image_dir,
+                frame_count=sum(len(cluster.get_data().frames) for cluster in clusters),
+                frames=[frame for cluster in clusters for frame in cluster.get_data().frames]
+            )
+            LOG.debug(f"    Reduced {simulation_data.frame_count} frames to {filtered_simulation_data.frame_count} frames using similarity threshold {threshold}")
             
             LOG.debug(f"    Generating instructions from images...")
-            instruction_set = await self.generator.generate_instructions_from_images(simulation_data)
+            instruction_set = await self.generator.generate_instructions_from_images(filtered_simulation_data)
             if not instruction_set:
                 LOG.error(f"    Failed to generate instruction from VLM")
                 raise RuntimeError("VLM instruction generation failed")
@@ -338,6 +355,7 @@ class Pipeline:
             job_successful += gt_success
             job_failed += gt_failed
         
+        # TODO: Add async VLM instruction generation during ground truth runs
         # Stage 2: VLM - Generate instructions for all experiments
         LOG.info("")
         LOG.info("=" * 80)
