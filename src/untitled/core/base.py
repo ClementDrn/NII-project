@@ -12,12 +12,16 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]  # this file is at src/untitl
 VENDOR_VLM_DIR = PROJECT_ROOT / "vendor" / "vlm"
 VENDOR_CARLA_DIR = PROJECT_ROOT / "vendor" / "ads" / "carla"
 
-# Logger
+# Logs
 if os.getenv("UNTITLED_ENABLE_DEBUG_LOGS", "false").lower() in ("true", "1", "yes"):
     console_level = logging.DEBUG
 else:
     console_level = logging.INFO
-LOG = init_logging(PROJECT_NAME, PROJECT_ROOT / "logs", console_level=console_level)
+LOG_DIR = PROJECT_ROOT / "logs"
+# Main application log file
+LOG = init_logging(PROJECT_NAME, LOG_DIR, console_level=console_level)
+# Intermediate prompts log file
+INT_PROMPTS_LOG = init_logging("intermediate_prompts", LOG_DIR, console_level=logging.INFO)
 
 # Configuration settings
 CONFIG = load_config(PROJECT_ROOT, LOG)

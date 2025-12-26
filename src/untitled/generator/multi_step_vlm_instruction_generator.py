@@ -4,7 +4,7 @@ from untitled.generator.instruction_generator import InstructionGenerator, get_a
 from untitled.generator.prompt_dispatcher import PromptDispatcher, PromptRequest
 from untitled.generator.vlm import create_vlm_client, parse_vlm_response, VLMClient, VLMClientFactory
 from untitled.generator.instruction import InstructionSet, parse_instructions_from_json
-from untitled.core.base import PROJECT_ROOT, LOG, CONFIG
+from untitled.core.base import INT_PROMPTS_LOG, PROJECT_ROOT, LOG, CONFIG
 from untitled.simulator.simulation_data import SimulationData
 from typing import List, Optional, override
 
@@ -151,6 +151,9 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
             chat_response = await future
             scene_description = parse_vlm_response(chat_response)
             scene_descriptions.append(scene_description)
+
+            # Save each scene description for debugging
+            INT_PROMPTS_LOG.debug(f"- Scene Description Response:\n{scene_description}\n")
 
         # Concatenate all scene descriptions and add index labels
         concatenated_descriptions = "\n\n".join(
