@@ -13,6 +13,8 @@ dependencies = [
     "pydantic-settings",
     "python-abc",
     "PyYAML",
+    "torch",
+    "transformers",
 ]
 
 [tool.setuptools]
