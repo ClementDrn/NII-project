@@ -1,5 +1,7 @@
+from untitled.simulator.simulation_data import SimulationData
 from untitled.core.settings import GeneratorStepConfig, get_model_instances_config_by_step_id
 from untitled.generator.instruction import InstructionSet
+
 from abc import ABC, abstractmethod
 
 
@@ -21,7 +23,7 @@ class InstructionGenerator(ABC):
         pass
 
     @abstractmethod
-    async def generate_instructions_from_images(self, data) -> InstructionSet:
+    async def generate_instructions_from_images(self, data: SimulationData) -> InstructionSet:
         """
         Generate instructions from simulation data (async to support VLM calls).
         """
