@@ -210,7 +210,7 @@ class VLMClient(ABC):
             LOG.error(f"VLM connection test failed: {e}")
             return False
         
-    async def prompt(self, system_text: str, user_text: str, user_image_paths: list[Path]) -> asyncio.Future:
+    async def prompt(self, system_text: str, user_text: str, user_image_paths: list[Path]) -> str:
         """
         Send immediately a prompt to the VLM.
         
@@ -220,23 +220,15 @@ class VLMClient(ABC):
             user_image_paths: List of image paths to include
             
         Returns:
-            Future that will contain the response text
+            The response text from the VLM
         """
         if self.state != VLMClient.State.CONNECTED:
             LOG.error("VLM client is not connected. Cannot send prompt.")
             raise ConnectionError("VLM client is not connected.")
 
-        # A 'future' to hold the response once available 
-        future = asyncio.Future()
-
-        # Send the prompt and set the future result
-        try:
-            response = await self._send_prompt(system_text, user_text, user_image_paths)
-            future.set_result(response)
-        except Exception as e:
-            future.set_exception(e)
-
-        return future
+        # Send the prompt and return the response
+        response = await self._send_prompt(system_text, user_text, user_image_paths)
+        return response
 
     @abstractmethod
     def is_remote(self) -> bool:

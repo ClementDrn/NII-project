@@ -101,7 +101,7 @@ async def test_prompt_requires_connection(dummy_client):
 
 
 @pytest.mark.asyncio
-async def test_prompt_returns_future_result(dummy_client):
+async def test_prompt_returns_result(dummy_client):
     response = MagicMock()
     response.choices = [MagicMock()]
     response.choices[0].message.content = "result"
@@ -110,8 +110,8 @@ async def test_prompt_returns_future_result(dummy_client):
     dummy_client.client = MagicMock()
     dummy_client.client.chat.completions.create = AsyncMock(return_value=response)
 
-    future = await dummy_client.prompt("sys", "user", None)
-    assert await future == "result"
+    result = await dummy_client.prompt("sys", "user", None)
+    assert result == "result"
     dummy_client.client.chat.completions.create.assert_awaited_once()
 
 
@@ -127,8 +127,8 @@ async def test_prompt_passes_api_parameters(dummy_client):
 
     dummy_client.api_parameters = {"model": "model-x", "temperature": 0.2, "max_tokens": 12}
 
-    future = await dummy_client.prompt("sys", "user", None)
-    await future
+    result = await dummy_client.prompt("sys", "user", None)
+    assert result == "ok"
 
     await_args = dummy_client.client.chat.completions.create.await_args
     assert await_args.kwargs["model"] == "model-x"
