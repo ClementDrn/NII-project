@@ -16,8 +16,8 @@ class LocalVLM(VLMClient):
     Local VLM server that can be started and stopped on the local machine.
     """
 
-    def __init__(self, process: VLMProcess, config: ModelConfig, host: str, api_key: str, api_parameters: dict = {}):
-        super().__init__(config, host, api_key, api_parameters)
+    def __init__(self, process: VLMProcess, priority: int, batch_size: int, host: str, api_key: str, api_parameters: dict = {}):
+        super().__init__(priority, batch_size, host, api_key, api_parameters)
         self._process: VLMProcess = process        
 
     @override
@@ -25,7 +25,7 @@ class LocalVLM(VLMClient):
         """
         Start the local VLM server.
         """
-        LOG.info(f"Starting local VLM server for model {self.model_config.model_name}...")
+        LOG.info(f"Starting local VLM server for model {self._process.get_model_name()}...")
         
         # Start the VLM process
         await self._process.start()

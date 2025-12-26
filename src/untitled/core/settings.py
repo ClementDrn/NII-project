@@ -36,6 +36,8 @@ class ModelInstanceConfig(BaseSettings):
     id: str
     model_name: str
     type: str  # "vlm"
+    priority: int = 0
+    batch_size: int = 1
     step_ids: list[str] = []
     local_config: LocalVLMConfig | None = None
     remote_config: RemoteVLMConfig | None = None

@@ -47,7 +47,7 @@ class VLMClient(ABC):
         STARTED = 1
         CONNECTED = 2
 
-    def __init__(self, config: ModelConfig, host: str, api_key: str, api_parameters: dict = {}):
+    def __init__(self, priority: int, batch_size: int, host: str, api_key: str, api_parameters: dict = {}):
         """
         Initialize VLM client.
         
@@ -56,7 +56,11 @@ class VLMClient(ABC):
             api_key: API key for authentication
             api_parameters: Additional API parameters (model, temperature, etc.)
         """
-        self.model_config = config
+        # Attributes for the dispatcher
+        self.priority = priority        # Priority for prompt dispatcher
+        self.batch_size = batch_size    # Optimal number of prompts to batch together
+
+        # Set connection parameters
         self.host = host
         self.api_key = api_key
         self.api_parameters = api_parameters
@@ -65,12 +69,6 @@ class VLMClient(ABC):
         # Initialize OpenAI client later
         self.client = None
         self.state = VLMClient.State.DISABLED
-        
-        # Priority for prompt dispatcher
-        self.priority = 0   # TODO: Make configurable
-
-        # Optimal number of prompts to batch together
-        self.batch_size = 8  # TODO: Make configurable
 
 
     async def _send_prompt(self, system_text: str, user_text: str, user_image_paths: list[Path]) -> str:

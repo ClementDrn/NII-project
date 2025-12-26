@@ -91,6 +91,8 @@ class TestModelInstanceConfig:
             id="r4b_0",
             model_name="r4b",
             type="vlm",
+            priority=5,
+            batch_size=4,
             step_ids=["description", "planning"],
             local_config=local_config
         )
@@ -98,6 +100,8 @@ class TestModelInstanceConfig:
         assert instance.id == "r4b_0"
         assert instance.model_name == "r4b"
         assert instance.type == "vlm"
+        assert instance.priority == 5
+        assert instance.batch_size == 4
         assert instance.step_ids == ["description", "planning"]
         assert instance.local_config is not None
         assert instance.local_config.gpu_id == 0
@@ -110,6 +114,8 @@ class TestModelInstanceConfig:
             id="r4b_1",
             model_name="r4b",
             type="vlm",
+            priority=3,
+            batch_size=2,
             step_ids=["description"],
             remote_config=remote_config
         )
@@ -117,6 +123,8 @@ class TestModelInstanceConfig:
         assert instance.id == "r4b_1"
         assert instance.model_name == "r4b"
         assert instance.type == "vlm"
+        assert instance.priority == 3
+        assert instance.batch_size == 2
         assert instance.step_ids == ["description"]
         assert instance.remote_config is not None
         assert instance.remote_config.host_id == "my_vlm_host"

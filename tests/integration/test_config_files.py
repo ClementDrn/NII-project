@@ -171,6 +171,8 @@ class TestConfigFilesIntegration:
                 assert instance.id
                 assert instance.model_name
                 assert instance.type == "vlm"
+                assert instance.priority is not None and instance.priority >= 0
+                assert instance.batch_size is not None and instance.batch_size > 0
                 # Each instance should have either local_config or remote_config
                 assert (instance.local_config is not None) or (instance.remote_config is not None), \
                     f"Model instance {instance.id} must have either local_config or remote_config"

@@ -9,8 +9,8 @@ from untitled.generator.model_config import ModelConfig
 
 @pytest.mark.asyncio
 async def test_remote_vlm_start_is_noop():
-    mock_config = MagicMock(spec=ModelConfig)
-    client = RemoteVLM(mock_config, "http://remote-host", "token")
+    moc_config = MagicMock(spec=ModelConfig)
+    client = RemoteVLM(0, 8, "http://remote-host", "token")
 
     assert client.state == VLMClient.State.STARTED
     await client.start()
@@ -19,8 +19,7 @@ async def test_remote_vlm_start_is_noop():
 
 @pytest.mark.asyncio
 async def test_remote_vlm_stop_closes_connection_when_connected():
-    mock_config = MagicMock(spec=ModelConfig)
-    client = RemoteVLM(mock_config, "http://remote-host", "token")
+    client = RemoteVLM(0, 8, "http://remote-host", "token")
     client.state = VLMClient.State.CONNECTED
     client.client = object()
 
@@ -33,8 +32,7 @@ async def test_remote_vlm_stop_closes_connection_when_connected():
 
 
 def test_remote_vlm_parallelizable_and_remote_flags():
-    mock_config = MagicMock(spec=ModelConfig)
-    client = RemoteVLM(mock_config, "http://remote-host", "token")
+    client = RemoteVLM(0, 8, "http://remote-host", "token")
 
     assert client.is_parallelizable() is True
     assert client.is_remote() is True

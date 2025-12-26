@@ -185,6 +185,8 @@ async def test_init_with_two_models(mock_file, mock_config, mock_get_model_confi
         id="instance-1",
         model_name="test-model-1",
         type="vlm",
+        priority=1,
+        batch_size=8,
         step_ids=["descriptor-step"],
         local_config=LocalVLMConfig(port=8000)
     )
@@ -192,6 +194,8 @@ async def test_init_with_two_models(mock_file, mock_config, mock_get_model_confi
         id="instance-2",
         model_name="test-model-2",
         type="vlm",
+        priority=2,
+        batch_size=1,
         step_ids=["planner-step"],
         local_config=LocalVLMConfig(port=8001)
     )
@@ -314,14 +318,15 @@ async def test_generate_instruction_multi_frame(mock_file, mock_config, mock_get
     # Create generator
     generator = MultiStepVLMInstructionGenerator()    # Mock the dispatchers' add methods
     descriptor_call_count = 0
-    def descriptor_add_side_effect(prompt_request):
+
+    async def descriptor_add_side_effect(prompt_request):
         nonlocal descriptor_call_count
         prompt_request.future.set_result(
             f"<think>Analyzing frame {descriptor_call_count + 1}...</think>\n\n{parsed_descriptors[descriptor_call_count]}"
         )
         descriptor_call_count += 1
 
-    def planner_add_side_effect(prompt_request):
+    async def planner_add_side_effect(prompt_request):
         prompt_request.future.set_result(f"<think>Planning adversarial instruction...</think>\n\n{json_response}")
 
     generator._descriptor_dispatcher.add = descriptor_add_side_effect
@@ -425,10 +430,10 @@ async def test_generate_instruction_single_frame(mock_file, mock_config, mock_ge
     generator = MultiStepVLMInstructionGenerator()
 
     # Mock the dispatchers' add methods
-    def descriptor_add_side_effect(prompt_request):
+    async def descriptor_add_side_effect(prompt_request):
         prompt_request.future.set_result("<think>Analyzing scene...</think>\n\nScene description")
 
-    def planner_add_side_effect(prompt_request):
+    async def planner_add_side_effect(prompt_request):
         prompt_request.future.set_result(f"<think>Planning instruction...</think>\n\n{json_response}")
 
     generator._descriptor_dispatcher.add = descriptor_add_side_effect

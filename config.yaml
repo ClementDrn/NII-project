@@ -68,6 +68,8 @@ model_instances:
   - id: "r4b_0"
     model_name: "r4b"
     type: "vlm"
+    priority: 1
+    batch_size: 32
     step_ids:
       - "description"
       - "planning"

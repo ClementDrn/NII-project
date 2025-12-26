@@ -218,3 +218,9 @@ class VLMProcess:
         Returns True if the VLM process supports parallel operation with the simulator.
         """
         return self._process_config.is_parallel_to_simulator
+    
+    def get_model_name(self) -> str:
+        """
+        Get the model name served by this VLM process.
+        """
+        return self._model_config.model_name

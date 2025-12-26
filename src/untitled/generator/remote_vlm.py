@@ -9,10 +9,10 @@ class RemoteVLM(VLMClient):
     Remote VLM server client (server is already running elsewhere).
     """
 
-    def __init__(self, config: ModelConfig, host: str, api_key: str, api_parameters: dict = {}):
-        super().__init__(config, host, api_key, api_parameters)
-        # We assume that remote VLM is always started
-        self.status = VLMClient.State.STARTED
+    def __init__(self, priority: int, batch_size: int, host: str, api_key: str, api_parameters: dict = {}):
+        super().__init__(priority, batch_size, host, api_key, api_parameters)
+        # We assume that remote VLM is always running (started)
+        self.state = VLMClient.State.STARTED
 
     @override
     async def start(self):
@@ -28,11 +28,11 @@ class RemoteVLM(VLMClient):
         Stop the remote VLM client.
         """
         # Disconnect if connected
-        if self.status == VLMClient.State.CONNECTED:
+        if self.state == VLMClient.State.CONNECTED:
             await self.close_connection()
         
         # Check if correctly disconnected
-        if self.status != VLMClient.State.STARTED:
+        if self.state != VLMClient.State.STARTED:
             LOG.warning("VLM client status is not STARTED while stopping remote VLM.")
 
         # NOTE: We do not manage the remote VLM server lifecycle, therefore we do not stop it here.

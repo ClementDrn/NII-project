@@ -37,8 +37,7 @@ class DummyVLMClient(VLMClient):
 
 @pytest_asyncio.fixture(scope="function")
 async def dummy_client():
-    mock_config = MagicMock(spec=ModelConfig)
-    client = DummyVLMClient(mock_config, "http://localhost:8000", "token", {"model": "r4b"})
+    client = DummyVLMClient(0, 8, "http://localhost:8000", "token", {"model": "r4b"})
     await client.start()
     return client
 

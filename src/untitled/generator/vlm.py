@@ -68,6 +68,10 @@ class VLMClientFactory:
         # Get model config
         model_config = get_model_config(instance_config.model_name)
 
+        # Get priority and batch size
+        priority = instance_config.priority
+        batch_size = instance_config.batch_size
+
         # Create the VLM client depending on if it runs locally or remotely
         new_client = None
         if is_local:
@@ -87,7 +91,7 @@ class VLMClientFactory:
                 vlm_process = cls._vlm_processes[instance_config.id]
 
             # Create LocalVLM client
-            new_client = LocalVLM(vlm_process, instance_config, host, api_key, api_parameters)
+            new_client = LocalVLM(vlm_process, priority, batch_size, host, api_key, api_parameters)
         else:
             # Fetch host
             host_settings = get_host_config_by_id(CONFIG, instance_config.remote_config.host_id)
@@ -96,8 +100,7 @@ class VLMClientFactory:
 
             # Create RemoteVLM client
             LOG.info(f"Creating remote VLM client for host: {host_settings.host}")
-            new_client = RemoteVLM(instance_config, host, api_key, api_parameters)
-
+            new_client = RemoteVLM(priority, batch_size, host, api_key, api_parameters)
         return new_client
 
 

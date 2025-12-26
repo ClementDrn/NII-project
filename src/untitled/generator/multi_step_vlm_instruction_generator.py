@@ -148,7 +148,7 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
 
         # Wait for all scene descriptions
         for future in futures:
-            chat_response = await future    # FIXME: Infinite wait here
+            chat_response = await future
             scene_description = parse_vlm_response(chat_response)
             scene_descriptions.append(scene_description)
 

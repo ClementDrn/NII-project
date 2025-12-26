@@ -179,7 +179,7 @@ async def test_generate_instruction_single_frame(mock_file, mock_config, mock_ge
     generator = SingleStepVLMInstructionGenerator()
 
     # Mock the dispatcher's add method to immediately resolve the future
-    def mock_add_side_effect(prompt_request):
+    async def mock_add_side_effect(prompt_request):
         prompt_request.future.set_result(f"<think>Analyzing...</think>\n\n{json_response}")
     
     generator._prompt_dispatcher.add = mock_add_side_effect
@@ -300,7 +300,7 @@ async def test_generate_instruction_multiple_frames_uses_first_frame(mock_file, 
     generator = SingleStepVLMInstructionGenerator()
 
     # Mock the dispatcher's add method to immediately resolve the future
-    def mock_add_side_effect(prompt_request):
+    async def mock_add_side_effect(prompt_request):
         prompt_request.future.set_result(json_response)
     
     generator._prompt_dispatcher.add = mock_add_side_effect
@@ -363,7 +363,7 @@ async def test_generate_instruction_no_think_tags(mock_file, mock_config, mock_g
     }]'''
     
     mock_dispatcher_instance = MagicMock()
-    mock_dispatcher_instance.add = MagicMock()
+    mock_dispatcher_instance.add = AsyncMock()
     mock_dispatcher_instance.flush = AsyncMock()
     mock_dispatcher.return_value = mock_dispatcher_instance
     
@@ -386,11 +386,11 @@ async def test_generate_instruction_no_think_tags(mock_file, mock_config, mock_g
     generator = SingleStepVLMInstructionGenerator()
     
     # Mock the prompt request to return our future
-    with patch.object(generator._prompt_dispatcher, 'add') as mock_add:
-        def set_future(prompt_request):
-            prompt_request.future.set_result(json_response)
+    async def set_future(prompt_request):
+        prompt_request.future.set_result(json_response)
+
+    with patch.object(generator._prompt_dispatcher, 'add', new_callable=AsyncMock) as mock_add:
         mock_add.side_effect = set_future
-        
         instruction_set = await generator.generate_instructions_from_images(mock_simulation_data_single_frame)
     
     # Verify the instruction set was returned
