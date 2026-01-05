@@ -11,7 +11,7 @@ from untitled.generator.instruction import Instruction
 from untitled.generator.filter.filter import cluster_frames
 from untitled.generator.filter.embedder import DINOEmbedder, Embedder
 
-from typing import Dict, Tuple
+from typing import Dict, List, Tuple
 import time
 
 
@@ -93,8 +93,65 @@ class Pipeline:
         except Exception as e:
             LOG.error(f"    Ground truth run {run_id} failed: {e}")
             return (0, 1)
+        
+    async def _cluster_frames_for_scenario(self, job: Job, scenario_id: int) -> SimulationData:
+        """
+        Cluster frames from ground truth runs for a scenario to reduce redundancy.
+        
+        Args:
+            job: The job being executed
+            scenario_id: The ID of the scenario being executed
+        
+        Returns:
+            Filtered SimulationData with clustered frames
+        """
+        # Get ground truth cache directory if it exists 
+        # WARN: Ground truth run index is hardcoded to 0 for now
+        ground_truth_index = 0
+        cache_dir = self.job_handler.get_ground_truth_cache_dir(job.id, scenario_id, ground_truth_index)
+        
+        # Get image and metadata from previously collected ground truth
+        fpm = 4     # undersampling
+        LOG.debug(f"    Fetching images and metadata from ground truth run {ground_truth_index}...")
+        image_path_list = self.simulator.get_image_logs(job.id, scenario_id, ground_truth_index, cache_dir, fpm)
+        metadata_list = self.simulator.get_metadata_logs(job.id, scenario_id, ground_truth_index, cache_dir, fpm)
+        
+        if not image_path_list:
+            LOG.error(f"    Failed to get images from simulation logs")
+            raise RuntimeError("Images not found in simulation logs")
+        
+        if not metadata_list:
+            LOG.error(f"    Failed to get metadata from simulation logs")
+            raise RuntimeError("Metadata not found in simulation logs")
 
-    async def _generate_instruction_for_experiment(self, job: Job, scenario_id: int, experiment_index: int) -> Tuple[bool, Instruction]:
+        # Number of images and metadata entries must match
+        if len(image_path_list) != len(metadata_list):
+            LOG.error(f"    Mismatch between number of images ({len(image_path_list)}) and metadata entries ({len(metadata_list)})")
+            raise RuntimeError("Mismatch between images and metadata counts")
+        
+        # Create initial SimulationData
+        simulation_data = SimulationData(
+            frame_count=len(image_path_list),
+            image_dir=image_path_list[0].parent,
+            frames=[SimulationFrameData(image_name=img_path.name, metadata=metadata_list[i], timestamp=metadata_list[i].step * (1 / SIMULATION_FPS))
+                    for i, img_path in enumerate(image_path_list)]
+        )
+
+        # Cluster similar frames to reduce redundancy
+        threshold = 0.990
+        clusters = cluster_frames(simulation_data, self.filter_embedder, threshold)
+
+        # Create a new SimulationData with only the first frame from each cluster
+        filtered_simulation_data = SimulationData(
+            image_dir=simulation_data.image_dir,
+            frame_count=len(clusters),
+            frames=[cluster.frames[0] for cluster in clusters]
+        )
+        LOG.debug(f"    Reduced {simulation_data.frame_count} frames to {filtered_simulation_data.frame_count} frames using similarity threshold {threshold}")
+
+        return filtered_simulation_data
+
+    async def _generate_instruction_for_experiment(self, job: Job, scenario_id: int, experiment_index: int, simulation_data: SimulationData) -> Tuple[bool, Instruction]:
         """
         Generate VLM instruction for a single experiment (async, queues the prompt).
         
@@ -102,6 +159,7 @@ class Pipeline:
             job: The job being executed
             scenario_id: The ID of the scenario being executed
             experiment_index: The experiment index (0-based, relative to experiments only)
+            simulation_data: The simulation data containing frames and metadata
             
         Returns:
             Tuple of (success, instruction or None)
@@ -109,51 +167,8 @@ class Pipeline:
         try:
             LOG.info(f"  Generating instruction for experiment {experiment_index} ({experiment_index + 1} / {job.experiment_count})")
             
-            # Get ground truth cache directory if it exists 
-            # WARN: Ground truth run index is hardcoded to 0 for now
-            ground_truth_index = 0
-            cache_dir = self.job_handler.get_ground_truth_cache_dir(job.id, scenario_id, ground_truth_index)
-            
-            # Get image and metadata from previously collected ground truth
-            fpm = 4
-            LOG.debug(f"    Fetching images and metadata from ground truth run {ground_truth_index}...")
-            image_path_list = self.simulator.get_image_logs(job.id, scenario_id, ground_truth_index, cache_dir, fpm)
-            metadata_list = self.simulator.get_metadata_logs(job.id, scenario_id, ground_truth_index, cache_dir, fpm)
-            
-            if not image_path_list:
-                LOG.error(f"    Failed to get images from simulation logs")
-                raise RuntimeError("Images not found in simulation logs")
-            
-            if not metadata_list:
-                LOG.error(f"    Failed to get metadata from simulation logs")
-                raise RuntimeError("Metadata not found in simulation logs")
-
-            # Number of images and metadata entries must match
-            if len(image_path_list) != len(metadata_list):
-                LOG.error(f"    Mismatch between number of images ({len(image_path_list)}) and metadata entries ({len(metadata_list)})")
-                raise RuntimeError("Mismatch between images and metadata counts")
-            
-            # Generate instruction with VLM (queued)
-            LOG.debug(f"    Generating instruction with VLM...")
-            simulation_data = SimulationData(
-                frame_count=len(image_path_list),
-                image_dir=image_path_list[0].parent,
-                frames=[SimulationFrameData(image_name=img_path.name, metadata=metadata_list[i], timestamp=metadata_list[i].step * (1 / SIMULATION_FPS))
-                        for i, img_path in enumerate(image_path_list)]
-            )
-
-            # Cluster similar frames to reduce redundancy
-            threshold = 0.990
-            clusters = cluster_frames(simulation_data, self.filter_embedder, threshold)
-            filtered_simulation_data = SimulationData(
-                image_dir=simulation_data.image_dir,
-                frame_count=sum(len(cluster.get_data().frames) for cluster in clusters),
-                frames=[frame for cluster in clusters for frame in cluster.get_data().frames]
-            )
-            LOG.debug(f"    Reduced {simulation_data.frame_count} frames to {filtered_simulation_data.frame_count} frames using similarity threshold {threshold}")
-            
             LOG.debug(f"    Generating instructions from images...")
-            instruction_set = await self.generator.generate_instructions_from_images(filtered_simulation_data)
+            instruction_set = await self.generator.generate_instructions_from_images(simulation_data)
             if not instruction_set:
                 LOG.error(f"    Failed to generate instruction from VLM")
                 raise RuntimeError("VLM instruction generation failed")
@@ -244,13 +259,14 @@ class Pipeline:
         
         return (successful, failed)
 
-    async def _generate_scenario_instructions(self, job: Job, scenario_id: int) -> Dict[int, Instruction]:
+    async def _generate_scenario_instructions(self, job: Job, scenario_id: int, simulation_data: SimulationData) -> Dict[int, Instruction]:
         """
         Generate VLM instructions for all experiments in a scenario (Stage 2: VLM only).
         
         Args:
             job: The job being executed
             scenario_id: The scenario ID
+            simulation_data: The simulation data containing frames and metadata
             
         Returns:
             Dictionary mapping experiment_index to Instruction
@@ -269,7 +285,7 @@ class Pipeline:
             # Generate instructions for all experiments
             LOG.info(f"Generating instructions for {job.experiment_count} experiment(s)...")
             for experiment_index in range(job.experiment_count):
-                success, instruction = await self._generate_instruction_for_experiment(job, scenario_id, experiment_index)
+                success, instruction = await self._generate_instruction_for_experiment(job, scenario_id, experiment_index, simulation_data)
                 if success:
                     instructions[experiment_index] = instruction
                 else:
@@ -361,6 +377,14 @@ class Pipeline:
         LOG.info("=" * 80)
         LOG.info("STAGE 2: VLM Instruction Generation")
         LOG.info("=" * 80)
+
+        # Filter/Cluster frames before generating instructions
+        # TODO: Parallelize this with simulation runs. We can cluster frames together as they arrive since the clustering is greedy.
+        simulation_data_list: List[SimulationData] = []
+        for scenario_id in job.scenarios:
+            LOG.debug(f"Clustering frames for scenario {scenario_id} before instruction generation...")
+            data = self._cluster_frames_for_scenario(job, scenario_id)
+            simulation_data_list.append(data)
         
         # Enable generator's full speed mode as the simulator is idle now (async)
         enable_full_speed_mode_task = asyncio.create_task(self.generator.enable_full_speed_mode())
@@ -370,7 +394,8 @@ class Pipeline:
         all_instructions = {}  # Map: scenario_id -> {experiment_index -> Instruction}
         for scenario_id in job.scenarios:
             LOG.debug(f"Generating instructions for scenario {scenario_id}...")
-            scenario_instructions = await self._generate_scenario_instructions(job, scenario_id)
+            simulation_data = simulation_data_list[job.scenarios.index(scenario_id)]
+            scenario_instructions = await self._generate_scenario_instructions(job, scenario_id, simulation_data)
             all_instructions[scenario_id] = scenario_instructions
         
         # Disable full speed mode once all instructions are generated
