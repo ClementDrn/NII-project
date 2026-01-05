@@ -146,7 +146,7 @@ class Pipeline:
         filtered_simulation_data = SimulationData(
             image_dir=simulation_data.image_dir,
             frame_count=len(clusters),
-            frames=[cluster.frames[0] for cluster in clusters]
+            frames=[cluster.get_data().frames[0] for cluster in clusters]
         )
         LOG.debug(f"    Reduced {simulation_data.frame_count} frames to {filtered_simulation_data.frame_count} frames using similarity threshold {threshold}")
 
@@ -384,7 +384,7 @@ class Pipeline:
         simulation_data_list: List[SimulationData] = []
         for scenario_id in job.scenarios:
             LOG.debug(f"Clustering frames for scenario {scenario_id} before instruction generation...")
-            data = self._cluster_frames_for_scenario(job, scenario_id)
+            data = await self._cluster_frames_for_scenario(job, scenario_id)
             simulation_data_list.append(data)
         
         # Enable generator's full speed mode as the simulator is idle now (async)
@@ -393,9 +393,9 @@ class Pipeline:
         
         # Generate instructions for all scenarios
         all_instructions = {}  # Map: scenario_id -> {experiment_index -> Instruction}
-        for scenario_id in job.scenarios:
+        for i, scenario_id in enumerate(job.scenarios):
             LOG.debug(f"Generating instructions for scenario {scenario_id}...")
-            simulation_data = simulation_data_list[job.scenarios.index(scenario_id)]
+            simulation_data = simulation_data_list[i]
             scenario_instructions = await self._generate_scenario_instructions(job, scenario_id, simulation_data)
             all_instructions[scenario_id] = scenario_instructions
         
