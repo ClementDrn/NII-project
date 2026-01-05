@@ -20,8 +20,6 @@ if os.getenv("UNTITLED_ENABLE_DEBUG_LOGS", "false").lower() in ("true", "1", "ye
     console_level = logging.DEBUG
 else:
     console_level = logging.INFO
-LOG_DIR = PROJECT_ROOT / "logs"
-# Main application log file
 LOG = init_logging(PROJECT_NAME, LOG_DIR, console_level=console_level)
 
 # Log file for VLM requests and responses, since they can be large

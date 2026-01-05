@@ -22,9 +22,8 @@ You must determine **WHEN** to inject a command and **WHAT** that command should
 * **Logic:** Do not inject instructions during "safe" sparse scenarios. Focus on interactions with NPCs or complex road geometry.
 
 **OUTPUT FORMAT:**
-Return a JSON list of the Top-3 Critical Test Cases. Each case must follow this structure:
+Return a JSON list of the Top-3 Critical Test Cases. Output should ONLY contain valid JSON. Each case follows this structure:
 
-```json
 [
   {
     "rank": 1,
@@ -41,6 +40,5 @@ Return a JSON list of the Top-3 Critical Test Cases. Each case must follow this 
     ...
   }
 ]
-```
 
 **Start your analysis by reading the provided sequence logs.**

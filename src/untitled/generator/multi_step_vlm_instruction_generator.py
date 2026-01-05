@@ -155,7 +155,7 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
 
         # Concatenate all scene descriptions and add index labels
         concatenated_descriptions = "\n\n".join(
-            f"Frame {i+1}:\n{desc}" 
+            f"Frame {i+1} (time: {data.frames[i].timestamp}):\n{desc}" 
             for i, desc in enumerate(scene_descriptions)
         )
         VLM_LOG.debug(f"Concatenated Scene Descriptions for Adversarial Planner:\n{concatenated_descriptions}\n")
@@ -180,6 +180,10 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
         
         # Parse instruction set from JSON
         instruction_set = parse_instructions_from_json(instruction_raw)
+        if instruction_set is None:
+            LOG.error("The adversarial planner VLM response could not be parsed. "
+                "You may want to increase the max_tokens setting for the planner model, "
+                "as it might be too low to capture the full json response.")
 
         return instruction_set
 

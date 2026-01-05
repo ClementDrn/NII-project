@@ -391,7 +391,7 @@ class Pipeline:
         job_elapsed = time.time() - job_start_time
         LOG.info("")
         LOG.info("=" * 80)
-        LOG.info(f"Job {job.id} '{job.name}' completed in {job_elapsed:.1f}s")
+        LOG.info(f"Job {job.id} '{job.name}' completed in {job_elapsed:.1f}s ({job_elapsed/3600:.2f}h)")
         LOG.info(f"  Successful: {job_successful}, Failed: {job_failed}")
         LOG.info("=" * 80)
         

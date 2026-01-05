@@ -382,10 +382,10 @@ class Simulator:
             # Store instruction in a temporary file
             instruction_file = run_base_dir / INSTRUCTION_FILE_NAME
             instruction_data = {
-                "text": instruction.text,
+                "text": instruction.adversarial_instruction,
                 "flag": 2,      # 0: safety, 1: instruction following as extra prompt, 2: instruction following as override, 3: other
-                "injection_time": instruction.injection_time,
-                "injection_duration": instruction.injection_duration
+                "injection_time": instruction.injection_window.start_timestamp,
+                "injection_duration": instruction.injection_window.end_timestamp - instruction.injection_window.start_timestamp,
             }
             with open(instruction_file, 'w', encoding='utf-8') as f:
                 json.dump([instruction_data], f)    # Store as array of instructions
@@ -457,12 +457,13 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         time.sleep(2)
         
         # NOTE: CARLA server is started automatically by the Bench2Drive leaderboard evaluator, so we don't need to start it ourselves
+        # NOTE: The evaluator is started by SimLingo right now. In the future, we may want to start CARLA and the evaluator ourselves in order to choose what agent to use.
         
         # Create and run the scenario script
         job_file = self._create_run_script(instruction)
         
         if instruction:
-            LOG.info(f"Running scenario with instruction at t={instruction.injection_time}s: '{instruction.text}'")
+            LOG.info(f"Running scenario with instruction at t={instruction.injection_window.start_timestamp}s: '{instruction.adversarial_instruction}'")
         else:
             LOG.info(f"Running scenario without instruction")
         
@@ -473,7 +474,7 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         # Run the scenario with a clean environment (no virtual env interference)
         # Use bash -l to get a login shell with clean PATH from system defaults
         result = subprocess.run(
-            ["bash", "-l", job_file], 
+            ["bash", "-l", job_file],
             capture_output=False,
             env={
                 'HOME': os.environ.get('HOME', ''),

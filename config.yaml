@@ -57,7 +57,7 @@ generator:
     - id: "planning"
       model_name: "r4b"
       temperature: 0.7
-      max_tokens: 1024
+      max_tokens: 4096
       extra_body:
         chat_template_kwargs:
           thinking_mode: "long"
@@ -84,13 +84,14 @@ model_instances:
       enable_prefix_caching: false
       dtype: "bfloat16"
   # Low-performance remote instance
-  - id: "r4b_1"
-    model_name: "r4b"
-    type: "vlm"
-    step_ids:
-      - "description"
-    remote_config:
-      host_id: "v100_vlm"   # Defined in hosts.yaml
+  # - id: "r4b_1"
+  #   model_name: "r4b"
+  #   type: "vlm"
+  #   priority: 2
+  #   step_ids:
+  #     - "description"
+  #   remote_config:
+  #     host_id: "v100_vlm"   # Defined in hosts.yaml
 
 carla:
   debug: true  # Enable debug image output from SimLingo agent (set to true to enable)
