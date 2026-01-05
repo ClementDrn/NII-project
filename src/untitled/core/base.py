@@ -12,7 +12,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]  # this file is at src/untitl
 VENDOR_VLM_DIR = PROJECT_ROOT / "vendor" / "vlm"
 VENDOR_CARLA_DIR = PROJECT_ROOT / "vendor" / "ads" / "carla"
 
-# Logs
+# Logs directory
+LOG_DIR = PROJECT_ROOT / "logs"
+
+# Main application log file
 if os.getenv("UNTITLED_ENABLE_DEBUG_LOGS", "false").lower() in ("true", "1", "yes"):
     console_level = logging.DEBUG
 else:
@@ -20,8 +23,9 @@ else:
 LOG_DIR = PROJECT_ROOT / "logs"
 # Main application log file
 LOG = init_logging(PROJECT_NAME, LOG_DIR, console_level=console_level)
-# Intermediate prompts log file
-INT_PROMPTS_LOG = init_logging("intermediate_prompts", LOG_DIR, console_level=logging.INFO)
+
+# Log file for VLM requests and responses, since they can be large
+VLM_LOG = init_logging("vlm", LOG_DIR, console_level=logging.INFO)
 
 # Configuration settings
 CONFIG = load_config(PROJECT_ROOT, LOG)
@@ -37,5 +41,6 @@ __all__ = [
     "PROJECT_ROOT",
     "CONFIG",
     "LOG",
+    "VLM_LOG",
     "SIMULATION_FPS",
 ]

@@ -1,4 +1,4 @@
-from untitled.core.base import LOG
+from untitled.core.base import LOG, VLM_LOG
 from untitled.generator.model_config import ModelConfig, get_model_config
 
 from abc import ABC, abstractmethod
@@ -108,7 +108,7 @@ class VLMClient(ABC):
             "role": "user",
             "content": user_content,
         })
-        LOG.debug(f"Messages that will be sent to VLM: {messages}")
+        # VLM_LOG.debug(f"Messages that will be sent to VLM: {messages}")
         
         # Send request to VLM and get response
         start_time = time.time()
@@ -117,8 +117,8 @@ class VLMClient(ABC):
             **self.api_parameters
         )
         elapsed_time = time.time() - start_time
-        LOG.info(f"VLM request completed in {elapsed_time:.2f} seconds")
-        LOG.debug(f"VLM response: {chat_response}")
+        LOG.debug(f"VLM request completed in {elapsed_time:.2f} seconds")
+        # VLM_LOG.debug(f"VLM response: {chat_response}")
 
         # Extract and return the response text
         response_text = chat_response.choices[0].message.content

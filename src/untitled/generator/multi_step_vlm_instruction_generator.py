@@ -4,7 +4,7 @@ from untitled.generator.instruction_generator import InstructionGenerator, get_a
 from untitled.generator.prompt_dispatcher import PromptDispatcher, PromptRequest
 from untitled.generator.vlm import create_vlm_client, parse_vlm_response, VLMClient, VLMClientFactory
 from untitled.generator.instruction import InstructionSet, parse_instructions_from_json
-from untitled.core.base import INT_PROMPTS_LOG, PROJECT_ROOT, LOG, CONFIG
+from untitled.core.base import VLM_LOG, PROJECT_ROOT, LOG, CONFIG
 from untitled.simulator.simulation_data import SimulationData
 from typing import List, Optional, override
 
@@ -67,13 +67,13 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
         SCENE_DESCRIPTOR_TASK_PATH = PROJECT_ROOT / "assets" / "prompts" / "scene_descriptor_task.txt"
         with open(SCENE_DESCRIPTOR_TASK_PATH, "r") as f:
             self._scene_descriptor_task_message = f.read()
-        LOG.debug(f"Loaded scene descriptor task message for VLM. See below:\n{self._scene_descriptor_task_message}")
+        VLM_LOG.debug(f"Loaded scene descriptor task message for VLM. See below:\n{self._scene_descriptor_task_message}")
 
         # Fetch adversarial planner task message from its asset file
         PLANNER_TASK_PATH = PROJECT_ROOT / "assets" / "prompts" / "adversarial_planner_task.txt"
         with open(PLANNER_TASK_PATH, "r") as f:
             self._planner_task_message = f.read()
-        LOG.debug(f"Loaded adversarial planner task message for VLM. See below:\n{self._planner_task_message}")
+        VLM_LOG.debug(f"Loaded adversarial planner task message for VLM. See below:\n{self._planner_task_message}")
 
     @override
     async def init(self):
@@ -151,15 +151,14 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
             chat_response = await future
             scene_description = parse_vlm_response(chat_response)
             scene_descriptions.append(scene_description)
-
-            # Save each scene description for debugging
-            INT_PROMPTS_LOG.debug(f"- Scene Description Response:\n{scene_description}\n")
+            VLM_LOG.debug(f"- Scene Description Response:\n{scene_description}\n")
 
         # Concatenate all scene descriptions and add index labels
         concatenated_descriptions = "\n\n".join(
             f"Frame {i+1}:\n{desc}" 
             for i, desc in enumerate(scene_descriptions)
         )
+        VLM_LOG.debug(f"Concatenated Scene Descriptions for Adversarial Planner:\n{concatenated_descriptions}\n")
 
         # Step 2:
         # Generate an adversarial instruction based on the concatenated scene descriptions
@@ -174,6 +173,7 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
         await self._planner_dispatcher.add(prompt_request)
         chat_response = await planner_future
         instruction_raw = parse_vlm_response(chat_response)
+        VLM_LOG.debug(f"- Adversarial Planner Response:\n{instruction_raw}\n")
         
         if instruction_raw is None:
             return None
