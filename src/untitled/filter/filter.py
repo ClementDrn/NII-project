@@ -1,4 +1,4 @@
-from untitled.generator.filter.embedder import Embedder
+from untitled.filter.embedder import Embedder
 from untitled.simulator.simulation_data import SimulationData, SimulationFrameData
 
 from typing import List
