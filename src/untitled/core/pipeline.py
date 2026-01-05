@@ -8,8 +8,8 @@ from untitled.generator.single_step_vlm_instruction_generator import SingleStepV
 from untitled.generator.multi_step_vlm_instruction_generator import MultiStepVLMInstructionGenerator
 from untitled.simulator.simulation_data import SimulationFrameData
 from untitled.generator.instruction import Instruction
-from untitled.generator.filter.filter import cluster_frames
-from untitled.generator.filter.embedder import DINOEmbedder, Embedder
+from untitled.filter.filter import cluster_frames
+from untitled.filter.embedder import DINOEmbedder, Embedder
 
 from typing import Dict, List, Tuple
 import time

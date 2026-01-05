@@ -7,6 +7,9 @@ import torch
 
 
 class Cluster:
+    """
+    Represents a cluster of similar simulation frames based on image embeddings.
+    """
 
     def __init__(self, image_dir: Path, embedder: Embedder):
         # Attributes
@@ -90,6 +93,7 @@ class Cluster:
         Get the list of frames in the cluster.
         """
         return self._data
+
 
 def cluster_frames(frame_data: SimulationData, embedder: Embedder, similarity_threshold: float) -> List[Cluster]:
     """

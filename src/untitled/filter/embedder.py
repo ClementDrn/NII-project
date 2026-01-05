@@ -16,6 +16,9 @@ class Embedder(ABC):
 
 
 class DINOEmbedder(Embedder):
+    """
+    Embeds images using the DINOv2 model.
+    """
     def __init__(self):
         super().__init__()
         # device = torch.device('cuda' if torch.cuda.is_available() else "cpu")
