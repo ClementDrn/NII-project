@@ -1,5 +1,5 @@
 import asyncio
-from untitled.core.base import LOG, PROJECT_ROOT, CONFIG
+from untitled.core.base import LOG, PROJECT_ROOT, CONFIG, SIMULATION_FPS
 from untitled.core.job_handler import Job, JobHandler
 from untitled.generator.instruction_generator import InstructionGenerator
 from untitled.simulator.simulator import Simulator
@@ -138,7 +138,7 @@ class Pipeline:
             simulation_data = SimulationData(
                 frame_count=len(image_path_list),
                 image_dir=image_path_list[0].parent,
-                frames=[SimulationFrameData(image_name=img_path.name, metadata=metadata_list[i])
+                frames=[SimulationFrameData(image_name=img_path.name, metadata=metadata_list[i], timestamp=metadata_list[i].step * (1 / SIMULATION_FPS))
                         for i, img_path in enumerate(image_path_list)]
             )
 

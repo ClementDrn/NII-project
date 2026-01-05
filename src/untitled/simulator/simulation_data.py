@@ -21,6 +21,7 @@ class SimulationMetadata:
 class SimulationFrameData:
     image_name: str  # Just the filename, to be combined with image_dir
     metadata: SimulationMetadata
+    timestamp: float = 0.0
 
 @dataclass
 class SimulationData:

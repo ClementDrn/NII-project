@@ -26,6 +26,10 @@ INT_PROMPTS_LOG = init_logging("intermediate_prompts", LOG_DIR, console_level=lo
 # Configuration settings
 CONFIG = load_config(PROJECT_ROOT, LOG)
 
+# Important general constants
+# WARN: 20 FPS is the only supported framerate at the moment. SimLingo hardcodes Carla's FPS to 20 too. 
+SIMULATION_FPS = 20  # Frames per second for simulation
+
 
 # EXPORTS
 __all__ = [
@@ -33,4 +37,5 @@ __all__ = [
     "PROJECT_ROOT",
     "CONFIG",
     "LOG",
+    "SIMULATION_FPS",
 ]

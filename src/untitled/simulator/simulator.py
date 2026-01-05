@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import List, Optional, Dict, Any
 from itertools import chain
 
-from untitled.core.base import LOG, PROJECT_ROOT, CONFIG
+from untitled.core.base import LOG, PROJECT_ROOT, CONFIG, SIMULATION_FPS
 from untitled.simulator.ads import ADS
 from untitled.simulator.simulation_data import SimulationMetadata, load_metadata
 from untitled.generator.instruction import Instruction
@@ -63,8 +63,7 @@ class Simulator:
         # CARLA configuration
         self.carla_path = Path(CONFIG.carla.path)
         self.conda_path = Path(CONFIG.carla.conda_path)
-        self.frame_rate = 20  # fps
-        self.log_frame_rate = 4   # fps for logging
+        self.frame_rate = SIMULATION_FPS    # fps
         
         # Benchmark configuration (Bench2Drive)
         self.benchmark = "bench2drive"
@@ -579,12 +578,19 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
 
         if not sorted_image_files:
             LOG.warning(f"No image files found in directory: {image_dir}")
+            return []
         else:
             LOG.debug(f"Found {len(sorted_image_files)} image files in directory: {image_dir}")
         
-        # Filter out frames if frames_per_minute is specified
-        log_frame_total_per_minute = self.log_frame_rate * 60
-        if frames_per_minute > 0:
+        # Undersampling: Filter out frames if frames_per_minute is specified
+        if frames_per_minute > 0 and sorted_image_files and len(sorted_image_files) > 1:            
+            # Calculate total log frames per minute
+            first_frame_step = int(sorted_image_files[0].stem)
+            second_frame_step = int(sorted_image_files[1].stem)
+            actual_frame_rate = self.frame_rate * (second_frame_step - first_frame_step)
+            log_frame_total_per_minute = actual_frame_rate * 60
+
+            # Apply undersampling if needed
             if frames_per_minute > log_frame_total_per_minute:
                 LOG.warning(f"Requested frames_per_minute {frames_per_minute} exceeds total frames per minute {log_frame_total_per_minute}. Returning all frames.")
             else:
@@ -680,9 +686,15 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         else:
             LOG.debug(f"Found {len(sorted_metadata_files)} metadata files in directory: {metadata_dir}")
         
-        # Filter out frames if frames_per_minute is specified
-        log_frame_total_per_minute = self.log_frame_rate * 60
-        if frames_per_minute > 0:
+        # Undersampling: Filter out frames if frames_per_minute is specified
+        if frames_per_minute > 0 and sorted_metadata_files and len(sorted_metadata_files) > 1:            
+            # Calculate total log frames per minute
+            first_frame_step = int(sorted_metadata_files[0].stem)
+            second_frame_step = int(sorted_metadata_files[1].stem)
+            actual_frame_rate = self.frame_rate * (second_frame_step - first_frame_step)
+            log_frame_total_per_minute = actual_frame_rate * 60
+
+            # Apply undersampling if needed
             if frames_per_minute > log_frame_total_per_minute:
                 LOG.warning(f"Requested frames_per_minute {frames_per_minute} exceeds total frames per minute {log_frame_total_per_minute}. Returning all metadata.")
             else:
