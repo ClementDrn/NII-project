@@ -111,13 +111,28 @@ def cluster_frames(frame_data: SimulationData, embedder: Embedder, similarity_th
 
     # For each frame, check if is similar enough to the current cluster
     # If yes, add to that cluster, else create a new cluster, which will become the current cluster
-    for frame in frame_data.frames[1:]:
+    max_cluster_count = 100
+    for i in range(1, len(frame_data.frames)):
+        frame = frame_data.frames[i]
         similarity = current_cluster.calculate_similarity(frame)
         if similarity >= similarity_threshold:
+            # Add to current cluster
             current_cluster.add(frame)
         else:
+            # Create a new cluster
             current_cluster = Cluster(frame_data.image_dir, embedder)
             current_cluster.add(frame)
             clusters.append(current_cluster)
+
+            # If we reached the maximum number of clusters,
+            # we can just add the remaining frames to the last cluster
+            if len(clusters) >= max_cluster_count:
+                for j in range(i + 1, len(frame_data.frames)):
+                    current_cluster.add(frame_data.frames[j])
+
+                # Display a user warning
+                print(f"Warning: Reached maximum cluster count of {max_cluster_count}. "
+                      f"Remaining frames have been added to the last cluster.")
+                break
 
     return clusters
