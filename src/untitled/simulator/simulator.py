@@ -61,9 +61,9 @@ class Simulator:
             LOG.warning("ADS installation validation failed. Continuing anyway...")
         
         # CARLA configuration
-        self.carla_path = Path(CONFIG.carla.path)
-        self.conda_path = Path(CONFIG.carla.conda_path)
-        self.frame_rate = SIMULATION_FPS    # fps
+        self.carla_path: Path = Path(CONFIG.carla.path)
+        self.conda_path: Path = Path(CONFIG.carla.conda_path)
+        self.frame_rate: int = SIMULATION_FPS    # fps
         
         # Benchmark configuration (Bench2Drive)
         self.benchmark = "bench2drive"
@@ -588,7 +588,7 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
             # Calculate total log frames per minute
             first_frame_step = int(sorted_image_files[0].stem)
             second_frame_step = int(sorted_image_files[1].stem)
-            actual_frame_rate = self.frame_rate * (second_frame_step - first_frame_step)
+            actual_frame_rate = self.frame_rate / (second_frame_step - first_frame_step)
             log_frame_total_per_minute = actual_frame_rate * 60
 
             # Apply undersampling if needed
@@ -692,7 +692,7 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
             # Calculate total log frames per minute
             first_frame_step = int(sorted_metadata_files[0].stem)
             second_frame_step = int(sorted_metadata_files[1].stem)
-            actual_frame_rate = self.frame_rate * (second_frame_step - first_frame_step)
+            actual_frame_rate = self.frame_rate / (second_frame_step - first_frame_step)
             log_frame_total_per_minute = actual_frame_rate * 60
 
             # Apply undersampling if needed
