@@ -1,3 +1,4 @@
+from untitled.core.base import LOG
 from untitled.filter.embedder import Embedder
 from untitled.simulator.simulation_data import SimulationData, SimulationFrameData
 
@@ -95,7 +96,7 @@ class Cluster:
         return self._data
 
 
-def cluster_frames(frame_data: SimulationData, embedder: Embedder, similarity_threshold: float, max_cluster_count: int) -> List[Cluster]:
+def cluster_frames(frame_data: SimulationData, embedder: Embedder, similarity_threshold: float, max_cluster_count: int = 0) -> List[Cluster]:
     """
     Cluster frames based on similarity threshold.
     """
@@ -125,13 +126,13 @@ def cluster_frames(frame_data: SimulationData, embedder: Embedder, similarity_th
 
             # If we reached the maximum number of clusters,
             # we can just add the remaining frames to the last cluster
-            if len(clusters) >= max_cluster_count:
+            if max_cluster_count != 0 and len(clusters) >= max_cluster_count:
                 for j in range(i + 1, len(frame_data.frames)):
                     current_cluster.add(frame_data.frames[j])
 
                 # Display a user warning
-                print(f"Warning: Reached maximum cluster count of {max_cluster_count}. "
-                      f"Remaining frames have been added to the last cluster.")
+                LOG.warning(f"Reached maximum cluster count of {max_cluster_count} at frame index {i}. "
+                      f"The {len(frame_data.frames) - (i + 1)} remaining frames have been added to the last cluster.")
                 break
 
     return clusters
