@@ -111,7 +111,7 @@ class Pipeline:
         cache_dir = self.job_handler.get_ground_truth_cache_dir(job.id, scenario_id, ground_truth_index)
         
         # Get image and metadata from previously collected ground truth
-        fpm = 4     # undersampling
+        fpm = CONFIG.filter.max_frames_per_minute     # undersampling
         LOG.debug(f"    Fetching images and metadata from ground truth run {ground_truth_index}...")
         image_path_list = self.simulator.get_image_logs(job.id, scenario_id, ground_truth_index, cache_dir, fpm)
         metadata_list = self.simulator.get_metadata_logs(job.id, scenario_id, ground_truth_index, cache_dir, fpm)
@@ -138,8 +138,9 @@ class Pipeline:
         )
 
         # Cluster similar frames to reduce redundancy
-        threshold = 0.990
-        clusters = cluster_frames(simulation_data, self.filter_embedder, threshold)
+        threshold = CONFIG.filter.clustering_threshold
+        max_cluster_count = CONFIG.filter.max_cluster_count
+        clusters = cluster_frames(simulation_data, self.filter_embedder, threshold, max_cluster_count)
 
         # Create a new SimulationData with only the first frame from each cluster
         filtered_simulation_data = SimulationData(

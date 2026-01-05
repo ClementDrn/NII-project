@@ -65,6 +65,15 @@ class CARLAConfig(BaseSettings):
     gpu_id: int = 0
 
 
+class FilterConfig(BaseSettings):
+    """Configuration for filters."""
+    model_config = ConfigDict(extra='ignore')
+    
+    max_frames_per_minute: int = 60
+    clustering_threshold: float = 0.990
+    max_cluster_count: int = 30
+
+
 class GeneratorConfig(BaseSettings):
     """Configuration for instruction generators."""
     model_config = ConfigDict(extra='ignore')
@@ -88,7 +97,8 @@ class Settings(BaseSettings):
     """Main settings container."""
     model_config = ConfigDict(extra='ignore')
     
-    # NOTE: Define settings here for type checking and auto-completion    
+    # NOTE: Define settings here for type checking and auto-completion   
+    filter: FilterConfig 
     generator: GeneratorConfig
     carla: CARLAConfig
     model_instances: list[ModelInstanceConfig] = []

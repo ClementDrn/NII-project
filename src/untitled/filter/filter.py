@@ -95,7 +95,7 @@ class Cluster:
         return self._data
 
 
-def cluster_frames(frame_data: SimulationData, embedder: Embedder, similarity_threshold: float) -> List[Cluster]:
+def cluster_frames(frame_data: SimulationData, embedder: Embedder, similarity_threshold: float, max_cluster_count: int) -> List[Cluster]:
     """
     Cluster frames based on similarity threshold.
     """
@@ -111,7 +111,6 @@ def cluster_frames(frame_data: SimulationData, embedder: Embedder, similarity_th
 
     # For each frame, check if is similar enough to the current cluster
     # If yes, add to that cluster, else create a new cluster, which will become the current cluster
-    max_cluster_count = 100
     for i in range(1, len(frame_data.frames)):
         frame = frame_data.frames[i]
         similarity = current_cluster.calculate_similarity(frame)
