@@ -88,9 +88,19 @@ def parse_instructions_from_json(json_text: str) -> Optional[InstructionSet]:
     Returns:
         InstructionSet object or None if parsing fails
     """
+    # Strip whitespace
     stripped_json = json_text.strip()
     if not stripped_json:
         LOG.error("Cannot parse instruction from empty JSON text.")
+        return None
+    
+    # Safety strip of extra headers/footers if present (strip until first '[' and after last ']')
+    first_bracket = stripped_json.find('[')
+    last_bracket = stripped_json.rfind(']')
+    if first_bracket != -1 and last_bracket != -1 and last_bracket > first_bracket:
+        stripped_json = stripped_json[first_bracket:last_bracket+1]
+    else:
+        LOG.error("Invalid JSON format: missing array brackets.")
         return None
 
     try:
