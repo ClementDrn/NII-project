@@ -31,7 +31,7 @@ def get_model_config(model_id: str) -> ModelConfig:
         "r4b": ModelConfig(
             model_name="yannqi/R-4B",
             served_name="r4b",
-            max_model_len=8192,
+            max_model_len=32768,
             limit_mm_per_prompt={"image": 1}
         ),
         # Add more models here as needed

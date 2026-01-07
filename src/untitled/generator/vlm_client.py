@@ -118,7 +118,7 @@ class VLMClient(ABC):
         )
         elapsed_time = time.time() - start_time
         LOG.debug(f"VLM request completed in {elapsed_time:.2f} seconds")
-        # VLM_LOG.debug(f"VLM response: {chat_response}")
+        VLM_LOG.debug(f"VLM response: {chat_response}")
 
         # Extract and return the response text
         response_text = chat_response.choices[0].message.content
