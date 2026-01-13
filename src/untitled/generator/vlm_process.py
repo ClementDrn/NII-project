@@ -1,3 +1,4 @@
+from typing import List
 from untitled.core.base import CONFIG, LOG, VENDOR_VLM_DIR
 from untitled.generator.model_config import ModelConfig
 from untitled.core.settings import LocalVLMConfig
@@ -28,6 +29,9 @@ class VLMProcess:
         # Subprocess handle
         self._process: asyncio.subprocess.Process = None
 
+        # Owner list to safely start/stop process only when needed
+        self._owners: List[object] = []
+
         # vLLM parameters
         self._host = host
         self._model_config = model_config
@@ -37,7 +41,7 @@ class VLMProcess:
         """
         Internal method to start the VLM process.
         """
-                # Parse host URL to get host and port
+        # Parse host URL to get host and port
         parsed = urlparse(self._host)
         host_addr = parsed.hostname or "0.0.0.0"
         port = parsed.port or 8000
@@ -63,6 +67,9 @@ class VLMProcess:
         # Add limit-mm-per-prompt
         limit_mm = json.dumps(self._model_config.limit_mm_per_prompt)
         cmd[2] += f" --limit-mm-per-prompt '{limit_mm}'"
+        # Add reasoning parser if specified
+        if self._model_config.reasoning_parser:
+            cmd[2] += f" --reasoning-parser {self._model_config.reasoning_parser} "
         # Add optional flags to the command string
         if self._process_config.enable_chunked_prefill:
             cmd[2] += " --enable-chunked-prefill"
@@ -125,7 +132,6 @@ class VLMProcess:
                 self._process.kill()
                 await self._process.wait()
             raise TimeoutError(f"VLM server did not start within {max_wait_time} seconds")
-        
 
     async def _stop_process(self):
         """
@@ -151,9 +157,9 @@ class VLMProcess:
             self._process = None
 
 
-    async def start(self):
+    async def start(self, owner: object = None):
         """
-        Start the VLM process.
+        Start the VLM process and signal ownership if an owner is provided.
         Only one start operation will be processed at a time.
         If already running or starting, this will wait and return without action.
         """
@@ -162,6 +168,11 @@ class VLMProcess:
             if self._state in (VLMProcess.State.STARTING, VLMProcess.State.STOPPING):
                 LOG.warning("VLM process is in a transition state while starting. This should not happen.")
                 return
+            
+            # Signal one ownership if an owner is provided
+            if owner is not None:
+                if owner not in self._owners:
+                    self._owners.append(owner)
 
             # If already running, do nothing
             if self._state == VLMProcess.State.RUNNING:
@@ -179,9 +190,9 @@ class VLMProcess:
                 self._state = VLMProcess.State.STOPPED
                 LOG.error("Failed to start VLM process", exc_info=e)
 
-    async def stop(self):
+    async def stop(self, owner: object = None):
         """
-        Stop the VLM process.
+        Release ownership and stop the VLM process if no more owners exist.
         Only one stop operation will be processed at a time.
         If already stopped or stopping, this will wait and return without action.
         """
@@ -191,21 +202,77 @@ class VLMProcess:
                 LOG.warning("VLM process is in a transition state while stopping. This should not happen.")
                 return
 
+            # Release one ownership if an owner is provided
+            if owner is not None:
+                if owner in self._owners:
+                    self._owners.remove(owner)
+                else:
+                    LOG.warning("Attempted to release ownership for an owner that does not exist.")
+                    return
+
+            # If no more owners exist, stop the process
+            if len(self._owners) == 0:
+                # If already stopped, do nothing
+                if self._state == VLMProcess.State.STOPPED:
+                    return
+                
+                # Transition to STOPPING and stop process
+                self._state = VLMProcess.State.STOPPING
+                try:
+                    await self._stop_process()
+                except Exception as e:
+                    LOG.error("Failed to stop VLM process", exc_info=e)
+                
+                # Transition to STOPPED in any case
+                self._state = VLMProcess.State.STOPPED
+
+    async def force_stop(self):
+        """
+        Forcefully stop the VLM process regardless of ownership.
+        Only one stop operation will be processed at a time.
+        If already stopped or stopping, this will wait and return without action.
+        """
+        async with self._lock:
+            # Check that current state is not a transition state (should not happen)
+            if self._state in (VLMProcess.State.STARTING, VLMProcess.State.STOPPING):
+                LOG.warning("VLM process is in a transition state while force stopping. This should not happen.")
+                return
+
+            # Clear all owners
+            self._owners.clear()
+
             # If already stopped, do nothing
             if self._state == VLMProcess.State.STOPPED:
                 return
-            
-            try:
-                # Transition to STOPPING and stop process
-                self._state = VLMProcess.State.STOPPING
-                await self._stop_process()
                 
-                # Transition to STOPPED
-                self._state = VLMProcess.State.STOPPED
+            # Transition to STOPPING and stop process
+            self._state = VLMProcess.State.STOPPING
+            try:
+                await self._stop_process()
             except Exception as e:
-                # On error, still mark as STOPPED
-                self._state = VLMProcess.State.STOPPED
-                LOG.error("Failed to stop VLM process", exc_info=e)
+                LOG.error("Failed to force stop VLM process", exc_info=e)
+
+            # Transition to STOPPED in any case
+            self._state = VLMProcess.State.STOPPED
+
+    async def signal_ownership(self, owner: object = None):
+        """
+        Signal one ownership without starting the process.
+        """
+        async with self._lock:
+            if owner is not None:
+                self._owners.append(owner)
+
+    async def release_ownership(self, owner: object = None):
+        """
+        Release one ownership without stopping the process.
+        """
+        async with self._lock:
+            if owner is not None:
+                if owner in self._owners:
+                    self._owners.remove(owner)
+                else:
+                    LOG.warning("Attempted to release ownership for an owner that does not exist.")
 
     def get_state(self) -> State:
         """

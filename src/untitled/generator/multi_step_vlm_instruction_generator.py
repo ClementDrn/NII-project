@@ -27,6 +27,7 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
         self._planner_dispatcher: PromptDispatcher = None
         self._scene_descriptor_task_message: str = ""
         self._planner_task_message: str = ""
+        self._is_full_speed_mode_enabled: bool = False
 
         # Get API parameters from config for both steps
         descriptor_step: GeneratorStepConfig = CONFIG.generator.steps[0]
@@ -129,6 +130,18 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
         # Generate a scene description for each frame
         scene_descriptions = []
         futures = []
+
+        # If full speed mode is enabled, activate non-parallelizable clients for descriptor step
+        if self._is_full_speed_mode_enabled:
+            # First, signal soon initialization of clients
+            await self._prepare_clients_activation(self._descriptor_clients)
+
+            # Second, stop any planner clients to free resources
+            # NOTE: Thanks to the first step, if a same local VLM process is shared, it will not be stopped
+            await self._deactivate_clients(self._planner_dispatcher, self._planner_clients)
+
+            # Finally, activate descriptor clients
+            await self._activate_clients(self._descriptor_dispatcher, self._descriptor_clients)
         
         for i in range(data.frame_count):
             # Prepare prompt inputs
@@ -162,6 +175,19 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
 
         # Step 2:
         # Generate an adversarial instruction based on the concatenated scene descriptions
+
+        # If full speed mode is enabled, activate non-parallelizable clients for planner step
+        if self._is_full_speed_mode_enabled:
+            # First, signal soon initialization of clients
+            await self._prepare_clients_activation(self._planner_clients)
+
+            # Second, stop any descriptor clients to free resources
+            # NOTE: Thanks to the first step, if a same local VLM process is shared, it will not be stopped
+            await self._deactivate_clients(self._descriptor_dispatcher, self._descriptor_clients)
+
+            # Finally, activate planner clients
+            await self._activate_clients(self._planner_dispatcher, self._planner_clients)
+
         # The prompt is sent to the dispatcher which will select an available planner VLM client
         planner_future = asyncio.Future()
         prompt_request: PromptRequest = PromptRequest(
@@ -187,57 +213,64 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
 
         return instruction_set
 
+    async def _prepare_clients_activation(self, clients: List[VLMClient]):
+        """
+        Prepare non-parallelizable VLM clients for activation.
+        This method signals the clients that they will be needed soon.
+        """
+        for vlm in clients:
+            if not vlm.is_parallelizable():
+                await vlm.set_hot()
+
+    async def _activate_clients(self, dispatcher: PromptDispatcher, clients: List[VLMClient]):
+        """
+        Activate (start + connect) a list of VLM clients.
+        """
+        # Start synchronized LLM/VLM clients if not already started
+        new_clients: List[VLMClient] = []
+        for vlm in clients:
+            if not vlm.is_parallelizable():
+                if vlm.get_state() != VLMClient.State.CONNECTED:
+                    await vlm.open_connection()  # start + connect
+                new_clients.append(vlm)
+
+        # Add new clients to prompt dispatcher
+        await dispatcher.add_clients(new_clients)
+        
+    async def _deactivate_clients(self, dispatcher: PromptDispatcher, clients: List[VLMClient]):
+        """
+        Deactivate (disconnect + stop) a list of VLM clients.
+        """
+        # Remove non-parallelizable VLM clients from prompt dispatcher
+        to_remove: List[VLMClient] = []
+        for vlm in clients:
+            if not vlm.is_parallelizable():
+                to_remove.append(vlm)
+        await dispatcher.remove_clients(to_remove)
+
+        # Stop the VLM clients if they were activated by full speed mode
+        for vlm in to_remove:
+            if vlm.get_state() == VLMClient.State.CONNECTED:
+                await vlm.close_connection()
+                await vlm.stop()
+
     @override
     async def enable_full_speed_mode(self):
         """
         Enable full speed operation.
         """
-        # Start synchronized VLM clients if not already started
-        new_descriptor_clients: List[VLMClient] = []
-        for vlm in self._descriptor_clients:
-            if not vlm.is_parallelizable():
-                if vlm.get_state() != VLMClient.State.CONNECTED:
-                    await vlm.open_connection()  # start + connect
-                new_descriptor_clients.append(vlm)
-        
-        new_planner_clients: List[VLMClient] = []
-        for vlm in self._planner_clients:
-            if not vlm.is_parallelizable():
-                if vlm.get_state() != VLMClient.State.CONNECTED:
-                    await vlm.open_connection()  # start + connect
-                new_planner_clients.append(vlm)
-        
-        # Add new clients to prompt dispatchers
-        LOG.debug(f"Adding {len(new_descriptor_clients)} descriptor VLM clients and {len(new_planner_clients)} planner VLM clients to prompt dispatchers for full speed mode.")
-        await self._descriptor_dispatcher.add_clients(new_descriptor_clients)
-        await self._planner_dispatcher.add_clients(new_planner_clients)
-        LOG.debug("Full speed mode enabled.")
+        # NOTE: Clients will be activated on demand during instruction generation
+        self._is_full_speed_mode_enabled = True
+        LOG.debug("InstructionGenerator: Full speed mode enabled.")
 
     @override
     async def disable_full_speed_mode(self):
         """
         Disable full speed operation.
         """
-        # Remove non-parallelizable VLM clients from prompt dispatchers
-        descriptor_to_remove: List[VLMClient] = []
-        for vlm in self._descriptor_clients:
-            if not vlm.is_parallelizable():
-                descriptor_to_remove.append(vlm)
-        await self._descriptor_dispatcher.remove_clients(descriptor_to_remove)
+        # Stop and remove non-parallelizable clients from both dispatchers (if still active)
+        await self._deactivate_clients(self._descriptor_dispatcher, self._descriptor_clients)
+        await self._deactivate_clients(self._planner_dispatcher, self._planner_clients)
 
-        planner_to_remove: List[VLMClient] = []
-        for vlm in self._planner_clients:
-            if not vlm.is_parallelizable():
-                planner_to_remove.append(vlm)
-        await self._planner_dispatcher.remove_clients(planner_to_remove)
-
-        # Stop the VLM clients if they were activated by full speed mode
-        for vlm in descriptor_to_remove:
-            if vlm.get_state() == VLMClient.State.CONNECTED:
-                await vlm.close_connection()
-                await vlm.stop()
-        
-        for vlm in planner_to_remove:
-            if vlm.get_state() == VLMClient.State.CONNECTED:
-                await vlm.close_connection()
-                await vlm.stop()
+        self._is_full_speed_mode_enabled = False
+        LOG.debug("InstructionGenerator: Full speed mode disabled.")

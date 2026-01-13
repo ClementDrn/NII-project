@@ -28,7 +28,7 @@ class LocalVLM(VLMClient):
         LOG.info(f"Starting local VLM server for model {self._process.get_model_name()}...")
         
         # Start the VLM process
-        await self._process.start()
+        await self._process.start(owner=self)
         if self._process.get_state() == VLMProcess.State.RUNNING:
             self.state = VLMClient.State.STARTED
         else:
@@ -49,9 +49,11 @@ class LocalVLM(VLMClient):
             LOG.warning("VLM client status is not STARTED while stopping local VLM. Still attempting to stop...")
 
         # Stop the process
-        await self._process.stop()
+        # NOTE: It may not actually stop if another client is still using the same process
+        await self._process.stop(owner=self)
         if self._process.get_state() == VLMProcess.State.STOPPED:
             self.state = VLMClient.State.DISABLED
+            LOG.info("Local VLM server stopped")
         else:
             LOG.error("Failed to stop local VLM server")
 
@@ -68,3 +70,14 @@ class LocalVLM(VLMClient):
         Returns True if the local VLM client supports parallel requests.
         """
         return self._process.is_parallel_to_simulator_supported()
+
+    @override
+    async def set_hot(self):
+        """
+        Set the VLM client in a hot state.
+
+        A hot state indicates not to free resources that might be shared with another client when stopping as this client will start soon.
+        """
+        # Signal ownership to the process, so that it does not stop while in hot state
+        # Typically, it means that this client may be reused soon
+        await self._process.signal_ownership(owner=self)

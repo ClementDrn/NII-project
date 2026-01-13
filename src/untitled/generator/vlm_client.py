@@ -69,6 +69,7 @@ class VLMClient(ABC):
         # Initialize OpenAI client later
         self.client = None
         self.state = VLMClient.State.DISABLED
+        self.is_hot = False
 
 
     async def _send_prompt(self, system_text: str, user_text: str, user_image_paths: list[Path]) -> str:
@@ -136,6 +137,15 @@ class VLMClient(ABC):
     async def stop(self):
         """
         Stop the VLM client. If connected, close the connection first.
+        """
+        pass
+
+    async def set_hot(self):
+        """
+        Set the VLM client in a hot state.
+
+        A hot state indicates not to free resources when stopping as the client will be reused soon.
+        This is especially useful for local VLM clients to avoid starting/stopping the local server process multiple times. 
         """
         pass
 
