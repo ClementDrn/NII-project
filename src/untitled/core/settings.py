@@ -16,6 +16,7 @@ class LocalVLMConfig(BaseSettings):
     is_parallel_to_simulator: bool = False
     tensor_parallel_size: int = 1
     gpu_memory_utilization: float = 0.95
+    context_window: int = 8192
     max_num_seqs: int = 64
     enable_chunked_prefill: bool = True
     enable_prefix_caching: bool = False
@@ -35,7 +36,7 @@ class ModelInstanceConfig(BaseSettings):
     
     id: str
     model_name: str
-    type: str  # "vlm"
+    type: str  # "vlm", "llm"
     priority: int = 0
     batch_size: int = 1
     step_ids: list[str] = []
@@ -51,6 +52,7 @@ class GeneratorStepConfig(BaseSettings):
     model_name: str
     temperature: float = 0.7
     max_tokens: int = 512
+    thinking_mode: str = "default"  # options: default, enabled, disabled
     extra_body: dict = {}
 
 

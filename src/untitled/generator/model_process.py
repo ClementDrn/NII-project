@@ -64,10 +64,6 @@ class ModelProcess:
             f"--port {port} "
             f"--trust-remote-code "
         ]
-        # Add limit-mm-per-prompt (for VLM models)
-        if self._model_config.limit_mm_per_prompt:
-            limit_mm = json.dumps(self._model_config.limit_mm_per_prompt)
-            cmd[2] += f" --limit-mm-per-prompt '{limit_mm}'"
         # Add reasoning parser if specified
         if self._model_config.reasoning_parser:
             cmd[2] += f" --reasoning-parser {self._model_config.reasoning_parser} "
