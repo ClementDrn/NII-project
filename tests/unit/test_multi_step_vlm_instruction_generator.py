@@ -1,6 +1,6 @@
 from untitled.generator.instruction import Instruction, InstructionSet, InjectionWindow
 from untitled.core.settings import GeneratorStepConfig, ModelInstanceConfig, LocalVLMConfig
-from untitled.generator.vlm import VLMClient
+from untitled.generator.model import ModelClient
 
 import pytest
 from unittest.mock import Mock, patch, mock_open, MagicMock, AsyncMock

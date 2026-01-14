@@ -1,5 +1,7 @@
 from untitled.core.base import LOG, CONFIG
-from untitled.generator.vlm import VLM
+from untitled.core.settings import get_model_instances_config_by_step_id
+from untitled.generator.model import create_model_client
+from untitled.generator.instruction_generator import get_api_parameters_from_config
 
 import asyncio
 from pathlib import Path
@@ -31,24 +33,38 @@ async def send_request(vlm, image_path):
     return response
 
 async def main():
-    # Set up VLM
-    vlm_config = CONFIG.generator.models[0]
-    vlm = VLM(host=vlm_config.host, api_key=vlm_config.api_key, api_parameters=vlm_config.get_api_parameters())
+    # Set up VLM client
+    model_config = get_model_instances_config_by_step_id(CONFIG, "description")[0]
+    api_params = get_api_parameters_from_config(CONFIG.generator.steps[0])
+    vlm = create_model_client(model_config, api_params)
+    await vlm.start()
 
-    # Create a list of coroutines for sending requests
-    tasks = [send_request(vlm, image_path) for image_path in images]
+    try:
+        # Open connection to VLM
+        await vlm.open_connection()
 
-    # Run tasks concurrently with 'asyncio.gather()'
-    start_time = time.time()
-    responses = await asyncio.gather(*tasks)
-    end_time = time.time()
+        # Create a list of coroutines for sending requests
+        tasks = [send_request(vlm, image_path) for image_path in images]
 
-    # Print the raw response
-    LOG.info("Raw VLM Response:")
-    for i, response in enumerate(responses):
-        LOG.info(f"[Response {i+1}] - {response}")
+        # Run tasks concurrently with 'asyncio.gather()'
+        start_time = time.time()
+        responses = await asyncio.gather(*tasks)
+        end_time = time.time()
 
-    LOG.info(f"All requests completed in {end_time - start_time:.2f} seconds.")
+        # Print the raw response
+        LOG.info("Raw VLM Response:")
+        for i, response in enumerate(responses):
+            LOG.info(f"[Response {i+1}] - {response}")
+
+        LOG.info(f"All requests completed in {end_time - start_time:.2f} seconds.")
+
+        # Close connection
+        await vlm.close_connection()
+    except Exception as e:
+        LOG.error(e, exc_info=True)
+
+    # Finally, stop the VLM client
+    await vlm.stop()
 
 
 if __name__ == "__main__":

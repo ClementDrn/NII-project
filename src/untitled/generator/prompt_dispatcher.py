@@ -1,4 +1,4 @@
-from untitled.generator.vlm_client import VLMClient
+from untitled.generator.model_client import ModelClient
 from untitled.core.base import LOG
 
 from typing import List

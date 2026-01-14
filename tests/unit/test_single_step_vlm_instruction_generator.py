@@ -5,7 +5,7 @@ import json
 import asyncio
 
 from untitled.simulator.simulation_data import SimulationData, SimulationFrameData, SimulationMetadata
-from untitled.generator.vlm import VLMClient
+from untitled.generator.model import ModelClient
 from untitled.core.settings import GeneratorStepConfig, ModelInstanceConfig, LocalVLMConfig
 
 

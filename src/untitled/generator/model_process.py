@@ -10,9 +10,9 @@ import os
 import json
 
 
-class VLMProcess:
+class ModelProcess:
     """
-    Represents a VLM process.
+    Represents a local model process (vLLM server for LLM/VLM).
     """
     
     class State(Enum):
@@ -23,7 +23,7 @@ class VLMProcess:
 
     def __init__(self, host: str, model_config: ModelConfig, process_config: LocalVLMConfig):
         # State
-        self._state: VLMProcess.State = VLMProcess.State.STOPPED
+        self._state: ModelProcess.State = ModelProcess.State.STOPPED
         self._lock: asyncio.Lock = asyncio.Lock()
 
         # Subprocess handle
@@ -39,7 +39,7 @@ class VLMProcess:
 
     async def _start_process(self):
         """
-        Internal method to start the VLM process.
+        Internal method to start the model process.
         """
         # Parse host URL to get host and port
         parsed = urlparse(self._host)
@@ -53,8 +53,8 @@ class VLMProcess:
             # Model config params
             f"&& vllm serve {self._model_config.model_name} "
             f"--served-model-name {self._model_config.served_name} "
-            f"--max-model-len {self._model_config.max_model_len} "
             # Process config params (specific to this instance)
+            f"--max-model-len {self._process_config.context_window} "
             f"--tensor-parallel-size {self._process_config.tensor_parallel_size} "
             f"--gpu-memory-utilization {self._process_config.gpu_memory_utilization} "
             f"--max-num-seqs {self._process_config.max_num_seqs} "
@@ -64,9 +64,10 @@ class VLMProcess:
             f"--port {port} "
             f"--trust-remote-code "
         ]
-        # Add limit-mm-per-prompt
-        limit_mm = json.dumps(self._model_config.limit_mm_per_prompt)
-        cmd[2] += f" --limit-mm-per-prompt '{limit_mm}'"
+        # Add limit-mm-per-prompt (for VLM models)
+        if self._model_config.limit_mm_per_prompt:
+            limit_mm = json.dumps(self._model_config.limit_mm_per_prompt)
+            cmd[2] += f" --limit-mm-per-prompt '{limit_mm}'"
         # Add reasoning parser if specified
         if self._model_config.reasoning_parser:
             cmd[2] += f" --reasoning-parser {self._model_config.reasoning_parser} "
@@ -98,7 +99,7 @@ class VLMProcess:
         check_interval = 2  # Check every 2 seconds
         elapsed_time = 0
         
-        LOG.info(f"Waiting for VLM server to be ready on {host_addr}:{port}...")
+        LOG.info(f"Waiting for model server to be ready on {host_addr}:{port}...")
         while elapsed_time < max_wait_time:
             try:
                 # Try to establish a TCP connection
@@ -108,7 +109,7 @@ class VLMProcess:
                 )
                 writer.close()
                 await writer.wait_closed()
-                LOG.info(f"VLM server is ready on {host_addr}:{port}")
+                LOG.info(f"Model server is ready on {host_addr}:{port}")
                 break
             except (ConnectionRefusedError, OSError, asyncio.TimeoutError):
                 # Server not ready yet, wait and retry
@@ -119,27 +120,27 @@ class VLMProcess:
                 if self._process.returncode is not None:
                     # Process has terminated unexpectedly
                     stdout, stderr = await self._process.communicate()
-                    error_msg = f"VLM process terminated unexpectedly with code {self._process.returncode}"
+                    error_msg = f"Model process terminated unexpectedly with code {self._process.returncode}"
                     if stderr:
                         error_msg += f"\nStderr: {stderr.decode()}"
                     LOG.error(error_msg)
                     raise RuntimeError(error_msg)
         else:
             # Timeout reached
-            LOG.error(f"Timeout waiting for VLM server to start after {max_wait_time}s")
+            LOG.error(f"Timeout waiting for model server to start after {max_wait_time}s")
             # Kill the process if it's still running
             if self._process.returncode is None:
                 self._process.kill()
                 await self._process.wait()
-            raise TimeoutError(f"VLM server did not start within {max_wait_time} seconds")
+            raise TimeoutError(f"Model server did not start within {max_wait_time} seconds")
 
     async def _stop_process(self):
         """
-        Internal method to stop the VLM process.
+        Internal method to stop the model process.
         """
         # Terminate the process
         if self._process:
-            LOG.debug("Stopping VLM process...")
+            LOG.debug("Stopping model process...")
             try:
                 self._process.terminate()
 
@@ -147,26 +148,26 @@ class VLMProcess:
                 try:
                     await asyncio.wait_for(self._process.wait(), timeout=10)
                 except asyncio.TimeoutError:
-                    LOG.warning("VLM process did not stop gracefully, killing process...")
+                    LOG.warning("Model process did not stop gracefully, killing process...")
                     self._process.kill()
                     await self._process.wait()
             except ProcessLookupError:
                 LOG.debug("Process already terminated")
 
-            LOG.debug("VLM process stopped")
+            LOG.debug("Model process stopped")
             self._process = None
 
 
     async def start(self, owner: object = None):
         """
-        Start the VLM process and signal ownership if an owner is provided.
+        Start the model process and signal ownership if an owner is provided.
         Only one start operation will be processed at a time.
         If already running or starting, this will wait and return without action.
         """
         async with self._lock:
             # Check that current state is not a transition state (should not happen)
-            if self._state in (VLMProcess.State.STARTING, VLMProcess.State.STOPPING):
-                LOG.warning("VLM process is in a transition state while starting. This should not happen.")
+            if self._state in (ModelProcess.State.STARTING, ModelProcess.State.STOPPING):
+                LOG.warning("Model process is in a transition state while starting. This should not happen.")
                 return
             
             # Signal one ownership if an owner is provided
@@ -175,31 +176,31 @@ class VLMProcess:
                     self._owners.append(owner)
 
             # If already running, do nothing
-            if self._state == VLMProcess.State.RUNNING:
+            if self._state == ModelProcess.State.RUNNING:
                 return
             
             try:
                 # Transition to STARTING and start process
-                self._state = VLMProcess.State.STARTING
+                self._state = ModelProcess.State.STARTING
                 await self._start_process()
                 
                 # Transition to RUNNING
-                self._state = VLMProcess.State.RUNNING
+                self._state = ModelProcess.State.RUNNING
             except Exception as e:
                 # On error, revert to STOPPED
-                self._state = VLMProcess.State.STOPPED
-                LOG.error("Failed to start VLM process", exc_info=e)
+                self._state = ModelProcess.State.STOPPED
+                LOG.error("Failed to start model process", exc_info=e)
 
     async def stop(self, owner: object = None):
         """
-        Release ownership and stop the VLM process if no more owners exist.
+        Release ownership and stop the model process if no more owners exist.
         Only one stop operation will be processed at a time.
         If already stopped or stopping, this will wait and return without action.
         """
         async with self._lock:
             # Check that current state is not a transition state (should not happen)
-            if self._state in (VLMProcess.State.STARTING, VLMProcess.State.STOPPING):
-                LOG.warning("VLM process is in a transition state while stopping. This should not happen.")
+            if self._state in (ModelProcess.State.STARTING, ModelProcess.State.STOPPING):
+                LOG.warning("Model process is in a transition state while stopping. This should not happen.")
                 return
 
             # Release one ownership if an owner is provided
@@ -213,47 +214,47 @@ class VLMProcess:
             # If no more owners exist, stop the process
             if len(self._owners) == 0:
                 # If already stopped, do nothing
-                if self._state == VLMProcess.State.STOPPED:
+                if self._state == ModelProcess.State.STOPPED:
                     return
                 
                 # Transition to STOPPING and stop process
-                self._state = VLMProcess.State.STOPPING
+                self._state = ModelProcess.State.STOPPING
                 try:
                     await self._stop_process()
                 except Exception as e:
-                    LOG.error("Failed to stop VLM process", exc_info=e)
+                    LOG.error("Failed to stop model process", exc_info=e)
                 
                 # Transition to STOPPED in any case
-                self._state = VLMProcess.State.STOPPED
+                self._state = ModelProcess.State.STOPPED
 
     async def force_stop(self):
         """
-        Forcefully stop the VLM process regardless of ownership.
+        Forcefully stop the model process regardless of ownership.
         Only one stop operation will be processed at a time.
         If already stopped or stopping, this will wait and return without action.
         """
         async with self._lock:
             # Check that current state is not a transition state (should not happen)
-            if self._state in (VLMProcess.State.STARTING, VLMProcess.State.STOPPING):
-                LOG.warning("VLM process is in a transition state while force stopping. This should not happen.")
+            if self._state in (ModelProcess.State.STARTING, ModelProcess.State.STOPPING):
+                LOG.warning("Model process is in a transition state while force stopping. This should not happen.")
                 return
 
             # Clear all owners
             self._owners.clear()
 
             # If already stopped, do nothing
-            if self._state == VLMProcess.State.STOPPED:
+            if self._state == ModelProcess.State.STOPPED:
                 return
                 
             # Transition to STOPPING and stop process
-            self._state = VLMProcess.State.STOPPING
+            self._state = ModelProcess.State.STOPPING
             try:
                 await self._stop_process()
             except Exception as e:
-                LOG.error("Failed to force stop VLM process", exc_info=e)
+                LOG.error("Failed to force stop model process", exc_info=e)
 
             # Transition to STOPPED in any case
-            self._state = VLMProcess.State.STOPPED
+            self._state = ModelProcess.State.STOPPED
 
     async def signal_ownership(self, owner: object = None):
         """
@@ -276,18 +277,18 @@ class VLMProcess:
 
     def get_state(self) -> State:
         """
-        Get the current state of the VLM process.
+        Get the current state of the model process.
         """
         return self._state
 
     def is_parallel_to_simulator_supported(self) -> bool:
         """
-        Returns True if the VLM process supports parallel operation with the simulator.
+        Returns True if the model process supports parallel operation with the simulator.
         """
         return self._process_config.is_parallel_to_simulator
     
     def get_model_name(self) -> str:
         """
-        Get the model name served by this VLM process.
+        Get the model name served by this model process.
         """
         return self._model_config.model_name

@@ -7,16 +7,18 @@ import pytest
 import pytest_asyncio
 from PIL import Image
 
-from untitled.generator.vlm_client import (
-    VLMClient,
+from untitled.generator.model_client import (
+    ModelClient,
+    ModelType,
     encode_image_to_base64,
-    parse_vlm_response,
+    parse_model_response,
 )
 from untitled.generator.model_config import ModelConfig
 
 
-class DummyVLMClient(VLMClient):
-    """Concrete implementation for testing abstract VLMClient behaviour."""
+
+class DummyModelClient(ModelClient):
+    """Concrete implementation for testing abstract ModelClient behaviour."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -25,11 +27,11 @@ class DummyVLMClient(VLMClient):
 
     async def start(self):  # pragma: no cover - behaviour verified via state checks
         self.started = True
-        self.state = VLMClient.State.STARTED
+        self.state = ModelClient.State.STARTED
 
     async def stop(self):  # pragma: no cover - behaviour verified via state checks
         self.stopped = True
-        self.state = VLMClient.State.DISABLED
+        self.state = ModelClient.State.DISABLED
 
     def is_remote(self):  # pragma: no cover - not relevant for these tests
         return False
@@ -37,7 +39,7 @@ class DummyVLMClient(VLMClient):
 
 @pytest_asyncio.fixture(scope="function")
 async def dummy_client():
-    client = DummyVLMClient(0, 8, "http://localhost:8000", "token", {"model": "r4b"})
+    client = DummyModelClient(ModelType.VLM, 0, 8, "http://localhost:8000", "token", {"model": "r4b"})
     await client.start()
     return client
 
@@ -54,7 +56,7 @@ def test_encode_image_to_base64(tmp_path):
     base64.b64decode(payload)
 
 
-@patch("untitled.generator.vlm_client.Image.open")
+@patch("untitled.generator.model_client.Image.open")
 def test_encode_image_to_base64_uses_context_manager(mock_image_open):
     mock_image = MagicMock()
 
@@ -73,29 +75,29 @@ def test_encode_image_to_base64_uses_context_manager(mock_image_open):
     mock_image.save.assert_called_once()
 
 
-def test_parse_vlm_response_with_reasoning():
+def test_parse_model_response_with_reasoning():
     response = "<think>details</think>\n\nAnswer"
-    assert parse_vlm_response(response) == "Answer"
+    assert parse_model_response(response) == "Answer"
 
 
-def test_parse_vlm_response_without_reasoning():
+def test_parse_model_response_without_reasoning():
     response = "Final output"
-    assert parse_vlm_response(response) == "Final output"
+    assert parse_model_response(response) == "Final output"
 
 
-def test_parse_vlm_response_strips_whitespace():
+def test_parse_model_response_strips_whitespace():
     response = "  <think>details</think>\n\n  Answer me  "
-    assert parse_vlm_response(response) == "Answer me"
+    assert parse_model_response(response) == "Answer me"
 
 
-def test_parse_vlm_response_multiple_think_blocks():
+def test_parse_model_response_multiple_think_blocks():
     response = "<think>first</think>\n\nAnswer with </think> literal"
-    assert parse_vlm_response(response) == "Answer with </think> literal"
+    assert parse_model_response(response) == "Answer with </think> literal"
 
 
 @pytest.mark.asyncio
 async def test_prompt_requires_connection(dummy_client):
-    dummy_client.state = VLMClient.State.STARTED
+    dummy_client.state = ModelClient.State.STARTED
     with pytest.raises(ConnectionError):
         await dummy_client.prompt("sys", "user", [])
 
@@ -106,7 +108,7 @@ async def test_prompt_returns_result(dummy_client):
     response.choices = [MagicMock()]
     response.choices[0].message.content = "result"
 
-    dummy_client.state = VLMClient.State.CONNECTED
+    dummy_client.state = ModelClient.State.CONNECTED
     dummy_client.client = MagicMock()
     dummy_client.client.chat.completions.create = AsyncMock(return_value=response)
 
@@ -121,7 +123,7 @@ async def test_prompt_passes_api_parameters(dummy_client):
     response.choices = [MagicMock()]
     response.choices[0].message.content = "ok"
 
-    dummy_client.state = VLMClient.State.CONNECTED
+    dummy_client.state = ModelClient.State.CONNECTED
     dummy_client.client = MagicMock()
     dummy_client.client.chat.completions.create = AsyncMock(return_value=response)
 
@@ -147,7 +149,7 @@ async def test_open_connection_initialises_async_openai(dummy_client):
     mock_async_openai.assert_called_once_with(api_key="token", base_url="http://localhost:8000/v1")
     dummy_client.test_connection.assert_awaited_once()
     assert dummy_client.client is async_openai_instance
-    assert dummy_client.state == VLMClient.State.CONNECTED
+    assert dummy_client.state == ModelClient.State.CONNECTED
 
 
 @pytest.mark.asyncio
@@ -158,29 +160,29 @@ async def test_open_connection_raises_when_test_connection_fails(dummy_client):
         with pytest.raises(ConnectionError):
             await dummy_client.open_connection()
 
-    assert dummy_client.state == VLMClient.State.STARTED
+    assert dummy_client.state == ModelClient.State.STARTED
 
 
 @pytest.mark.asyncio
 async def test_close_connection_resets_state(dummy_client):
-    dummy_client.state = VLMClient.State.CONNECTED
+    dummy_client.state = ModelClient.State.CONNECTED
     dummy_client.client = MagicMock()
 
     await dummy_client.close_connection()
 
     assert dummy_client.client is None
-    assert dummy_client.state == VLMClient.State.STARTED
+    assert dummy_client.state == ModelClient.State.STARTED
 
 
 @pytest.mark.asyncio
 async def test_test_connection_warns_when_not_connected(dummy_client):
-    dummy_client.state = VLMClient.State.STARTED
+    dummy_client.state = ModelClient.State.STARTED
     assert not await dummy_client.test_connection()
 
 
 @pytest.mark.asyncio
 async def test_test_connection_makes_request_when_connected(dummy_client):
-    dummy_client.state = VLMClient.State.CONNECTED
+    dummy_client.state = ModelClient.State.CONNECTED
     response = MagicMock()
     response.choices = [MagicMock()]
 
