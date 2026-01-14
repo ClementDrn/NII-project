@@ -56,15 +56,15 @@ def get_api_parameters_from_config(step_config: GeneratorStepConfig) -> dict:
     # Select correct thinking mode parameters from model config based on step config thinking_mode
     thinking_mode_params = {}
     if step_config.thinking_mode == "enabled":
-        if model_config.thinking_enabled_params is None:
+        if model_config.thinking_activation_params is None:
             LOG.warning(f"Thinking mode 'enabled' is not supported by model '{model_config.name}'. Using default thinking parameters.")
         else:
-            thinking_mode_params = model_config.thinking_enabled_params
+            thinking_mode_params = model_config.thinking_activation_params
     elif step_config.thinking_mode == "disabled":
-        if model_config.thinking_disabled_params is None:
+        if model_config.thinking_deactivation_params is None:
             LOG.warning(f"Thinking mode 'disabled' is not supported by model '{model_config.name}'. Using default thinking parameters.")
         else:
-            thinking_mode_params = model_config.thinking_disabled_params
+            thinking_mode_params = model_config.thinking_deactivation_params
     elif step_config.thinking_mode == "default":
         # NOTE: If thinking_default_params is None, it's still valid (means no special params)
         if model_config.thinking_default_params is not None:

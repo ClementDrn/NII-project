@@ -32,10 +32,12 @@ class SimulationData:
 
 def load_metadata(metadata_path: Path) -> SimulationMetadata:
     """
-    Load simulation metadata from a JSON file.
+    Load simulation metadata from a JSON file. Only the relevant fields are extracted.
     """
     with open(metadata_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
+
+        
 
         return SimulationMetadata(
             step=data.get('step', 0),
