@@ -50,3 +50,8 @@ class RemoteModel(ModelClient):
         Returns True if the model client is remote.
         """
         return True
+
+
+# Backward compatibility alias
+# WARN: Deprecated TODO: Remove for release
+RemoteVLM = RemoteModel

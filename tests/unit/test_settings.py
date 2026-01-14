@@ -14,6 +14,7 @@ from untitled.core.settings import (
     RemoteVLMConfig,
     HostConfig,
     GeneratorStepConfig,
+    FilterConfig,
     load_config
 )
 
@@ -243,9 +244,10 @@ class TestSettings:
         monkeypatch.setenv("CONDA_PATH", "/path/to/conda")
         monkeypatch.setenv("OUTPUT_PATH", "/path/to/output")
         
+        filter_config = FilterConfig()
         generator = GeneratorConfig()
         carla = CARLAConfig()
-        settings = Settings(generator=generator, carla=carla)
+        settings = Settings(filter=filter_config, generator=generator, carla=carla)
         
         assert settings.generator.design == "single_step_vlm"
         assert settings.carla.debug is False
@@ -298,6 +300,7 @@ class TestSettings:
         
         # Create settings
         settings = Settings(
+            filter=FilterConfig(),
             generator=generator,
             carla=carla,
             model_instances=model_instances,
@@ -330,6 +333,11 @@ OUTPUT_PATH=/path/to/output
         # Create config.yaml
         config_data = {
             "version": "2.0-dev",
+            "filter": {
+                "max_frames_per_minute": 60,
+                "clustering_threshold": 0.99,
+                "max_cluster_count": 30
+            },
             "generator": {
                 "design": "single_step_vlm",
                 "steps": []
@@ -364,6 +372,11 @@ OUTPUT_PATH=/path/to/output
         # Create config.yaml
         config_data = {
             "version": "2.0-dev",
+            "filter": {
+                "max_frames_per_minute": 60,
+                "clustering_threshold": 0.99,
+                "max_cluster_count": 30
+            },
             "generator": {
                 "design": "multi_step_vlm",
                 "steps": [
@@ -436,6 +449,11 @@ OUTPUT_PATH=/path/to/output
         # Create config.yaml
         config_data = {
             "version": "2.0-dev",
+            "filter": {
+                "max_frames_per_minute": 60,
+                "clustering_threshold": 0.99,
+                "max_cluster_count": 30
+            },
             "generator": {
                 "design": "single_step_vlm",
                 "steps": []
@@ -468,6 +486,11 @@ OUTPUT_PATH=/path/to/output
         config_data = {
             "version": "2.0-dev",
             "_comment": "This is a comment",
+            "filter": {
+                "max_frames_per_minute": 60,
+                "clustering_threshold": 0.99,
+                "max_cluster_count": 30
+            },
             "generator": {
                 "design": "single_step_vlm",
                 "steps": []

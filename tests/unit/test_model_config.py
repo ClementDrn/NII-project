@@ -9,7 +9,7 @@ def test_get_model_config_supported_model():
     assert isinstance(config, ModelConfig)
     assert config.model_name == "yannqi/R-4B"
     assert config.served_name == "r4b"
-    assert config.limit_mm_per_prompt == {"image": 1}
+    assert config.max_model_len == 32768
 
 
 def test_get_model_config_unsupported_model():

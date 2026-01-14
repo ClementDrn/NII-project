@@ -28,8 +28,8 @@ from untitled.generator.model_client import (
     ModelType,
     encode_image_to_base64,
     parse_model_response,
-    parse_vlm_response,  # backward compatibility alias
-    VLMClient,  # backward compatibility alias
+    parse_vlm_response,  # WARN: Deprecated TODO: Remove for release
+    VLMClient,  # WARN: Deprecated TODO: Remove for release
 )
 from untitled.generator.model_config import (
     ModelConfig,
@@ -122,6 +122,7 @@ def create_model_client(instance_config: ModelInstanceConfig, api_parameters: di
 
 
 # Alias for backward compatibility
+# WARN: Deprecated TODO: Remove for release
 def create_vlm_client(instance_config: ModelInstanceConfig, api_parameters: dict = {}) -> ModelClient:
     """
     Convenience function to create a VLM client.

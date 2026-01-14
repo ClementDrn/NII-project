@@ -6,7 +6,9 @@ from untitled.core.settings import ModelInstanceConfig, LocalVLMConfig, RemoteVL
 
 def test_create_model_client_returns_local_client():
     with patch("untitled.generator.model.get_model_config") as mock_get_config:
-        mock_get_config.return_value = MagicMock()
+        mock_model_config = MagicMock()
+        mock_model_config.max_model_len = 32768  # Must be >= context_window (default 8192)
+        mock_get_config.return_value = mock_model_config
         with patch("untitled.generator.model.LocalModel") as mock_local:
             # Create local instance config
             local_config = LocalVLMConfig(port=8000)

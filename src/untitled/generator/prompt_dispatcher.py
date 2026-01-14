@@ -18,16 +18,16 @@ class PromptRequest:
 
 class PromptDispatcher:
     """
-    Dispatch prompts to multiple VLM clients.
+    Dispatch prompts to multiple model clients.
     """
 
     @dataclass
     class ClientResource:
         """
-        Internal class to track VLM client resource usage.
+        Internal class to track model client resource usage.
         Sortable by client priority for use in PriorityQueue.
         """
-        client: VLMClient
+        client: ModelClient
         is_idle: asyncio.Event
         is_removal_requested: bool = False
         
@@ -35,13 +35,13 @@ class PromptDispatcher:
             """Compare by client priority for PriorityQueue ordering."""
             return self.client.priority < other.client.priority
 
-    def __init__(self, vlm_clients: List[VLMClient] = []):
-        # List of all VLM clients to use for processing prompts
-        if vlm_clients is None:
-            vlm_clients = []
+    def __init__(self, model_clients: List[ModelClient] = []):
+        # List of all model clients to use for processing prompts
+        if model_clients is None:
+            model_clients = []
         self._all_clients: List[PromptDispatcher.ClientResource] = [
             self.ClientResource(client=client, is_idle=asyncio.Event()) 
-            for client in vlm_clients
+            for client in model_clients
         ]
         # Set all clients as initially idle
         for resource in self._all_clients:
@@ -57,9 +57,9 @@ class PromptDispatcher:
         self._dispatcher_task: asyncio.Task = None
 
 
-    async def _send_prompt_to_vlm(self, prompt: PromptRequest, client_resource: ClientResource):
+    async def _send_prompt_to_model(self, prompt: PromptRequest, client_resource: ClientResource):
         """
-        Send a prompt to one of the VLM clients in a round-robin fashion.
+        Send a prompt to one of the model clients.
         """
         try:
             # Send prompt
@@ -74,10 +74,10 @@ class PromptDispatcher:
 
     async def _dispatch_prompts_to_client(self, prompts: List[PromptRequest], client_resource: ClientResource):
         """
-        Dispatch a list of prompts to a specific VLM client.
+        Dispatch a list of prompts to a specific model client.
         """
-        # Dispatch all prompts to the VLM client concurrently
-        tasks = [self._send_prompt_to_vlm(prompt, client_resource) for prompt in prompts]
+        # Dispatch all prompts to the model client concurrently
+        tasks = [self._send_prompt_to_model(prompt, client_resource) for prompt in prompts]
         await asyncio.gather(*tasks)
 
         # Mark client as idle and available again, unless removal was requested
@@ -121,7 +121,7 @@ class PromptDispatcher:
                     except asyncio.QueueEmpty:   # no more prompts available
                         break
                 
-                # 4. Dispatch prompts to the VLM client (don't wait)
+                # 4. Dispatch prompts to the model client (don't wait)
                 LOG.debug(f"Prompt dispatcher dispatching {len(prompts)} prompts to client...")
                 asyncio.create_task(self._dispatch_prompts_to_client(prompts, client_resource))
                 LOG.debug(f"Prompt dispatcher finished one loop iteration.")
@@ -178,9 +178,9 @@ class PromptDispatcher:
         """
         await self._prompt_queue.put(prompt)
 
-    async def add_clients(self, new_clients: List[VLMClient]):
+    async def add_clients(self, new_clients: List[ModelClient]):
         """
-        Add VLM clients to the list of available clients.
+        Add model clients to the list of available clients.
         """
         # Create new resources and add them to the main list
         new_resources = [
@@ -197,9 +197,9 @@ class PromptDispatcher:
         for resource in new_resources:
             self._free_clients.put_nowait(resource)
 
-    async def remove_clients(self, old_clients: List[VLMClient]):
+    async def remove_clients(self, old_clients: List[ModelClient]):
         """
-        Remove VLM clients from the list of available clients.
+        Remove model clients from the list of available clients.
 
         The function returns when the clients are effectively removed.
         The function may take time to return because it has to wait for each of the concerned clients to finish their task first.
@@ -222,9 +222,9 @@ class PromptDispatcher:
         # Remove clients from the main list
         self._all_clients = resources_to_keep
 
-    async def get_clients(self) -> List[VLMClient]:
+    async def get_clients(self) -> List[ModelClient]:
         """
-        Get the list of currently registered VLM clients.
+        Get the list of currently registered model clients.
         """
         return [resource.client for resource in self._all_clients]
 

@@ -143,7 +143,7 @@ async def test_open_connection_initialises_async_openai(dummy_client):
     dummy_client.test_connection = AsyncMock(return_value=True)
 
     async_openai_instance = MagicMock()
-    with patch("untitled.generator.vlm_client.AsyncOpenAI", return_value=async_openai_instance) as mock_async_openai:
+    with patch("untitled.generator.model_client.AsyncOpenAI", return_value=async_openai_instance) as mock_async_openai:
         await dummy_client.open_connection()
 
     mock_async_openai.assert_called_once_with(api_key="token", base_url="http://localhost:8000/v1")
@@ -156,7 +156,7 @@ async def test_open_connection_initialises_async_openai(dummy_client):
 async def test_open_connection_raises_when_test_connection_fails(dummy_client):
     dummy_client.test_connection = AsyncMock(return_value=False)
 
-    with patch("untitled.generator.vlm_client.AsyncOpenAI", return_value=MagicMock()):
+    with patch("untitled.generator.model_client.AsyncOpenAI", return_value=MagicMock()):
         with pytest.raises(ConnectionError):
             await dummy_client.open_connection()
 
@@ -203,7 +203,7 @@ async def test_send_prompt_includes_images_and_text(dummy_client):
     dummy_client.client = MagicMock()
     dummy_client.client.chat.completions.create = AsyncMock(return_value=response)
 
-    with patch("untitled.generator.vlm_client.encode_image_to_base64", side_effect=["img1", "img2"]) as mock_encode:
+    with patch("untitled.generator.model_client.encode_image_to_base64", side_effect=["img1", "img2"]) as mock_encode:
         result = await dummy_client._send_prompt("sys", "user", [Path("img1.jpg"), Path("img2.jpg")])
 
     assert result == "resp"
@@ -228,7 +228,7 @@ async def test_send_prompt_handles_none_text(dummy_client):
     dummy_client.client = MagicMock()
     dummy_client.client.chat.completions.create = AsyncMock(return_value=response)
 
-    with patch("untitled.generator.vlm_client.encode_image_to_base64", return_value="img-data"):
+    with patch("untitled.generator.model_client.encode_image_to_base64", return_value="img-data"):
         await dummy_client._send_prompt("sys", None, [Path("img.jpg")])
 
     call_args = dummy_client.client.chat.completions.create.await_args
@@ -251,7 +251,7 @@ async def test_send_prompt_measures_time(dummy_client):
         call_count[0] += 1
         return 1.0 + call_count[0] * 0.5
     
-    with patch("untitled.generator.vlm_client.time.time", side_effect=mock_time_func) as mock_time:
+    with patch("untitled.generator.model_client.time.time", side_effect=mock_time_func) as mock_time:
         await dummy_client._send_prompt("sys", "user", None)
 
     assert mock_time.call_count >= 2

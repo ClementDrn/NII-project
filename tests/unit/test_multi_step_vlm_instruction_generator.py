@@ -117,7 +117,7 @@ def mock_vlm_responses():
 
 @pytest.fixture
 def mock_parsed_responses():
-    """Expected outputs after parse_vlm_response strips <think> tags."""
+    """Expected outputs after parse_model_response strips <think> tags."""
     # Parsed scene descriptions (without <think> tags)
     parsed_descriptor_responses = [
         "The vehicle is approaching an intersection with traffic lights.",
@@ -159,8 +159,8 @@ def mock_task_messages():
 
 @pytest.mark.asyncio
 @patch("untitled.generator.multi_step_vlm_instruction_generator.PromptDispatcher")
-@patch("untitled.generator.multi_step_vlm_instruction_generator.VLMClientFactory")
-@patch("untitled.generator.vlm.get_model_config")
+@patch("untitled.generator.multi_step_vlm_instruction_generator.ModelClientFactory")
+@patch("untitled.generator.instruction_generator.get_model_config")
 @patch("untitled.generator.multi_step_vlm_instruction_generator.CONFIG")
 @patch("builtins.open", new_callable=mock_open)
 async def test_init_with_two_models(mock_file, mock_config, mock_get_model_config, mock_factory,
@@ -220,7 +220,7 @@ async def test_init_with_two_models(mock_file, mock_config, mock_get_model_confi
     
     generator = MultiStepVLMInstructionGenerator()
     
-    # Verify VLMClientFactory.create was called twice (descriptor and planner)
+    # Verify ModelClientFactory.create was called twice (descriptor and planner)
     assert mock_factory.create.call_count == 2
     
     # Verify task messages were loaded
@@ -246,10 +246,10 @@ async def test_init_with_wrong_number_of_models(mock_file, mock_config):
 
 @pytest.mark.asyncio
 @patch("untitled.generator.multi_step_vlm_instruction_generator.parse_instructions_from_json")
-@patch("untitled.generator.multi_step_vlm_instruction_generator.parse_vlm_response")
+@patch("untitled.generator.multi_step_vlm_instruction_generator.parse_model_response")
 @patch("untitled.generator.multi_step_vlm_instruction_generator.PromptDispatcher")
-@patch("untitled.generator.multi_step_vlm_instruction_generator.VLMClientFactory")
-@patch("untitled.generator.vlm.get_model_config")
+@patch("untitled.generator.multi_step_vlm_instruction_generator.ModelClientFactory")
+@patch("untitled.generator.instruction_generator.get_model_config")
 @patch("untitled.generator.multi_step_vlm_instruction_generator.CONFIG")
 @patch("builtins.open", new_callable=mock_open)
 async def test_generate_instruction_multi_frame(mock_file, mock_config, mock_get_model_config, mock_factory,
@@ -299,7 +299,7 @@ async def test_generate_instruction_multi_frame(mock_file, mock_config, mock_get
         "reasoning": "Critical moment at intersection"
     }]'''
     
-    # Setup parse_vlm_response to return parsed outputs
+    # Setup parse_model_response to return parsed outputs
     parsed_descriptors, _ = mock_parsed_responses
     mock_parse.side_effect = parsed_descriptors + [json_response]
     
@@ -339,10 +339,10 @@ async def test_generate_instruction_multi_frame(mock_file, mock_config, mock_get
 
 @pytest.mark.asyncio
 @patch("untitled.generator.multi_step_vlm_instruction_generator.parse_instructions_from_json")
-@patch("untitled.generator.multi_step_vlm_instruction_generator.parse_vlm_response")
+@patch("untitled.generator.multi_step_vlm_instruction_generator.parse_model_response")
 @patch("untitled.generator.multi_step_vlm_instruction_generator.PromptDispatcher")
-@patch("untitled.generator.multi_step_vlm_instruction_generator.VLMClientFactory")
-@patch("untitled.generator.vlm.get_model_config")
+@patch("untitled.generator.multi_step_vlm_instruction_generator.ModelClientFactory")
+@patch("untitled.generator.instruction_generator.get_model_config")
 @patch("untitled.generator.multi_step_vlm_instruction_generator.CONFIG")
 @patch("builtins.open", new_callable=mock_open)
 async def test_generate_instruction_single_frame(mock_file, mock_config, mock_get_model_config, mock_factory,
@@ -447,8 +447,8 @@ async def test_generate_instruction_single_frame(mock_file, mock_config, mock_ge
 
 @pytest.mark.asyncio
 @patch("untitled.generator.multi_step_vlm_instruction_generator.PromptDispatcher")
-@patch("untitled.generator.multi_step_vlm_instruction_generator.VLMClientFactory")
-@patch("untitled.generator.vlm.get_model_config")
+@patch("untitled.generator.multi_step_vlm_instruction_generator.ModelClientFactory")
+@patch("untitled.generator.instruction_generator.get_model_config")
 @patch("untitled.generator.multi_step_vlm_instruction_generator.CONFIG")
 @patch("builtins.open", new_callable=mock_open)
 async def test_generate_instruction_no_frames_raises_error(mock_file, mock_config, mock_get_model_config,
@@ -495,8 +495,8 @@ async def test_generate_instruction_no_frames_raises_error(mock_file, mock_confi
 
 @pytest.mark.asyncio
 @patch("untitled.generator.multi_step_vlm_instruction_generator.PromptDispatcher")
-@patch("untitled.generator.multi_step_vlm_instruction_generator.VLMClientFactory")
-@patch("untitled.generator.vlm.get_model_config")
+@patch("untitled.generator.multi_step_vlm_instruction_generator.ModelClientFactory")
+@patch("untitled.generator.instruction_generator.get_model_config")
 @patch("untitled.generator.multi_step_vlm_instruction_generator.CONFIG")
 @patch("builtins.open", new_callable=mock_open)
 async def test_free_method(mock_file, mock_config, mock_get_model_config, mock_factory, mock_dispatcher,
@@ -517,11 +517,11 @@ async def test_free_method(mock_file, mock_config, mock_get_model_config, mock_f
     # Setup mock VLM clients
     mock_descriptor_vlm = MagicMock()
     mock_descriptor_vlm.is_parallelizable.return_value = False
-    mock_descriptor_vlm.get_state.return_value = VLMClient.State.STARTED
+    mock_descriptor_vlm.get_state.return_value = ModelClient.State.STARTED
     mock_descriptor_vlm.stop = AsyncMock()
     mock_planner_vlm = MagicMock()
     mock_planner_vlm.is_parallelizable.return_value = False
-    mock_planner_vlm.get_state.return_value = VLMClient.State.STARTED
+    mock_planner_vlm.get_state.return_value = ModelClient.State.STARTED
     mock_planner_vlm.stop = AsyncMock()
     mock_factory.create.side_effect = [mock_descriptor_vlm, mock_planner_vlm]
     

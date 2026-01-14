@@ -1,11 +1,11 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
 class ModelConfig:
     """
-    Configuration for a specific VLM model.
-    These settings define model properties used when starting VLM servers.
+    Configuration for a specific model (LLM/VLM).
+    These settings define model properties used when starting model servers.
     """
     model_name: str
     served_name: str
@@ -13,7 +13,8 @@ class ModelConfig:
     reasoning_parser: str = ""
     thinking_activation_params: dict = None     # None means unsupported (will raise warning if thinking is enabled)
     thinking_deactivation_params: dict = None
-    thinking_default_params: dict = {}
+    thinking_default_params: dict = field(default_factory=dict)
+    limit_mm_per_prompt: dict = field(default_factory=dict)     # WARN: Deprecated TODO: Remove for release
 
 
 def get_model_config(model_id: str) -> ModelConfig:

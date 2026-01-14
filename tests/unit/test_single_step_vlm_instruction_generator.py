@@ -66,8 +66,8 @@ def mock_system_task():
 # --- Tests -------------------------------------------------------------------
 
 @patch("untitled.generator.single_step_vlm_instruction_generator.PromptDispatcher")
-@patch("untitled.generator.single_step_vlm_instruction_generator.VLMClientFactory")
-@patch("untitled.generator.vlm.get_model_config")
+@patch("untitled.generator.single_step_vlm_instruction_generator.ModelClientFactory")
+@patch("untitled.generator.instruction_generator.get_model_config")
 @patch("untitled.generator.single_step_vlm_instruction_generator.CONFIG")
 @patch("builtins.open", new_callable=mock_open, read_data="Test system task message")
 def test_init(mock_file, mock_config, mock_get_model_config, mock_factory, mock_dispatcher):
@@ -109,10 +109,10 @@ def test_init(mock_file, mock_config, mock_get_model_config, mock_factory, mock_
 
 @pytest.mark.asyncio
 @patch("untitled.generator.single_step_vlm_instruction_generator.parse_instructions_from_json")
-@patch("untitled.generator.single_step_vlm_instruction_generator.parse_vlm_response")
+@patch("untitled.generator.single_step_vlm_instruction_generator.parse_model_response")
 @patch("untitled.generator.single_step_vlm_instruction_generator.PromptDispatcher")
-@patch("untitled.generator.single_step_vlm_instruction_generator.VLMClientFactory")
-@patch("untitled.generator.vlm.get_model_config")
+@patch("untitled.generator.single_step_vlm_instruction_generator.ModelClientFactory")
+@patch("untitled.generator.instruction_generator.get_model_config")
 @patch("untitled.generator.single_step_vlm_instruction_generator.CONFIG")
 @patch("builtins.open", new_callable=mock_open, read_data="Test system task")
 async def test_generate_instruction_single_frame(mock_file, mock_config, mock_get_model_config, mock_factory, 
@@ -160,7 +160,7 @@ async def test_generate_instruction_single_frame(mock_file, mock_config, mock_ge
     mock_dispatcher_instance = MagicMock()
     mock_dispatcher.return_value = mock_dispatcher_instance
 
-    # Setup parse_vlm_response
+    # Setup parse_model_response
     mock_parse.return_value = json_response
 
     # Setup parse_instructions_from_json
@@ -193,10 +193,10 @@ async def test_generate_instruction_single_frame(mock_file, mock_config, mock_ge
 
 @pytest.mark.asyncio
 @patch("untitled.generator.single_step_vlm_instruction_generator.parse_instructions_from_json")
-@patch("untitled.generator.single_step_vlm_instruction_generator.parse_vlm_response")
+@patch("untitled.generator.single_step_vlm_instruction_generator.parse_model_response")
 @patch("untitled.generator.single_step_vlm_instruction_generator.PromptDispatcher")
-@patch("untitled.generator.single_step_vlm_instruction_generator.VLMClientFactory")
-@patch("untitled.generator.vlm.get_model_config")
+@patch("untitled.generator.single_step_vlm_instruction_generator.ModelClientFactory")
+@patch("untitled.generator.instruction_generator.get_model_config")
 @patch("untitled.generator.single_step_vlm_instruction_generator.CONFIG")
 @patch("builtins.open", new_callable=mock_open, read_data="Test system task")
 async def test_generate_instruction_multiple_frames_uses_first_frame(mock_file, mock_config, mock_get_model_config,
@@ -314,10 +314,10 @@ async def test_generate_instruction_multiple_frames_uses_first_frame(mock_file, 
 
 @pytest.mark.asyncio
 @patch("untitled.generator.single_step_vlm_instruction_generator.parse_instructions_from_json")
-@patch("untitled.generator.single_step_vlm_instruction_generator.parse_vlm_response")
+@patch("untitled.generator.single_step_vlm_instruction_generator.parse_model_response")
 @patch("untitled.generator.single_step_vlm_instruction_generator.PromptDispatcher")
-@patch("untitled.generator.single_step_vlm_instruction_generator.VLMClientFactory")
-@patch("untitled.generator.vlm.get_model_config")
+@patch("untitled.generator.single_step_vlm_instruction_generator.ModelClientFactory")
+@patch("untitled.generator.instruction_generator.get_model_config")
 @patch("untitled.generator.single_step_vlm_instruction_generator.CONFIG")
 @patch("builtins.open", new_callable=mock_open, read_data="Test system task")
 async def test_generate_instruction_no_think_tags(mock_file, mock_config, mock_get_model_config, mock_factory,
@@ -367,7 +367,7 @@ async def test_generate_instruction_no_think_tags(mock_file, mock_config, mock_g
     mock_dispatcher_instance.flush = AsyncMock()
     mock_dispatcher.return_value = mock_dispatcher_instance
     
-    # Setup parse_vlm_response to return JSON (no think tags)
+    # Setup parse_model_response to return JSON (no think tags)
     mock_parse.return_value = json_response
     
     # Setup parse_instructions_from_json to return an InstructionSet object
@@ -399,8 +399,8 @@ async def test_generate_instruction_no_think_tags(mock_file, mock_config, mock_g
 
 @pytest.mark.asyncio
 @patch("untitled.generator.single_step_vlm_instruction_generator.PromptDispatcher")
-@patch("untitled.generator.single_step_vlm_instruction_generator.VLMClientFactory")
-@patch("untitled.generator.vlm.get_model_config")
+@patch("untitled.generator.single_step_vlm_instruction_generator.ModelClientFactory")
+@patch("untitled.generator.instruction_generator.get_model_config")
 @patch("untitled.generator.single_step_vlm_instruction_generator.CONFIG")
 @patch("builtins.open", new_callable=mock_open, read_data="Test system task")
 async def test_free_method(mock_file, mock_config, mock_get_model_config, mock_factory, mock_dispatcher):
@@ -430,7 +430,7 @@ async def test_free_method(mock_file, mock_config, mock_get_model_config, mock_f
     # Mock VLM client
     mock_vlm = MagicMock()
     mock_vlm.is_parallelizable.return_value = False
-    mock_vlm.get_state.return_value = VLMClient.State.STARTED
+    mock_vlm.get_state.return_value = ModelClient.State.STARTED
     mock_vlm.close_connection = AsyncMock()
     mock_vlm.stop = AsyncMock()
     mock_factory.create.return_value = mock_vlm

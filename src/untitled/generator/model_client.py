@@ -44,6 +44,7 @@ def parse_model_response(chat_response: str) -> str:
 
 
 # Alias for backward compatibility
+# WARN: Deprecated TODO: Remove for release
 parse_vlm_response = parse_model_response
 
 
@@ -279,3 +280,8 @@ class ModelClient(ABC):
             ModelClient.State enum value
         """
         return self.state
+
+
+# Backward compatibility alias
+# WARN: Deprecated TODO: Remove for release
+VLMClient = ModelClient
