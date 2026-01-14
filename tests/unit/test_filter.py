@@ -4,8 +4,8 @@ from pathlib import Path
 import torch
 from typing import List
 
-from untitled.generator.filter.filter import Cluster, cluster_frames
-from untitled.generator.filter.embedder import Embedder
+from untitled.filter.filter import Cluster, cluster_frames
+from untitled.filter.embedder import Embedder
 from untitled.simulator.simulation_data import SimulationData, SimulationFrameData, SimulationMetadata
 
 

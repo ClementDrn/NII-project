@@ -3,7 +3,7 @@ from unittest.mock import patch, MagicMock
 from pathlib import Path
 import torch
 
-from untitled.generator.filter.embedder import Embedder, DINOEmbedder
+from untitled.filter.embedder import Embedder, DINOEmbedder
 
 
 class TestEmbedderInterface:
@@ -45,8 +45,8 @@ class TestEmbedderInterface:
 class TestDINOEmbedder:
     """Tests for the DINOEmbedder class."""
 
-    @patch('untitled.generator.filter.embedder.AutoModel')
-    @patch('untitled.generator.filter.embedder.AutoImageProcessor')
+    @patch('untitled.filter.embedder.AutoModel')
+    @patch('untitled.filter.embedder.AutoImageProcessor')
     def test_dino_embedder_initialization(self, mock_processor, mock_model):
         """Test that DINOEmbedder initializes with correct model and processor."""
         mock_processor.from_pretrained.return_value = MagicMock()
@@ -58,8 +58,8 @@ class TestDINOEmbedder:
         mock_model.from_pretrained.assert_called_once_with('facebook/dinov2-base')
         assert embedder is not None
 
-    @patch('untitled.generator.filter.embedder.AutoModel')
-    @patch('untitled.generator.filter.embedder.AutoImageProcessor')
+    @patch('untitled.filter.embedder.AutoModel')
+    @patch('untitled.filter.embedder.AutoImageProcessor')
     def test_dino_embedder_is_embedder_subclass(self, mock_processor, mock_model):
         """Test that DINOEmbedder is a subclass of Embedder."""
         mock_processor.from_pretrained.return_value = MagicMock()
@@ -69,9 +69,9 @@ class TestDINOEmbedder:
 
         assert isinstance(embedder, Embedder)
 
-    @patch('untitled.generator.filter.embedder.AutoModel')
-    @patch('untitled.generator.filter.embedder.AutoImageProcessor')
-    @patch('untitled.generator.filter.embedder.Image')
+    @patch('untitled.filter.embedder.AutoModel')
+    @patch('untitled.filter.embedder.AutoImageProcessor')
+    @patch('untitled.filter.embedder.Image')
     def test_embed_returns_tensor(self, mock_image, mock_processor, mock_model):
         """Test that embed method returns a torch.Tensor."""
         # Setup mocks
@@ -92,9 +92,9 @@ class TestDINOEmbedder:
 
         assert isinstance(result, torch.Tensor)
 
-    @patch('untitled.generator.filter.embedder.AutoModel')
-    @patch('untitled.generator.filter.embedder.AutoImageProcessor')
-    @patch('untitled.generator.filter.embedder.Image')
+    @patch('untitled.filter.embedder.AutoModel')
+    @patch('untitled.filter.embedder.AutoImageProcessor')
+    @patch('untitled.filter.embedder.Image')
     def test_embed_returns_1d_tensor(self, mock_image, mock_processor, mock_model):
         """Test that embed method returns a 1-dimensional tensor (embedding vector)."""
         # Setup mocks
@@ -115,9 +115,9 @@ class TestDINOEmbedder:
 
         assert result.dim() == 1
 
-    @patch('untitled.generator.filter.embedder.AutoModel')
-    @patch('untitled.generator.filter.embedder.AutoImageProcessor')
-    @patch('untitled.generator.filter.embedder.Image')
+    @patch('untitled.filter.embedder.AutoModel')
+    @patch('untitled.filter.embedder.AutoImageProcessor')
+    @patch('untitled.filter.embedder.Image')
     def test_embed_returns_normalized_tensor(self, mock_image, mock_processor, mock_model):
         """Test that embed method returns a normalized tensor (unit vector)."""
         # Setup mocks
@@ -140,9 +140,9 @@ class TestDINOEmbedder:
         norm = torch.norm(result).item()
         assert abs(norm - 1.0) < 0.01
 
-    @patch('untitled.generator.filter.embedder.AutoModel')
-    @patch('untitled.generator.filter.embedder.AutoImageProcessor')
-    @patch('untitled.generator.filter.embedder.Image')
+    @patch('untitled.filter.embedder.AutoModel')
+    @patch('untitled.filter.embedder.AutoImageProcessor')
+    @patch('untitled.filter.embedder.Image')
     def test_embed_opens_image_file(self, mock_image, mock_processor, mock_model):
         """Test that embed method opens the image file at the given path."""
         # Setup mocks
@@ -164,9 +164,9 @@ class TestDINOEmbedder:
 
         mock_image.open.assert_called_once_with(test_path)
 
-    @patch('untitled.generator.filter.embedder.AutoModel')
-    @patch('untitled.generator.filter.embedder.AutoImageProcessor')
-    @patch('untitled.generator.filter.embedder.Image')
+    @patch('untitled.filter.embedder.AutoModel')
+    @patch('untitled.filter.embedder.AutoImageProcessor')
+    @patch('untitled.filter.embedder.Image')
     def test_embed_converts_image_to_rgb(self, mock_image, mock_processor, mock_model):
         """Test that embed method converts the image to RGB format."""
         # Setup mocks
@@ -187,9 +187,9 @@ class TestDINOEmbedder:
 
         mock_image.open.return_value.convert.assert_called_once_with("RGB")
 
-    @patch('untitled.generator.filter.embedder.AutoModel')
-    @patch('untitled.generator.filter.embedder.AutoImageProcessor')
-    @patch('untitled.generator.filter.embedder.Image')
+    @patch('untitled.filter.embedder.AutoModel')
+    @patch('untitled.filter.embedder.AutoImageProcessor')
+    @patch('untitled.filter.embedder.Image')
     def test_embed_returns_cpu_tensor(self, mock_image, mock_processor, mock_model):
         """Test that embed method returns a tensor on CPU."""
         # Setup mocks
@@ -210,9 +210,9 @@ class TestDINOEmbedder:
 
         assert result.device == torch.device('cpu')
 
-    @patch('untitled.generator.filter.embedder.AutoModel')
-    @patch('untitled.generator.filter.embedder.AutoImageProcessor')
-    @patch('untitled.generator.filter.embedder.Image')
+    @patch('untitled.filter.embedder.AutoModel')
+    @patch('untitled.filter.embedder.AutoImageProcessor')
+    @patch('untitled.filter.embedder.Image')
     def test_embed_uses_processor(self, mock_image, mock_processor, mock_model):
         """Test that embed method uses the image processor."""
         # Setup mocks
