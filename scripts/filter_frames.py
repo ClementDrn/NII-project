@@ -19,6 +19,9 @@ import sys
 from pathlib import Path
 
 
+SIMULATION_IMAGE_LOG_FPS = 4
+
+
 def load_simulation_data(run_dir: Path) -> SimulationData:
     """
     Load simulation data from a run directory.
@@ -61,6 +64,30 @@ def load_simulation_data(run_dir: Path) -> SimulationData:
     )
 
 
+def undersample_frames_per_minute(
+    simulation_data: SimulationData, max_frames_per_minute: int
+) -> SimulationData:
+    """
+    Undersample frames to keep at most max_frames_per_minute per minute of simulation.
+    
+    Args:
+        simulation_data: The simulation data to undersample.
+        max_frames_per_minute: Maximum frames to keep per minute.
+    
+    Returns:
+        A new SimulationData with undersampled frames.
+    """
+    frames_per_minute = 60 * SIMULATION_IMAGE_LOG_FPS
+    step = max(1, frames_per_minute // max_frames_per_minute)
+    sampled_frames = [f for i, f in enumerate(simulation_data.frames) if i % step == 0]
+    
+    return SimulationData(
+        image_dir=simulation_data.image_dir,
+        frame_count=len(sampled_frames),
+        frames=sampled_frames
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Test frame filtering using DINO embeddings and clustering."
@@ -84,6 +111,12 @@ def main():
         help="Maximum number of frames to process (default: all)"
     )
     parser.add_argument(
+        "--max-frames-per-minute",
+        type=int,
+        default=None,
+        help="Maximum number of frames to keep per minute of simulation time (default: all)"
+    )
+    parser.add_argument(
         "--verbose",
         "-v",
         action="store_true",
@@ -105,6 +138,15 @@ def main():
     if args.max_frames is not None and args.max_frames < simulation_data.frame_count:
         simulation_data.frames = simulation_data.frames[:args.max_frames]
         simulation_data.frame_count = len(simulation_data.frames)
+    
+    # Optionally undersample frames per minute
+    if args.max_frames_per_minute is not None and simulation_data.frame_count > 0:
+        original_count = simulation_data.frame_count
+        simulation_data = undersample_frames_per_minute(
+            simulation_data, args.max_frames_per_minute
+        )
+        print(f"Undersampled from {original_count} to {simulation_data.frame_count} frames "
+              f"(max {args.max_frames_per_minute} frames/minute)")
     
     print(f"Loaded {simulation_data.frame_count} frames")
     print(f"Using similarity threshold: {args.threshold}")
