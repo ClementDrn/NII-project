@@ -145,7 +145,8 @@ def load_config(root_path: Path, logger: logging.Logger) -> Settings:
         yaml_data['carla'] = {k: v for k, v in yaml_data['carla'].items() if not k.startswith('_')}
     
     # Load hosts.yaml if it exists
-    hosts_path = root_path / "hosts.yaml"
+    # HOSTS_PATH is in .env file
+    hosts_path = Path(os.environ.get("HOSTS_PATH", ""))
     if hosts_path.exists():
         with open(hosts_path, "r") as f:
             hosts_data = yaml.safe_load(f)

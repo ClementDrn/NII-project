@@ -1,4 +1,5 @@
-
+# It is recommended to copy this file and modify it with your own hosts.
+# Do not forget to specify its new path in the .env file.
 ---
 version: "1.0-dev"
 
