@@ -41,11 +41,7 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
                 self._clients.append(client)
 
         # Initialize and add to prompt dispatcher the parallelizable model clients
-        parallel_client_list = []
-        for client in self._clients:
-            if client.is_parallelizable():
-                client.open_connection()   # start + connect
-            parallel_client_list.append(client)
+        parallel_client_list = [client for client in self._clients if client.is_parallelizable()]
         self._prompt_dispatcher: PromptDispatcher = PromptDispatcher(parallel_client_list)
 
         # Fetch system task message from its asset file
@@ -59,6 +55,11 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
         """
         Initialize model resources.
         """
+        # Open connections for parallelizable model clients
+        for client in self._clients:
+            if client.is_parallelizable():
+                await client.open_connection()  # start + connect
+
         # Start the prompt dispatcher
         await self._prompt_dispatcher.start()
 

@@ -53,19 +53,11 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
             if client is not None:
                 self._planner_clients.append(client)
 
-        # Initialize and add to prompt dispatchers the parallelizable model clients
-        parallel_descriptor_list = []
-        for client in self._descriptor_clients:
-            if client.is_parallelizable():
-                client.open_connection()   # start + connect
-            parallel_descriptor_list.append(client)
+        # Initialize prompt dispatchers with parallelizable model clients
+        # Note: Actual connection happens in init() since open_connection() is async
+        parallel_descriptor_list = [client for client in self._descriptor_clients if client.is_parallelizable()]
         self._descriptor_dispatcher: PromptDispatcher = PromptDispatcher(parallel_descriptor_list)
-
-        parallel_planner_list = []
-        for client in self._planner_clients:
-            if client.is_parallelizable():
-                client.open_connection()   # start + connect
-            parallel_planner_list.append(client)
+        parallel_planner_list = [client for client in self._planner_clients if client.is_parallelizable()]
         self._planner_dispatcher: PromptDispatcher = PromptDispatcher(parallel_planner_list)
 
         # Fetch scene descriptor task message from its asset file
@@ -85,6 +77,16 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
         """
         Initialize model resources.
         """
+        # Open connections for parallelizable descriptor clients
+        for client in self._descriptor_clients:
+            if client.is_parallelizable():
+                await client.open_connection()  # start + connect
+
+        # Same for parallelizable planner clients
+        for client in self._planner_clients:
+            if client.is_parallelizable():
+                await client.open_connection()  # start + connect
+
         # Start both prompt dispatchers
         await self._descriptor_dispatcher.start()
         await self._planner_dispatcher.start()
