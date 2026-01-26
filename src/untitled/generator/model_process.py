@@ -91,7 +91,8 @@ class ModelProcess:
         )
         
         # Wait for server to be ready by checking TCP connection
-        max_wait_time = 180  # 3 minutes timeout
+        # max_wait_time = 180  # 3 minutes timeout
+        max_wait_time = 300  # 5 minutes timeout
         check_interval = 2  # Check every 2 seconds
         elapsed_time = 0
         

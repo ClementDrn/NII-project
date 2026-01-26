@@ -37,7 +37,7 @@ def parse_model_response(chat_response: str) -> str:
     Parse the model response to extract the relevant content after the reasoning text.
     """
     # We do not want the thinking part, before "</think>\n\n"
-    # WARN: Specific to r4b model response format
+    # WARN: Specific to qwen3 model response format
     split_response = chat_response.split("</think>\n\n", 1)
     after_reasoning = split_response[-1].strip()
     return after_reasoning
@@ -129,6 +129,7 @@ class ModelClient(ABC):
             "content": user_content,
         })
         # VLM_LOG.debug(f"Messages that will be sent to model: {messages}")
+        # LOG.debug(f"Sending prompt to model at {self.host} with API parameters: {self.api_parameters}...")
         
         # Send request to model and get response
         start_time = time.time()
@@ -223,13 +224,25 @@ class ModelClient(ABC):
         # Send a simple test prompt
         try:
             LOG.info("Testing model connection...")
+
+            # Use either max_tokens or max_completion_tokens depending on model
+            max_tokens_param_name: str = (
+                "max_tokens" if "max_tokens" in self.api_parameters else
+                "max_completion_tokens" if "max_completion_tokens" in self.api_parameters else ""
+            )
+            if max_tokens_param_name == "":
+                LOG.warning("No max tokens parameter found in API parameters. Defaulting to 'max_tokens'.")
+                max_tokens_param_name = "max_tokens"
+
+            LOG.debug(f"Using max tokens parameter name: {max_tokens_param_name}")
             response = await self.client.chat.completions.create(
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant."},
                     {"role": "user", "content": "Hello"}
                 ],
                 model=self.api_parameters.get("model", "default"),
-                max_tokens=10
+                # Either max_tokens or max_completion_tokens depending on model
+                **{max_tokens_param_name: 5},
             )
             if response and response.choices:
                 LOG.info("Model connection test successful")

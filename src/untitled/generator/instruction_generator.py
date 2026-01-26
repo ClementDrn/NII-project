@@ -53,16 +53,31 @@ def get_api_parameters_from_config(step_config: GeneratorStepConfig) -> dict:
     # Fetch model config
     model_config: ModelConfig = get_model_config(step_config.model_name)
 
+    # Common parameters
+    params = {}
+    # Temperature parameter handling
+    if step_config.temperature:
+        if model_config.temperature_param == "":
+            LOG.warning(f"Temperature parameter is not supported by model '{model_config.served_name}'. Ignoring temperature setting.")
+        else:
+            params[model_config.temperature_param] = step_config.temperature
+    # Max tokens parameter handling
+    if step_config.max_tokens:
+        if model_config.max_output_tokens_param == "":
+            LOG.warning(f"Max tokens parameter is not supported by model '{model_config.served_name}'. Ignoring max tokens setting.")
+        else:
+            params[model_config.max_output_tokens_param] = step_config.max_tokens
+
     # Select correct thinking mode parameters from model config based on step config thinking_mode
     thinking_mode_params = {}
     if step_config.thinking_mode == "enabled":
         if model_config.thinking_activation_params is None:
-            LOG.warning(f"Thinking mode 'enabled' is not supported by model '{model_config.name}'. Using default thinking parameters.")
+            LOG.warning(f"Thinking mode 'enabled' is not supported by model '{model_config.served_name}'. Using default thinking parameters.")
         else:
             thinking_mode_params = model_config.thinking_activation_params
     elif step_config.thinking_mode == "disabled":
         if model_config.thinking_deactivation_params is None:
-            LOG.warning(f"Thinking mode 'disabled' is not supported by model '{model_config.name}'. Using default thinking parameters.")
+            LOG.warning(f"Thinking mode 'disabled' is not supported by model '{model_config.served_name}'. Using default thinking parameters.")
         else:
             thinking_mode_params = model_config.thinking_deactivation_params
     elif step_config.thinking_mode == "default":
@@ -77,16 +92,14 @@ def get_api_parameters_from_config(step_config: GeneratorStepConfig) -> dict:
     try:
         api_parameters = {
             "model": step_config.model_name,
-            "temperature": step_config.temperature,
-            "max_tokens": step_config.max_tokens,
+            **params,
             **thinking_mode_params,
         }
     except TypeError as e:
         LOG.warning(f"Error parsing thinking mode parameters for step '{step_config.step_id}': {e}. Using default parameters.")
         api_parameters = {
             "model": step_config.model_name,
-            "temperature": step_config.temperature,
-            "max_tokens": step_config.max_tokens,
+            **params,
         }
 
     return api_parameters

@@ -7,7 +7,7 @@ class ModelConfig:
     Configuration for a specific model (LLM/VLM).
     These settings define model properties used when starting model servers.
     """
-    model_name: str
+    model_name: str     # TODO: Should be optional, rename to huggingface_name
     served_name: str
     max_model_len: int = 8192
     reasoning_parser: str = ""
@@ -15,6 +15,8 @@ class ModelConfig:
     thinking_deactivation_params: dict = None
     thinking_default_params: dict = field(default_factory=dict)
     limit_mm_per_prompt: dict = field(default_factory=dict)     # WARN: Deprecated TODO: Remove for release
+    max_output_tokens_param: str = "max_tokens"  # Name of the parameter to set max output tokens
+    temperature_param: str = "temperature"       # Name of the parameter to set temperature
 
 
 def get_model_config(model_id: str) -> ModelConfig:
@@ -54,6 +56,16 @@ def get_model_config(model_id: str) -> ModelConfig:
             thinking_deactivation_params=None,  # not supported
             thinking_default_params={}
         ),
+        "gpt-5-mini": ModelConfig(
+            model_name="openai/GPT-5-Mini",
+            served_name="toto",     # FIXME: Not actually used for the API calls, right now it's the config.yaml's model_name that matters
+            max_model_len=400000,
+            thinking_activation_params={"reasoning_effort": "high"},
+            thinking_deactivation_params={"reasoning_effort": "minimal"},
+            thinking_default_params={},
+            max_output_tokens_param="max_completion_tokens",  # Specific to OpenAI GPT-5 API
+            temperature_param=""    # Unsupported
+        ),            
         # Add more models here as needed
     }
     
