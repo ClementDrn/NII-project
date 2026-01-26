@@ -67,6 +67,7 @@ class PromptDispatcher:
             # Set the result in the future
             prompt.future.set_result(response)
         except Exception as e:
+            LOG.error(f"Error while sending prompt to model client: {e}")
             prompt.future.set_exception(e)
         finally:
             # Mark prompt as done (to wake up join() waiters)

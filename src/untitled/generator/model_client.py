@@ -268,8 +268,11 @@ class ModelClient(ABC):
             LOG.error("Model client is not connected. Cannot send prompt.")
             raise ConnectionError("Model client is not connected.")
 
-        # Send the prompt and return the response
+        # Send the prompt and wait for the response
         response = await self._send_prompt(system_text, user_text, user_image_paths)
+        if response is None:
+            LOG.warning("Received empty response from model.")
+
         return response
 
     @abstractmethod
