@@ -4,6 +4,7 @@ from untitled.core.job_handler import Job, JobHandler
 from untitled.generator.instruction_generator import InstructionGenerator
 from untitled.simulator.simulator import Simulator
 from untitled.simulator.simulation_data import SimulationData
+from untitled.simulator.simulation_result import SimulationResult
 from untitled.generator.single_step_vlm_instruction_generator import SingleStepVLMInstructionGenerator
 from untitled.generator.multi_step_vlm_instruction_generator import MultiStepVLMInstructionGenerator
 from untitled.simulator.simulation_data import SimulationFrameData
@@ -11,7 +12,7 @@ from untitled.generator.instruction import Instruction
 from untitled.filter.filter import cluster_frames
 from untitled.filter.embedder import DINOEmbedder, Embedder
 
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 import time
 
 
@@ -81,14 +82,25 @@ class Pipeline:
         Returns:
             Tuple of (successful_count, failed_count)
         """
+        # Get cache directory if ground truth is cached
+        cache_dir = self.job_handler.get_ground_truth_cache_dir(job.id, scenario_id, run_id)
+        
         # Skip ground truth run if its logs are already cached
-        if self.job_handler.is_ground_truth_cached(job.id, scenario_id, run_id):
+        if cache_dir is not None:
             LOG.info(f"  Ground truth run {run_id} is already cached. Skipping.")
+            # Still collect the result from cache
+            result = self.simulator.get_result(job.id, scenario_id, run_id, cache_dir)
+            if result:
+                job.results[(scenario_id, run_id)] = result
             return (1, 0)
         try:
             LOG.info(f"  Ground truth run {run_id} ({run_id + 1} / {job.ground_truth_count})")
-            self.simulator.run_scenario()
+            actual_run_id = self.simulator.run_scenario()
             LOG.info(f"    Ground truth run {run_id} completed")
+            # Collect the result using the actual run_id from the simulator
+            result = self.simulator.get_result(job.id, scenario_id, actual_run_id)
+            if result:
+                job.results[(scenario_id, run_id)] = result
             return (1, 0)
         except Exception as e:
             LOG.error(f"    Ground truth run {run_id} failed: {e}")
@@ -214,9 +226,13 @@ class Pipeline:
             
             # Run scenario with instruction
             LOG.debug(f"    Running scenario with instruction...")
-            self.simulator.run_scenario(instruction)
+            actual_run_id = self.simulator.run_scenario(instruction)
             
             LOG.info(f"    Experiment run {run_id} completed")
+            # Collect the result using the actual run_id from the simulator
+            result = self.simulator.get_result(job.id, scenario_id, actual_run_id)
+            if result:
+                job.results[(scenario_id, run_id)] = result
             return (1, 0)
             
         except Exception as e:
@@ -421,7 +437,104 @@ class Pipeline:
         LOG.info(f"  Successful: {job_successful}, Failed: {job_failed}")
         LOG.info("=" * 80)
         
+        # Print detailed results summary
+        self._print_job_results_summary(job)
+        
         return (job_successful, job_failed)
+
+    def _print_job_results_summary(self, job: Job) -> None:
+        """
+        Print a detailed summary of job results, comparing ground truth vs experiments.
+        
+        An instruction is considered "adversarial" if it caused the experiment's 
+        penalty score to be lower than the ground truth's penalty score
+        (ground_truth_score > experiment_score means more penalty = worse = adversarial success).
+        
+        Args:
+            job: The job with collected results
+        """
+        LOG.info("")
+        LOG.info("=" * 80)
+        LOG.info(f"RESULTS SUMMARY - Job {job.id}: '{job.name}'")
+        LOG.info("=" * 80)
+        
+        if not job.results:
+            LOG.info("No results collected.")
+            return
+        
+        total_experiments = 0
+        adversarial_successes = 0
+        
+        for scenario_id in job.scenarios:
+            LOG.info(f"")
+            LOG.info(f"Scenario {scenario_id}:")
+            LOG.info("-" * 40)
+            
+            # Get ground truth results (average if multiple)
+            gt_penalty_scores = []
+            gt_infractions_total = 0
+            for run_id in range(job.ground_truth_count):
+                gt_result: Optional[SimulationResult] = job.results.get((scenario_id, run_id))
+                if gt_result:
+                    gt_penalty_scores.append(gt_result.scores.score_penalty)
+                    gt_infractions_total += gt_result.infractions.total_count
+            
+            if gt_penalty_scores:
+                avg_gt_penalty = sum(gt_penalty_scores) / len(gt_penalty_scores)
+                LOG.info(f"  Ground Truth: penalty={avg_gt_penalty:.3f} (avg of {len(gt_penalty_scores)} run(s)), infractions={gt_infractions_total}")
+            else:
+                avg_gt_penalty = None
+                LOG.info(f"  Ground Truth: No results available")
+            
+            # Get experiment results and compare
+            for experiment_index in range(job.experiment_count):
+                run_id = job.ground_truth_count + experiment_index
+                exp_result: Optional[SimulationResult] = job.results.get((scenario_id, run_id))
+                
+                if exp_result:
+                    total_experiments += 1
+                    exp_penalty = exp_result.scores.score_penalty
+                    exp_infractions = exp_result.infractions.total_count
+                    
+                    # Determine if adversarial (lower penalty = more infractions = adversarial success)
+                    # score_penalty is a multiplier: 1.0 = no infractions, <1.0 = infractions occurred
+                    is_adversarial = False
+                    adversarial_marker = ""
+                    if avg_gt_penalty is not None:
+                        if avg_gt_penalty > exp_penalty:
+                            is_adversarial = True
+                            adversarial_successes += 1
+                            adversarial_marker = " [ADVERSARIAL ✓]"
+                        elif avg_gt_penalty < exp_penalty:
+                            adversarial_marker = " [IMPROVED]"
+                    
+                    # Count specific collision types for clarity
+                    collisions = (
+                        len(exp_result.infractions.collisions_vehicle) +
+                        len(exp_result.infractions.collisions_pedestrian) +
+                        len(exp_result.infractions.collisions_layout)
+                    )
+                    
+                    LOG.info(
+                        f"  Experiment {experiment_index}: penalty={exp_penalty:.3f}, "
+                        f"infractions={exp_infractions}, collisions={collisions}{adversarial_marker}"
+                    )
+                else:
+                    LOG.info(f"  Experiment {experiment_index}: No result available")
+        
+        # Overall summary
+        LOG.info("")
+        LOG.info("=" * 80)
+        LOG.info("ADVERSARIAL EFFECTIVENESS SUMMARY")
+        LOG.info("=" * 80)
+        if total_experiments > 0:
+            adversarial_rate = (adversarial_successes / total_experiments) * 100
+            LOG.info(f"Total experiments: {total_experiments}")
+            LOG.info(f"Adversarial successes: {adversarial_successes}")
+            LOG.info(f"Adversarial rate: {adversarial_rate:.1f}%")
+        else:
+            LOG.info("No experiment results to analyze.")
+        LOG.info("=" * 80)
 
     async def start(self):
         """

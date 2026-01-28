@@ -1,9 +1,9 @@
 from untitled.core.base import LOG
 from untitled.core.version import JOBS_VERSION, are_versions_compatible
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import yaml
 
 
@@ -19,6 +19,7 @@ class Job:
         ground_truth_count: Number of baseline runs without instructions
         experiment_count: Number of runs with VLM-generated instructions
         ground_truth_cache_dir: Optional path to directory containing cached ground truth logs
+        results: Dictionary storing simulation results keyed by (scenario_id, run_id)
     """
     id: int
     name: str
@@ -26,6 +27,7 @@ class Job:
     ground_truth_count: int = 1
     experiment_count: int = 1
     ground_truth_cache_dir: str = ""
+    results: Dict[tuple, Any] = field(default_factory=dict)
 
 
 class JobHandler:

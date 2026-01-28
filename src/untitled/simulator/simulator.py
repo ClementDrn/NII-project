@@ -10,6 +10,7 @@ from itertools import chain
 from untitled.core.base import LOG, PROJECT_ROOT, CONFIG, SIMULATION_FPS
 from untitled.simulator.ads import ADS
 from untitled.simulator.simulation_data import SimulationMetadata, load_metadata
+from untitled.simulator.simulation_result import SimulationResult
 from untitled.generator.instruction import Instruction
 
 
@@ -444,15 +445,18 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
     def run_scenario(
         self,
         instruction: Optional[Instruction] = None
-    ):
+    ) -> int:
         """
         Run a CARLA scenario with the SimLingo agent.
         
         Args:
             instruction: Optional Instruction object to inject into the scenario
+            
+        Returns:
+            The run_id that was used for this scenario execution
         """
         # Clean up any existing leaderboard processes
-        # TODO: CARLA is also killed. We may want to keep it running between runs to save time.
+        # NOTE: CARLA is also killed. We may want to keep it running between runs to save time. However, restarting CARLA ensures a clean state and prevents issues.
         self._kill_bench2drive_leaderboard_processes()
         time.sleep(2)
         
@@ -492,9 +496,41 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         else:
             LOG.debug("Scenario execution completed")
         
-        # Clean up leaderboard processes after run (keep CARLA running)
+        # Clean up leaderboard processes after run (CARLA is also killed here)
         time.sleep(2)
         self._kill_bench2drive_leaderboard_processes()
+        
+        # Return the run_id that was used (run_counter was incremented in _create_run_script)
+        return self.run_counter - 1
+
+    def get_result(self, job_id: int, scenario_id: int, run_id: int, run_base_dir: Path = None) -> Optional[SimulationResult]:
+        """
+        Get the simulation result for a specific run.
+        
+        This method can be used to retrieve results from both freshly executed
+        runs and cached runs.
+        
+        Args:
+            job_id: The ID of the job
+            scenario_id: The ID of the scenario
+            run_id: The ID of the run
+            run_base_dir: Optional directory to override the run base directory (for cached runs)
+            
+        Returns:
+            SimulationResult object, or None if result cannot be loaded
+        """
+        # Calculate run base directory if it was not provided
+        if run_base_dir is None:
+            run_base_dir = self._calculate_run_base_dir(self.base_dir, job_id, scenario_id, run_id)
+        
+        result_file = run_base_dir / LOG_RES_FILE_NAME
+        
+        simulation_result = SimulationResult.load_from_json_file(result_file, scenario_id)
+        
+        if simulation_result is None:
+            LOG.warning(f"Could not load simulation result from {result_file}")
+        
+        return simulation_result
     
     def get_image_log(self, job_id: int, scenario_id: int, run_id: int, timestamp: float, run_base_dir: Path = None) -> Optional[Path]:
         """
