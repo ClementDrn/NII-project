@@ -128,6 +128,11 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
         if instruction_raw is None:
             return None
         
+        # Check if response was redacted (contains "REDACTED")
+        if "REDACTED" in instruction_raw:
+            LOG.error("Could not generate instructions: adversarial planner response was 'REDACTED' by the model (for safety reasons).")
+            return None
+        
         # Parse instruction set from JSON
         instruction_set = parse_instructions_from_json(instruction_raw)
         if instruction_set is None:
