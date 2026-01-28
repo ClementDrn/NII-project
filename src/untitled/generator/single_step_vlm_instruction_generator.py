@@ -11,11 +11,12 @@ import asyncio
 
 class SingleStepVLMInstructionGenerator(InstructionGenerator):
     """
-    Single-step VLM instruction generator for generating instructions from images and metadata.
+    Single-step VLM instruction generator for generating adversarial instructions from a sequence of video frames.
+    The VLM receives all frames and their metadata at once, acting as an independent adversarial planner.
     The actual model process can be local or remote, and this class interacts with it via OpenAI-compatible API.
     """
     def __init__(self):
-        # Check that there is exactly one model configured
+        # Check that there is exactly one step configured
         if len(CONFIG.generator.steps) != 1:
             LOG.error("Single-step VLM instruction generator requires exactly one step configured in 'generator.steps' field!")
             raise ValueError("Single-step VLM instruction generator requires exactly one step configured.")
@@ -23,7 +24,7 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
         # Attributes
         self._clients: list[ModelClient] = []
         self._prompt_dispatcher: PromptDispatcher = None
-        self._system_task_message: str = ""
+        self._planner_task_message: str = ""
 
         # Get API parameters from config
         step: GeneratorStepConfig = CONFIG.generator.steps[0]
@@ -44,11 +45,11 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
         parallel_client_list = [client for client in self._clients if client.is_parallelizable()]
         self._prompt_dispatcher: PromptDispatcher = PromptDispatcher(parallel_client_list)
 
-        # Fetch system task message from its asset file
-        SYSTEM_TASK_PATH = PROJECT_ROOT / "assets" / "prompts" / "single_frame_adversarial_generator_task.txt"
-        with open(SYSTEM_TASK_PATH, "r") as f:
-            self._system_task_message = f.read()
-        LOG.debug(f"Loaded system task message for VLM. See below:\n{self._system_task_message}")
+        # Fetch adversarial planner task message from its asset file
+        PLANNER_TASK_PATH = PROJECT_ROOT / "assets" / "prompts" / "independent_adversarial_planner_task.txt"
+        with open(PLANNER_TASK_PATH, "r") as f:
+            self._planner_task_message = f.read()
+        LOG.debug(f"Loaded adversarial planner task message for VLM. See below:\n{self._planner_task_message}")
 
     @override
     async def init(self):
@@ -84,33 +85,35 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
     @override
     async def generate_instructions_from_images(self, data: SimulationData) -> Optional[InstructionSet]:
         """
-        Generate instruction from images and metadata using a VLM.
+        Generate adversarial instructions from a sequence of video frames using a VLM.
+        All frames and their metadata are sent together in a single request.
         """
         # Check frame count validity
         if data.frame_count < 1:
             LOG.error("At least one frame is required to generate instructions!")
             raise ValueError("At least one frame is required to generate instructions.")
 
-        # NOTE: Currently only a single image and metadata is supported. It is hardcoded to use the frame at timestamp 2.0s.
-        fixed_timestamp = 2.0
-        fixed_frame_index = int(fixed_timestamp * 20)  # Assuming 20 FPS
+        # Collect all image paths and concatenate metadata with frame labels
+        image_paths = []
+        metadata_parts = []
         
-        # If the fixed frame index is out of range, use the first frame
-        if fixed_frame_index >= data.frame_count:
-            LOG.warning(f"Fixed frame index {fixed_frame_index} is out of range for {data.frame_count} frames. Using first frame instead.")
-            fixed_frame_index = 0
-            fixed_timestamp = 0.0
+        for i in range(data.frame_count):
+            image_path = data.image_dir / data.frames[i].image_name
+            image_paths.append(image_path)
+            
+            metadata_text = str(data.frames[i].metadata)
+            metadata_parts.append(f"Frame {i+1} (time: {data.frames[i].timestamp}):\n{metadata_text}")
+        
+        # Concatenate all metadata with frame labels
+        concatenated_metadata = "\n\n".join(metadata_parts)
+        LOG.debug(f"Concatenated metadata for adversarial planner:\n{concatenated_metadata}\n")
 
-        # Prepare metadata text and image path
-        metadata_text = str(data.frames[fixed_frame_index].metadata)
-        image_path = data.image_dir / data.frames[fixed_frame_index].image_name
-
-        # Send prompt to VLM
+        # Send prompt to VLM with all images and concatenated metadata
         future = asyncio.Future()
         prompt_request: PromptRequest = PromptRequest(
-            system_text=self._system_task_message,
-            user_text=metadata_text,
-            user_image_paths=[image_path],
+            system_text=self._planner_task_message,
+            user_text=concatenated_metadata,
+            user_image_paths=image_paths,
             future=future
         )
         await self._prompt_dispatcher.add(prompt_request)
@@ -120,16 +123,17 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
 
         # Remove the thinking part from response
         instruction_raw = parse_model_response(response_text)
+        LOG.debug(f"Adversarial Planner Response:\n{instruction_raw}\n")
+        
         if instruction_raw is None:
             return None
         
         # Parse instruction set from JSON
         instruction_set = parse_instructions_from_json(instruction_raw)
-
-        # Hardset the timestep in each instruction
-        for instruction in instruction_set.instructions:
-            instruction.injection_window.start_timestamp = fixed_timestamp
-            instruction.injection_window.end_timestamp = fixed_timestamp + 0.1  # Small window after fixed timestamp
+        if instruction_set is None:
+            LOG.error("The adversarial planner model response could not be parsed. "
+                "You may want to increase the max_tokens setting for the planner model, "
+                "as it might be too low to capture the full json response.")
 
         return instruction_set
 
