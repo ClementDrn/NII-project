@@ -477,18 +477,24 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         
         # Run the scenario with a clean environment (no virtual env interference)
         # Use bash -l to get a login shell with clean PATH from system defaults
-        result = subprocess.run(
-            ["bash", "-l", job_file],
-            capture_output=False,
-            env={
-                'HOME': os.environ.get('HOME', ''),
-                'USER': os.environ.get('USER', ''),
-                'LOGNAME': os.environ.get('LOGNAME', ''),
-                'SHELL': os.environ.get('SHELL', '/bin/bash'),
-                'TERM': os.environ.get('TERM', 'xterm'),
-                'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
-            }
-        )
+        try:
+            result = subprocess.run(
+                ["bash", "-l", job_file],
+                capture_output=False,
+                timeout=7200,  # 2 hours
+                env={
+                    'HOME': os.environ.get('HOME', ''),
+                    'USER': os.environ.get('USER', ''),
+                    'LOGNAME': os.environ.get('LOGNAME', ''),
+                    'SHELL': os.environ.get('SHELL', '/bin/bash'),
+                    'TERM': os.environ.get('TERM', 'xterm'),
+                    'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+                }
+            )
+        except subprocess.TimeoutExpired:
+            LOG.error(f"Scenario execution timed out after 2 hours")
+            self._kill_bench2drive_leaderboard_processes()
+            return self.run_counter - 1
         
         if result.returncode != 0:
             LOG.error(f"Scenario execution failed with return code: {result.returncode}")
