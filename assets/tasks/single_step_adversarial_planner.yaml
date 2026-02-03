@@ -1,0 +1,21 @@
+# Single-step adversarial planner task
+# Used by SingleStepVLMInstructionGenerator for adversarial experiments
+# This task receives images + metadata and directly produces instructions
+
+name: "Single-Step Adversarial Planner"
+description: >
+  Analyzes video frames and metadata to identify critical stress-test intervals
+  and generate adversarial instructions that cause crashes.
+
+system_prompt_path: "assets/prompts/independent_adversarial_planner_task.txt"
+
+inputs:
+  images: true
+  metadata: true
+  descriptions: false
+  failure_text: false
+  route_completion: false
+
+outputs:
+  instruction: true
+  descriptions: false

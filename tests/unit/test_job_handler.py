@@ -4,6 +4,7 @@ import shutil
 from pathlib import Path
 import yaml
 from untitled.core.job_handler import Job, JobHandler
+from untitled.generator.experiment_nature import ExperimentNature
 
 
 @pytest.fixture
@@ -84,6 +85,36 @@ def cache_dir_with_logs(temp_dir):
     return cache_dir
 
 
+@pytest.fixture
+def jobs_yaml_with_experiment_nature(temp_dir):
+    """Create a jobs.yaml file with experiment_nature specified."""
+    jobs_file = temp_dir / "jobs_nature.yaml"
+    jobs_data = {
+        "version": "1.1-dev",
+        "jobs": [
+            {
+                "name": "Adversarial Job",
+                "scenarios": [1, 2],
+                "experiment_nature": "adversarial"
+            },
+            {
+                "name": "Corrective Job",
+                "scenarios": [3, 4],
+                "experiment_nature": "corrective"
+            },
+            {
+                "name": "Default Nature Job",
+                "scenarios": [5]
+            }
+        ]
+    }
+    
+    with open(jobs_file, 'w') as f:
+        yaml.dump(jobs_data, f)
+    
+    return jobs_file
+
+
 class TestJob:
     """Test suite for Job dataclass."""
     
@@ -100,6 +131,7 @@ class TestJob:
         assert job.scenarios == [1, 2, 3]
         assert job.ground_truth_count == 1
         assert job.experiment_count == 1
+        assert job.experiment_nature == ExperimentNature.ADVERSARIAL
         assert job.ground_truth_cache_dir == ""
     
     def test_job_creation_with_all_fields(self):
@@ -110,6 +142,7 @@ class TestJob:
             scenarios=[10, 20, 30],
             ground_truth_count=3,
             experiment_count=10,
+            experiment_nature=ExperimentNature.CORRECTIVE,
             ground_truth_cache_dir="/path/to/cache"
         )
         
@@ -118,6 +151,7 @@ class TestJob:
         assert job.scenarios == [10, 20, 30]
         assert job.ground_truth_count == 3
         assert job.experiment_count == 10
+        assert job.experiment_nature == ExperimentNature.CORRECTIVE
         assert job.ground_truth_cache_dir == "/path/to/cache"
 
 
@@ -166,6 +200,47 @@ class TestJobHandler:
         assert jobs[0].name == "All Scenarios"
         assert len(jobs[0].scenarios) == 220
         assert jobs[0].scenarios == list(range(220))
+    
+    def test_load_jobs_with_experiment_nature(self, jobs_yaml_with_experiment_nature):
+        """Test loading jobs with experiment_nature specified."""
+        handler = JobHandler(str(jobs_yaml_with_experiment_nature))
+        jobs = handler.get_jobs()
+        
+        assert len(jobs) == 3
+        
+        # Check adversarial job
+        assert jobs[0].name == "Adversarial Job"
+        assert jobs[0].experiment_nature == ExperimentNature.ADVERSARIAL
+        
+        # Check corrective job
+        assert jobs[1].name == "Corrective Job"
+        assert jobs[1].experiment_nature == ExperimentNature.CORRECTIVE
+        
+        # Check default nature (should be adversarial)
+        assert jobs[2].name == "Default Nature Job"
+        assert jobs[2].experiment_nature == ExperimentNature.ADVERSARIAL
+    
+    def test_load_jobs_with_invalid_experiment_nature(self, temp_dir):
+        """Test loading jobs with invalid experiment_nature raises ValueError."""
+        jobs_file = temp_dir / "jobs_invalid_nature.yaml"
+        jobs_data = {
+            "version": "1.1-dev",
+            "jobs": [
+                {
+                    "name": "Invalid Nature Job",
+                    "scenarios": [1],
+                    "experiment_nature": "invalid_nature"
+                }
+            ]
+        }
+        
+        with open(jobs_file, 'w') as f:
+            yaml.dump(jobs_data, f)
+        
+        with pytest.raises(ValueError) as exc_info:
+            JobHandler(str(jobs_file))
+        
+        assert "experiment nature" in str(exc_info.value).lower()
     
     def test_load_jobs_file_not_found(self):
         """Test loading jobs from non-existent file raises FileNotFoundError."""

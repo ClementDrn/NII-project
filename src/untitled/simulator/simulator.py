@@ -383,7 +383,7 @@ class Simulator:
             # Store instruction in a temporary file
             instruction_file = run_base_dir / INSTRUCTION_FILE_NAME
             instruction_data = {
-                "text": instruction.adversarial_instruction,
+                "text": instruction.text,
                 "flag": 2,      # 0: safety, 1: instruction following as extra prompt, 2: instruction following as override, 3: other
                 "injection_time": instruction.injection_window.start_timestamp,
                 "injection_duration": instruction.injection_window.end_timestamp - instruction.injection_window.start_timestamp,
@@ -467,7 +467,7 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         job_file = self._create_run_script(instruction)
         
         if instruction:
-            LOG.info(f"Running scenario with instruction at t={instruction.injection_window.start_timestamp}s: '{instruction.adversarial_instruction}'")
+            LOG.info(f"Running scenario with instruction at t={instruction.injection_window.start_timestamp}s: '{instruction.text}'")
         else:
             LOG.info(f"Running scenario without instruction")
         
@@ -481,7 +481,7 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
             result = subprocess.run(
                 ["bash", "-l", job_file],
                 capture_output=False,
-                timeout=7200,  # 2 hours
+                timeout=7200,  # 2 hours, TODO: make configurable
                 env={
                     'HOME': os.environ.get('HOME', ''),
                     'USER': os.environ.get('USER', ''),

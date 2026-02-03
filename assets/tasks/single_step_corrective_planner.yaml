@@ -1,0 +1,22 @@
+# Single-step corrective planner task
+# Used by SingleStepVLMInstructionGenerator for corrective experiments
+# This task receives images + metadata + failure info and produces corrective instructions
+
+name: "Single-Step Corrective Planner"
+description: >
+  Analyzes video frames, metadata, and failure information to identify
+  the exact moment of failure and generate corrective natural language
+  instructions that would prevent the failure.
+
+system_prompt_path: "assets/prompts/independent_friendly_planner_task.txt"
+
+inputs:
+  images: true
+  metadata: true
+  descriptions: false
+  failure_text: true
+  route_completion: true
+
+outputs:
+  instruction: true
+  descriptions: false

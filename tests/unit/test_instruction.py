@@ -27,14 +27,14 @@ class TestInstruction:
         instruction = Instruction(
             rank=1,
             injection_window=window,
-            adversarial_instruction="Turn left immediately",
+            text="Turn left immediately",
             target_module_logic="Override lane keeping",
             reasoning="Vehicle is about to enter intersection"
         )
         
         assert instruction.rank == 1
         assert instruction.injection_window.start_timestamp == 1.5
-        assert instruction.adversarial_instruction == "Turn left immediately"
+        assert instruction.text == "Turn left immediately"
         assert instruction.target_module_logic == "Override lane keeping"
         assert instruction.reasoning == "Vehicle is about to enter intersection"
 
@@ -48,7 +48,7 @@ class TestInstructionSet:
         instruction1 = Instruction(
             rank=1,
             injection_window=window1,
-            adversarial_instruction="Turn left",
+            text="Turn left",
             target_module_logic="Override planning",
             reasoning="Critical moment"
         )
@@ -65,7 +65,7 @@ class TestInstructionSet:
         instruction1 = Instruction(
             rank=2,
             injection_window=window2,
-            adversarial_instruction="Accelerate",
+            text="Accelerate",
             target_module_logic="Override speed control",
             reasoning="Secondary critical moment"
         )
@@ -73,7 +73,7 @@ class TestInstructionSet:
         instruction2 = Instruction(
             rank=1,
             injection_window=window1,
-            adversarial_instruction="Turn left",
+            text="Turn left",
             target_module_logic="Override planning",
             reasoning="Primary critical moment"
         )
@@ -83,7 +83,7 @@ class TestInstructionSet:
         
         assert top is not None
         assert top.rank == 1
-        assert top.adversarial_instruction == "Turn left"
+        assert top.text == "Turn left"
     
     def test_get_top_instruction_empty_set(self):
         """Test getting top instruction from empty set."""
@@ -99,7 +99,7 @@ class TestInstructionSet:
         instruction1 = Instruction(
             rank=1,
             injection_window=window1,
-            adversarial_instruction="Turn left",
+            text="Turn left",
             target_module_logic="Override planning",
             reasoning="Primary critical moment"
         )
@@ -107,7 +107,7 @@ class TestInstructionSet:
         instruction2 = Instruction(
             rank=2,
             injection_window=window2,
-            adversarial_instruction="Accelerate",
+            text="Accelerate",
             target_module_logic="Override speed control",
             reasoning="Secondary critical moment"
         )
@@ -116,11 +116,11 @@ class TestInstructionSet:
         
         rank1 = instruction_set.get_instruction_by_rank(1)
         assert rank1 is not None
-        assert rank1.adversarial_instruction == "Turn left"
+        assert rank1.text == "Turn left"
         
         rank2 = instruction_set.get_instruction_by_rank(2)
         assert rank2 is not None
-        assert rank2.adversarial_instruction == "Accelerate"
+        assert rank2.text == "Accelerate"
         
         rank3 = instruction_set.get_instruction_by_rank(3)
         assert rank3 is None
@@ -139,7 +139,7 @@ class TestParseInstructionFromJson:
               "start_timestamp": 1.5,
               "end_timestamp": 2.0
             },
-            "adversarial_instruction": "Turn left immediately",
+            "text": "Turn left immediately",
             "target_module_logic": "Override lane keeping",
             "reasoning": "Vehicle approaching intersection with vulnerable pedestrian"
           }
@@ -155,7 +155,7 @@ class TestParseInstructionFromJson:
         assert instruction.rank == 1
         assert instruction.injection_window.start_timestamp == 1.5
         assert instruction.injection_window.end_timestamp == 2.0
-        assert instruction.adversarial_instruction == "Turn left immediately"
+        assert instruction.text == "Turn left immediately"
         assert instruction.target_module_logic == "Override lane keeping"
         assert "pedestrian" in instruction.reasoning.lower()
     
@@ -169,7 +169,7 @@ class TestParseInstructionFromJson:
               "start_timestamp": 1.5,
               "end_timestamp": 2.0
             },
-            "adversarial_instruction": "Turn left immediately",
+            "text": "Turn left immediately",
             "target_module_logic": "Override lane keeping",
             "reasoning": "Primary critical moment"
           },
@@ -179,7 +179,7 @@ class TestParseInstructionFromJson:
               "start_timestamp": 3.0,
               "end_timestamp": 3.5
             },
-            "adversarial_instruction": "Accelerate now",
+            "text": "Accelerate now",
             "target_module_logic": "Override speed control",
             "reasoning": "Secondary critical moment"
           },
@@ -189,7 +189,7 @@ class TestParseInstructionFromJson:
               "start_timestamp": 5.0,
               "end_timestamp": 5.8
             },
-            "adversarial_instruction": "Change lane right",
+            "text": "Change lane right",
             "target_module_logic": "Override perception of blind spot",
             "reasoning": "Tertiary critical moment"
           }
@@ -233,7 +233,7 @@ class TestParseInstructionFromJson:
               "start_timestamp": 1.5,
               "end_timestamp": 2.0
             },
-            "adversarial_instruction": "Turn left",
+            "text": "Turn left",
             "target_module_logic": "Override planning",
             "reasoning": "Critical moment"
         }
@@ -247,7 +247,7 @@ class TestParseInstructionFromJson:
         [
           {
             "rank": 1,
-            "adversarial_instruction": "Turn left"
+            "text": "Turn left"
           }
         ]
         '''
@@ -265,13 +265,13 @@ class TestParseInstructionFromJson:
               "start_timestamp": 1.5,
               "end_timestamp": 2.0
             },
-            "adversarial_instruction": "Turn left",
+            "text": "Turn left",
             "target_module_logic": "Override planning",
             "reasoning": "Valid instruction"
           },
           {
             "rank": 2,
-            "adversarial_instruction": "Invalid - missing fields"
+            "text": "Invalid - missing fields"
           },
           {
             "rank": 3,
@@ -279,7 +279,7 @@ class TestParseInstructionFromJson:
               "start_timestamp": 5.0,
               "end_timestamp": 5.5
             },
-            "adversarial_instruction": "Accelerate",
+            "text": "Accelerate",
             "target_module_logic": "Override speed",
             "reasoning": "Another valid instruction"
           }
@@ -303,7 +303,7 @@ class TestParseInstructionFromJson:
               "start_timestamp": "1.5",
               "end_timestamp": "2.0"
             },
-            "adversarial_instruction": "Turn left",
+            "text": "Turn left",
             "target_module_logic": "Override planning",
             "reasoning": "Critical moment"
           }

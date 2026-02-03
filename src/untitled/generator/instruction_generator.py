@@ -2,15 +2,17 @@ from untitled.simulator.simulation_data import SimulationData
 from untitled.core.settings import GeneratorStepConfig, get_model_instances_config_by_step_id
 from untitled.generator.instruction import InstructionSet
 from untitled.generator.model_config import ModelConfig, get_model_config
+from untitled.generator.experiment_nature import ExperimentNature
 from untitled.core.base import LOG
 
 from abc import ABC, abstractmethod
+from typing import Optional
 
 
 # Abstract class
 class InstructionGenerator(ABC):
     def __init__(self):
-        pass
+        self._experiment_nature: ExperimentNature = ExperimentNature.ADVERSARIAL
 
     async def init(self):
         """
@@ -24,10 +26,46 @@ class InstructionGenerator(ABC):
         """
         pass
 
+    def set_experiment_nature(self, nature: ExperimentNature) -> None:
+        """
+        Set the experiment nature for instruction generation.
+        
+        This affects which tasks are used for generating instructions:
+        - ADVERSARIAL: Tasks that generate crash-inducing instructions
+        - CORRECTIVE: Tasks that generate failure-preventing instructions
+        
+        Args:
+            nature: The experiment nature to use
+        """
+        self._experiment_nature = nature
+        LOG.debug(f"InstructionGenerator: Experiment nature set to {nature.value}")
+
+    def get_experiment_nature(self) -> ExperimentNature:
+        """
+        Get the current experiment nature.
+        
+        Returns:
+            The current experiment nature
+        """
+        return self._experiment_nature
+
     @abstractmethod
-    async def generate_instructions_from_images(self, data: SimulationData) -> InstructionSet:
+    async def generate_instructions_from_images(
+        self, 
+        data: SimulationData,
+        failure_text: Optional[str] = None,
+        was_route_completed: Optional[bool] = None,
+    ) -> InstructionSet:
         """
         Generate instructions from simulation data (async to support VLM calls).
+        
+        Args:
+            data: Simulation data containing frames and metadata
+            failure_text: Description of failure that occurred (for corrective tasks)
+            was_route_completed: Whether route was completed (for corrective tasks)
+            
+        Returns:
+            Generated instruction set
         """
         pass
 

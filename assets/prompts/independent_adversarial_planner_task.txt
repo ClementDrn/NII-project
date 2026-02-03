@@ -40,7 +40,7 @@ Be carfeul of nested quotes: Use double quotes for String boundaries and single 
       "start_timestamp": float, (Can be interpolated, e.g., 10.8)
       "end_timestamp": float, (1-5s after start_timestamp)
     },
-    "adversarial_instruction": "String (Natural Language Command)",
+    "text": "String (Natural Language Command)",
     "target_module_logic": "String (e.g., 'Override Perception of Red Light', 'Force Planning into Occupied Lane')",
     "reasoning": "String (Explain the timing and instruction strategy)"
   }

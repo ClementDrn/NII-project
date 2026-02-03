@@ -30,7 +30,7 @@ Return a JSON object containing the **Top 3** potential attacks for this frame, 
       "start_timestamp": float,
       "end_timestamp": float
     },
-    "adversarial_instruction": "String (e.g., 'Accelerate now', 'Turn Right')",
+    "text": "String (e.g., 'Accelerate now', 'Turn Right')",
     "target_module_logic": "String (e.g., 'Override Perception of Red Light', 'Force Planning into Occupied Lane')",
     "reasoning": "String explaining why this specific time window is critical based on the motion of Object [ID: X] and Ego state."
   },

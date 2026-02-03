@@ -2,6 +2,8 @@ from untitled.core.settings import GeneratorStepConfig
 from untitled.generator.instruction_generator import InstructionGenerator, get_api_parameters_from_config, get_model_instances_config_by_step_id
 from untitled.generator.prompt_dispatcher import PromptDispatcher, PromptRequest
 from untitled.generator.model import create_model_client, parse_model_response, ModelClient, ModelClientFactory
+from untitled.generator.experiment_nature import ExperimentNature
+from untitled.generator.task import Task
 from untitled.core.base import PROJECT_ROOT, LOG, CONFIG
 from untitled.simulator.simulation_data import SimulationData
 from untitled.generator.instruction import InstructionSet, parse_instructions_from_json
@@ -11,11 +13,17 @@ import asyncio
 
 class SingleStepVLMInstructionGenerator(InstructionGenerator):
     """
-    Single-step VLM instruction generator for generating adversarial instructions from a sequence of video frames.
-    The VLM receives all frames and their metadata at once, acting as an independent adversarial planner.
+    Single-step VLM instruction generator for generating instructions from a sequence of video frames.
+    The VLM receives all frames and their metadata at once, acting as an independent planner.
     The actual model process can be local or remote, and this class interacts with it via OpenAI-compatible API.
+    
+    The task used for instruction generation depends on the experiment nature:
+    - ADVERSARIAL: Uses single_step_adversarial_planner task
+    - CORRECTIVE: Uses single_step_corrective_planner task
     """
     def __init__(self):
+        super().__init__()
+        
         # Check that there is exactly one step configured
         if len(CONFIG.generator.steps) != 1:
             LOG.error("Single-step VLM instruction generator requires exactly one step configured in 'generator.steps' field!")
@@ -24,7 +32,11 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
         # Attributes
         self._clients: list[ModelClient] = []
         self._prompt_dispatcher: PromptDispatcher = None
-        self._planner_task_message: str = ""
+        
+        # Load tasks for both experiment natures
+        self._adversarial_task: Task = Task("single_step_adversarial_planner.yaml")
+        self._corrective_task: Task = Task("single_step_corrective_planner.yaml")
+        LOG.debug(f"Loaded tasks: {self._adversarial_task}, {self._corrective_task}")
 
         # Get API parameters from config
         step: GeneratorStepConfig = CONFIG.generator.steps[0]
@@ -45,11 +57,17 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
         parallel_client_list = [client for client in self._clients if client.is_parallelizable()]
         self._prompt_dispatcher: PromptDispatcher = PromptDispatcher(parallel_client_list)
 
-        # Fetch adversarial planner task message from its asset file
-        PLANNER_TASK_PATH = PROJECT_ROOT / "assets" / "prompts" / "independent_adversarial_planner_task.txt"
-        with open(PLANNER_TASK_PATH, "r") as f:
-            self._planner_task_message = f.read()
-        LOG.debug(f"Loaded adversarial planner task message for VLM. See below:\n{self._planner_task_message}")
+    def _get_current_task(self) -> Task:
+        """
+        Get the appropriate task based on current experiment nature.
+        
+        Returns:
+            The task to use for instruction generation
+        """
+        if self._experiment_nature == ExperimentNature.CORRECTIVE:
+            return self._corrective_task
+        else:
+            return self._adversarial_task
 
     @override
     async def init(self):
@@ -83,39 +101,48 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
         self._clients = []
 
     @override
-    async def generate_instructions_from_images(self, data: SimulationData) -> Optional[InstructionSet]:
+    async def generate_instructions_from_images(
+        self, 
+        data: SimulationData,
+        failure_text: Optional[str] = None,
+        was_route_completed: Optional[bool] = None,
+    ) -> Optional[InstructionSet]:
         """
-        Generate adversarial instructions from a sequence of video frames using a VLM.
+        Generate instructions from a sequence of video frames using a VLM.
         All frames and their metadata are sent together in a single request.
+        
+        Args:
+            data: Simulation data containing frames and metadata
+            failure_text: Description of failure that occurred (for corrective tasks)
+            was_route_completed: Whether route was completed (for corrective tasks)
+            
+        Returns:
+            Generated instruction set, or None if generation failed
         """
         # Check frame count validity
         if data.frame_count < 1:
             LOG.error("At least one frame is required to generate instructions!")
             raise ValueError("At least one frame is required to generate instructions.")
 
-        # Collect all image paths and concatenate metadata with frame labels
-        image_paths = []
-        metadata_parts = []
-        
-        for i in range(data.frame_count):
-            image_path = data.image_dir / data.frames[i].image_name
-            image_paths.append(image_path)
-            
-            metadata_text = str(data.frames[i].metadata)
-            metadata_parts.append(f"Frame {i+1} (time: {data.frames[i].timestamp}):\n{metadata_text}")
-        
-        # Concatenate all metadata with frame labels
-        concatenated_metadata = "\n\n".join(metadata_parts)
-        LOG.debug(f"Concatenated metadata for adversarial planner:\n{concatenated_metadata}\n")
+        # Get the appropriate task based on experiment nature
+        task = self._get_current_task()
+        LOG.debug(f"Using task: {task.name} (experiment nature: {self._experiment_nature.value})")
 
-        # Send prompt to VLM with all images and concatenated metadata
+        # Collect all image paths
+        image_paths = [data.image_dir / frame.image_name for frame in data.frames]
+
+        # Prepare prompt request using task
         future = asyncio.Future()
-        prompt_request: PromptRequest = PromptRequest(
-            system_text=self._planner_task_message,
-            user_text=concatenated_metadata,
-            user_image_paths=image_paths,
-            future=future
+        prompt_request = task.prepare_prompt(
+            future=future,
+            images=image_paths,
+            frames=data.frames,
+            failure_text=failure_text,
+            was_route_completed=was_route_completed,
         )
+        LOG.debug(f"Prepared prompt for planner:\n{prompt_request.user_text}\n")
+
+        # Send prompt to VLM
         await self._prompt_dispatcher.add(prompt_request)
         
         # Wait for response
@@ -123,20 +150,20 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
 
         # Remove the thinking part from response
         instruction_raw = parse_model_response(response_text)
-        LOG.debug(f"Adversarial Planner Response:\n{instruction_raw}\n")
+        LOG.debug(f"Planner Response:\n{instruction_raw}\n")
         
         if instruction_raw is None:
             return None
         
         # Check if response was redacted (contains "REDACTED")
         if "REDACTED" in instruction_raw:
-            LOG.error("Could not generate instructions: adversarial planner response was 'REDACTED' by the model (for safety reasons).")
+            LOG.error("Could not generate instructions: planner response was 'REDACTED' by the model (for safety reasons).")
             return None
         
         # Parse instruction set from JSON
         instruction_set = parse_instructions_from_json(instruction_raw)
         if instruction_set is None:
-            LOG.error("The adversarial planner model response could not be parsed. "
+            LOG.error("The planner model response could not be parsed. "
                 "You may want to increase the max_tokens setting for the planner model, "
                 "as it might be too low to capture the full json response.")
 

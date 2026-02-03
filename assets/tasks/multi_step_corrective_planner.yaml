@@ -1,0 +1,22 @@
+# Multi-step corrective planner task
+# Used as the second step in MultiStepVLMInstructionGenerator for corrective experiments
+# This task receives scene descriptions + failure info and produces corrective instructions
+
+name: "Multi-Step Corrective Planner"
+description: >
+  Analyzes a sparse sequence of scene descriptions along with failure information
+  to identify the exact moment of failure and generate corrective natural language
+  instructions that would prevent the failure.
+
+system_prompt_path: "assets/prompts/corrective_planner_task.txt"
+
+inputs:
+  images: false
+  metadata: false
+  descriptions: true
+  failure_text: true
+  route_completion: true
+
+outputs:
+  instruction: true
+  descriptions: false

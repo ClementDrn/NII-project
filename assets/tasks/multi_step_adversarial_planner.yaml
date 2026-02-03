@@ -1,0 +1,22 @@
+# Multi-step adversarial planner task
+# Used as the second step in MultiStepVLMInstructionGenerator for adversarial experiments
+# This task receives scene descriptions (no images) and produces instructions
+
+name: "Multi-Step Adversarial Planner"
+description: >
+  Analyzes a sparse sequence of scene descriptions from a continuous driving
+  simulation to identify high-risk intervals and generate adversarial
+  instructions that cause crashes.
+
+system_prompt_path: "assets/prompts/adversarial_planner_task.txt"
+
+inputs:
+  images: false
+  metadata: false
+  descriptions: true
+  failure_text: false
+  route_completion: false
+
+outputs:
+  instruction: true
+  descriptions: false

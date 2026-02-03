@@ -2,6 +2,7 @@ import asyncio
 from untitled.core.base import LOG, PROJECT_ROOT, CONFIG, SIMULATION_FPS
 from untitled.core.job_handler import Job, JobHandler
 from untitled.generator.instruction_generator import InstructionGenerator
+from untitled.generator.experiment_nature import ExperimentNature
 from untitled.simulator.simulator import Simulator
 from untitled.simulator.simulation_data import SimulationData
 from untitled.simulator.simulation_result import SimulationResult
@@ -164,7 +165,14 @@ class Pipeline:
 
         return filtered_simulation_data
 
-    async def _generate_instruction_for_experiment(self, job: Job, scenario_id: int, experiment_index: int, simulation_data: SimulationData) -> Tuple[bool, Instruction]:
+    async def _generate_instruction_for_experiment(
+        self, 
+        job: Job, 
+        scenario_id: int, 
+        experiment_index: int, 
+        simulation_data: SimulationData,
+        ground_truth_result: Optional[SimulationResult] = None
+    ) -> Tuple[bool, Instruction]:
         """
         Generate VLM instruction for a single experiment (async, queues the prompt).
         
@@ -173,6 +181,7 @@ class Pipeline:
             scenario_id: The ID of the scenario being executed
             experiment_index: The experiment index (0-based, relative to experiments only)
             simulation_data: The simulation data containing frames and metadata
+            ground_truth_result: Optional ground truth simulation result (for corrective tasks)
             
         Returns:
             Tuple of (success, instruction or None)
@@ -180,8 +189,20 @@ class Pipeline:
         try:
             LOG.info(f"  Generating instruction for experiment {experiment_index} ({experiment_index + 1} / {job.experiment_count})")
             
+            # Extract failure info from ground truth result (for corrective tasks)
+            failure_text = None
+            was_route_completed = None
+            if ground_truth_result is not None:
+                failure_text = ground_truth_result.failure_text
+                was_route_completed = ground_truth_result.was_route_completed
+                LOG.debug(f"    Ground truth: route_completed={was_route_completed}, failure_text={failure_text[:100] if failure_text else 'None'}...")
+            
             LOG.debug(f"    Generating instructions from images...")
-            instruction_set = await self.generator.generate_instructions_from_images(simulation_data)
+            instruction_set = await self.generator.generate_instructions_from_images(
+                simulation_data,
+                failure_text=failure_text,
+                was_route_completed=was_route_completed
+            )
             if not instruction_set:
                 LOG.error(f"    Failed to generate instruction from VLM")
                 raise RuntimeError("VLM instruction generation failed")
@@ -193,7 +214,7 @@ class Pipeline:
                 raise RuntimeError("No valid instructions generated")
             
             LOG.debug(f"    Generated instruction set with {len(instruction_set.instructions)} test case(s)")
-            LOG.debug(f"    Using top-ranked instruction (rank {top_instruction.rank}): '{top_instruction.adversarial_instruction}'")
+            LOG.debug(f"    Using top-ranked instruction (rank {top_instruction.rank}): '{top_instruction.text}'")
             LOG.debug(f"    Target: {top_instruction.target_module_logic}")
             LOG.debug(f"    Injection window: {top_instruction.injection_window.start_timestamp}s - {top_instruction.injection_window.end_timestamp}s")
             
@@ -299,10 +320,18 @@ class Pipeline:
             self.simulator.set_job_context(job.id, scenario_id)
             self.simulator.set_scenario(scenario_id)
             
+            # Get ground truth result from first run (for corrective tasks)
+            # We use run_id=0 as the reference ground truth
+            ground_truth_result: Optional[SimulationResult] = job.results.get((scenario_id, 0))
+            if ground_truth_result is None and job.experiment_nature == ExperimentNature.CORRECTIVE:
+                LOG.warning(f"No ground truth result found for scenario {scenario_id}, corrective task may lack failure context")
+            
             # Generate instructions for all experiments
             LOG.info(f"Generating instructions for {job.experiment_count} experiment(s)...")
             for experiment_index in range(job.experiment_count):
-                success, instruction = await self._generate_instruction_for_experiment(job, scenario_id, experiment_index, simulation_data)
+                success, instruction = await self._generate_instruction_for_experiment(
+                    job, scenario_id, experiment_index, simulation_data, ground_truth_result
+                )
                 if success:
                     instructions[experiment_index] = instruction
                 else:
@@ -371,11 +400,15 @@ class Pipeline:
         LOG.info("=" * 80)
         LOG.info(f"Starting Job {job.id}: '{job.name}'")
         LOG.info(f"Scenarios: {len(job.scenarios)}, Ground truth runs: {job.ground_truth_count}, Experiment runs: {job.experiment_count}")
+        LOG.info(f"Experiment nature: {job.experiment_nature.value}")
         LOG.info("=" * 80)
         
         job_start_time = time.time()
         job_successful = 0
         job_failed = 0
+        
+        # Set experiment nature on generator
+        self.generator.set_experiment_nature(job.experiment_nature)
         
         # Stage 1: CARLA - Run all ground truths for all scenarios
         LOG.info("")
@@ -504,7 +537,7 @@ class Pipeline:
                         if avg_gt_penalty > exp_penalty:
                             is_adversarial = True
                             adversarial_successes += 1
-                            adversarial_marker = " [ADVERSARIAL ✓]"
+                            adversarial_marker = " [ADVERSARIAL]"
                         elif avg_gt_penalty < exp_penalty:
                             adversarial_marker = " [IMPROVED]"
                     
@@ -525,12 +558,12 @@ class Pipeline:
         # Overall summary
         LOG.info("")
         LOG.info("=" * 80)
-        LOG.info("ADVERSARIAL EFFECTIVENESS SUMMARY")
+        LOG.info("INSTRUCTION EFFECTIVENESS SUMMARY")
         LOG.info("=" * 80)
         if total_experiments > 0:
             adversarial_rate = (adversarial_successes / total_experiments) * 100
             LOG.info(f"Total experiments: {total_experiments}")
-            LOG.info(f"Adversarial successes: {adversarial_successes}")
+            LOG.info(f"Adversarial successes: {adversarial_successes}")     # TODO: Also consider corrective instructions
             LOG.info(f"Adversarial rate: {adversarial_rate:.1f}%")
         else:
             LOG.info("No experiment results to analyze.")

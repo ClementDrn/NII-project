@@ -122,6 +122,58 @@ class SimulationResult:
     scores: SimulationScores
     meta: SimulationMeta
 
+    @property
+    def was_route_completed(self) -> bool:
+        """Return True if the route was fully completed (score_route == 100.0)."""
+        return self.scores.score_route >= 100.0
+
+    @property
+    def failure_text(self) -> str:
+        """
+        Return a concatenated string of all infractions except min_speed_infractions.
+        
+        min_speed_infractions are excluded as they are too frequent and noisy.
+        """
+        infraction_texts = []
+        
+        if self.infractions.collisions_layout:
+            infraction_texts.append("Collisions with layout:\n" + "\n".join(f"  - {inf}" for inf in self.infractions.collisions_layout))
+        
+        if self.infractions.collisions_pedestrian:
+            infraction_texts.append("Collisions with pedestrians:\n" + "\n".join(f"  - {inf}" for inf in self.infractions.collisions_pedestrian))
+        
+        if self.infractions.collisions_vehicle:
+            infraction_texts.append("Collisions with vehicles:\n" + "\n".join(f"  - {inf}" for inf in self.infractions.collisions_vehicle))
+        
+        if self.infractions.red_light:
+            infraction_texts.append("Red light infractions:\n" + "\n".join(f"  - {inf}" for inf in self.infractions.red_light))
+        
+        if self.infractions.stop_infraction:
+            infraction_texts.append("Stop sign infractions:\n" + "\n".join(f"  - {inf}" for inf in self.infractions.stop_infraction))
+        
+        if self.infractions.outside_route_lanes:
+            infraction_texts.append("Outside route lanes:\n" + "\n".join(f"  - {inf}" for inf in self.infractions.outside_route_lanes))
+        
+        if self.infractions.yield_emergency_vehicle_infractions:
+            infraction_texts.append("Yield to emergency vehicles:\n" + "\n".join(f"  - {inf}" for inf in self.infractions.yield_emergency_vehicle_infractions))
+        
+        if self.infractions.scenario_timeouts:
+            infraction_texts.append("Scenario timeouts:\n" + "\n".join(f"  - {inf}" for inf in self.infractions.scenario_timeouts))
+        
+        if self.infractions.route_dev:
+            infraction_texts.append("Route deviations:\n" + "\n".join(f"  - {inf}" for inf in self.infractions.route_dev))
+        
+        if self.infractions.vehicle_blocked:
+            infraction_texts.append("Vehicle blocked:\n" + "\n".join(f"  - {inf}" for inf in self.infractions.vehicle_blocked))
+        
+        if self.infractions.route_timeout:
+            infraction_texts.append("Route timeouts:\n" + "\n".join(f"  - {inf}" for inf in self.infractions.route_timeout))
+        
+        if not infraction_texts:
+            return "No infractions recorded."
+        
+        return "\n\n".join(infraction_texts)
+
     @classmethod
     def load_from_json_file(cls, json_path: Path, scenario_id: int) -> Optional["SimulationResult"]:
         """

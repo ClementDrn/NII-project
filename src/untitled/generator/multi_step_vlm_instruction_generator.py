@@ -3,6 +3,8 @@ from untitled.core.settings import GeneratorStepConfig, ModelInstanceConfig
 from untitled.generator.instruction_generator import InstructionGenerator, get_api_parameters_from_config, get_model_instances_config_by_step_id
 from untitled.generator.prompt_dispatcher import PromptDispatcher, PromptRequest
 from untitled.generator.model import create_model_client, parse_model_response, ModelClient, ModelClientFactory, ModelType
+from untitled.generator.experiment_nature import ExperimentNature
+from untitled.generator.task import Task
 from untitled.generator.instruction import InstructionSet, parse_instructions_from_json
 from untitled.core.base import VLM_LOG, PROJECT_ROOT, LOG, CONFIG
 from untitled.simulator.simulation_data import SimulationData
@@ -13,8 +15,14 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
     """
     Multi-step instruction generator using VLM for scene description and LLM/VLM for planning.
     The actual model process can be local or remote, and this class interacts with it via OpenAI-compatible API.
+    
+    The planner task used for instruction generation depends on the experiment nature:
+    - ADVERSARIAL: Uses multi_step_adversarial_planner task
+    - CORRECTIVE: Uses multi_step_corrective_planner task
     """
     def __init__(self):
+        super().__init__()
+        
         # Check that there are exactly two steps configured
         if len(CONFIG.generator.steps) != 2:
             LOG.error("Multi-step VLM instruction generator requires exactly two steps configured in 'generator.steps' field!")
@@ -25,9 +33,13 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
         self._planner_clients: list[ModelClient] = []
         self._descriptor_dispatcher: PromptDispatcher = None
         self._planner_dispatcher: PromptDispatcher = None
-        self._scene_descriptor_task_message: str = ""
-        self._planner_task_message: str = ""
         self._is_full_speed_mode_enabled: bool = False
+
+        # Load tasks
+        self._descriptor_task: Task = Task("scene_descriptor.yaml")
+        self._adversarial_planner_task: Task = Task("multi_step_adversarial_planner.yaml")
+        self._corrective_planner_task: Task = Task("multi_step_corrective_planner.yaml")
+        LOG.debug(f"Loaded tasks: {self._descriptor_task}, {self._adversarial_planner_task}, {self._corrective_planner_task}")
 
         # Get API parameters from config for both steps
         descriptor_step: GeneratorStepConfig = CONFIG.generator.steps[0]
@@ -60,17 +72,17 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
         parallel_planner_list = [client for client in self._planner_clients if client.is_parallelizable()]
         self._planner_dispatcher: PromptDispatcher = PromptDispatcher(parallel_planner_list)
 
-        # Fetch scene descriptor task message from its asset file
-        SCENE_DESCRIPTOR_TASK_PATH = PROJECT_ROOT / "assets" / "prompts" / "scene_descriptor_task.txt"
-        with open(SCENE_DESCRIPTOR_TASK_PATH, "r") as f:
-            self._scene_descriptor_task_message = f.read()
-        VLM_LOG.debug(f"Loaded scene descriptor task message for VLM. See below:\n{self._scene_descriptor_task_message}")
-
-        # Fetch adversarial planner task message from its asset file
-        PLANNER_TASK_PATH = PROJECT_ROOT / "assets" / "prompts" / "adversarial_planner_task.txt"
-        with open(PLANNER_TASK_PATH, "r") as f:
-            self._planner_task_message = f.read()
-        VLM_LOG.debug(f"Loaded adversarial planner task message. See below:\n{self._planner_task_message}")
+    def _get_planner_task(self) -> Task:
+        """
+        Get the appropriate planner task based on current experiment nature.
+        
+        Returns:
+            The task to use for planning/instruction generation
+        """
+        if self._experiment_nature == ExperimentNature.CORRECTIVE:
+            return self._corrective_planner_task
+        else:
+            return self._adversarial_planner_task
 
     @override
     async def init(self):
@@ -120,17 +132,34 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
         self._planner_clients = []
 
     @override
-    async def generate_instructions_from_images(self, data: SimulationData) -> Optional[InstructionSet]:
+    async def generate_instructions_from_images(
+        self, 
+        data: SimulationData,
+        failure_text: Optional[str] = None,
+        was_route_completed: Optional[bool] = None,
+    ) -> Optional[InstructionSet]:
         """
         Generate instruction from images and metadata using LLM/VLM models.
         There are two steps:
         1. Scene Descriptor: Generate a scene description for each provided frame (VLM required).
-        2. Adversarial Planner: Generate an adversarial instruction based on the concatenated scene descriptions.
+        2. Planner: Generate an instruction based on the concatenated scene descriptions.
+        
+        Args:
+            data: Simulation data containing frames and metadata
+            failure_text: Description of failure that occurred (for corrective tasks)
+            was_route_completed: Whether route was completed (for corrective tasks)
+            
+        Returns:
+            Generated instruction set, or None if generation failed
         """
         # Check frame count validity
         if data.frame_count < 1:
             LOG.error("At least one frame is required to generate instructions!")
             raise ValueError("At least one frame is required to generate instructions.")
+
+        # Get the appropriate planner task based on experiment nature
+        planner_task = self._get_planner_task()
+        LOG.debug(f"Using planner task: {planner_task.name} (experiment nature: {self._experiment_nature.value})")
 
         # Step 1:
         # Generate a scene description for each frame
@@ -150,17 +179,15 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
             await self._activate_clients(self._descriptor_dispatcher, self._descriptor_clients)
         
         for i in range(data.frame_count):
-            # Prepare prompt inputs
-            metadata_text = str(data.frames[i].metadata)
-            image_path = data.image_dir / data.frames[i].image_name
+            # Prepare prompt request using descriptor task (single frame)
+            frame = data.frames[i]
+            image_path = data.image_dir / frame.image_name
 
-            # Send prompt to VLM for scene description (returns future)
             descriptor_future = asyncio.Future()
-            prompt_request: PromptRequest = PromptRequest(
-                system_text=self._scene_descriptor_task_message,
-                user_text=metadata_text,
-                user_image_paths=[image_path],
-                future=descriptor_future
+            prompt_request = self._descriptor_task.prepare_prompt(
+                future=descriptor_future,
+                images=[image_path],
+                frames=[frame],
             )
             await self._descriptor_dispatcher.add(prompt_request)
             futures.append(descriptor_future)
@@ -177,10 +204,10 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
             f"Frame {i+1} (time: {data.frames[i].timestamp}):\n{desc}" 
             for i, desc in enumerate(scene_descriptions)
         )
-        VLM_LOG.debug(f"Concatenated Scene Descriptions for Adversarial Planner:\n{concatenated_descriptions}\n")
+        VLM_LOG.debug(f"Concatenated Scene Descriptions for Planner:\n{concatenated_descriptions}\n")
 
         # Step 2:
-        # Generate an adversarial instruction based on the concatenated scene descriptions
+        # Generate an instruction based on the concatenated scene descriptions
 
         # If full speed mode is enabled, activate non-parallelizable clients for planner step
         if self._is_full_speed_mode_enabled:
@@ -194,31 +221,31 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
             # Finally, activate planner clients
             await self._activate_clients(self._planner_dispatcher, self._planner_clients)
 
-        # The prompt is sent to the dispatcher which will select an available planner model client
+        # Prepare planner prompt request using task
         planner_future = asyncio.Future()
-        prompt_request: PromptRequest = PromptRequest(
-            system_text=self._planner_task_message,
-            user_text=concatenated_descriptions,
-            user_image_paths=None,
-            future=planner_future
+        prompt_request = planner_task.prepare_prompt(
+            future=planner_future,
+            descriptions=concatenated_descriptions,
+            failure_text=failure_text,
+            was_route_completed=was_route_completed,
         )
         await self._planner_dispatcher.add(prompt_request)
         chat_response = await planner_future
         instruction_raw = parse_model_response(chat_response)
-        VLM_LOG.debug(f"- Adversarial Planner Response:\n{instruction_raw}\n")
+        VLM_LOG.debug(f"- Planner Response:\n{instruction_raw}\n")
         
         if instruction_raw is None:
             return None
 
         # Check if response was redacted (contains "REDACTED")
         if "REDACTED" in instruction_raw:
-            LOG.error("Could not generate instructions: adversarial planner response was 'REDACTED' by the model (for safety reasons).")
+            LOG.error("Could not generate instructions: planner response was 'REDACTED' by the model (for safety reasons).")
             return None
         
         # Parse instruction set from JSON
         instruction_set = parse_instructions_from_json(instruction_raw)
         if instruction_set is None:
-            LOG.error("The adversarial planner model response could not be parsed. "
+            LOG.error("The planner model response could not be parsed. "
                 "You may want to increase the max_tokens setting for the planner model, "
                 "as it might be too low to capture the full json response.")
 

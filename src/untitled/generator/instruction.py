@@ -34,7 +34,7 @@ class Instruction:
     """
     rank: int                           # Priority rank of this test case (1 = highest priority)
     injection_window: InjectionWindow   # Time window for instruction injection
-    adversarial_instruction: str        # The adversarial command text
+    text: str                           # The command text (adversarial or corrective)
     target_module_logic: str            # Description of targeted ADS module/logic
     reasoning: str                      # Explanation of why this window is critical
 
@@ -75,7 +75,7 @@ def parse_instructions_from_json(json_text: str) -> Optional[InstructionSet]:
           "start_timestamp": float,
           "end_timestamp": float
         },
-        "adversarial_instruction": "string",
+        "text": "string",
         "target_module_logic": "string",
         "reasoning": "string"
       },
@@ -127,7 +127,7 @@ def parse_instructions_from_json(json_text: str) -> Optional[InstructionSet]:
                 instruction = Instruction(
                     rank=int(item["rank"]),
                     injection_window=injection_window,
-                    adversarial_instruction=str(item["adversarial_instruction"]),
+                    text=str(item.get("text", item.get("instruction", ""))),
                     target_module_logic=str(item["target_module_logic"]),
                     reasoning=str(item["reasoning"])
                 )

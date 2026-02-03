@@ -1,0 +1,22 @@
+# Scene descriptor task
+# Used as the first step in MultiStepVLMInstructionGenerator
+# This task receives a single image + metadata and produces a scene description
+
+name: "Scene Descriptor"
+description: >
+  Generates a scene and vulnerability description from a single POV frame
+  and its metadata. Acts as a rational filter that fuses hard data from
+  JSON with contextual cues from the image.
+
+system_prompt_path: "assets/prompts/scene_descriptor_task.txt"
+
+inputs:
+  images: true
+  metadata: true
+  descriptions: false
+  failure_text: false
+  route_completion: false
+
+outputs:
+  instruction: false
+  descriptions: true

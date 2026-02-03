@@ -1,5 +1,6 @@
 from untitled.core.base import LOG
 from untitled.core.version import JOBS_VERSION, are_versions_compatible
+from untitled.generator.experiment_nature import ExperimentNature
 
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,6 +19,7 @@ class Job:
         scenarios: List of scenario IDs to run
         ground_truth_count: Number of baseline runs without instructions
         experiment_count: Number of runs with VLM-generated instructions
+        experiment_nature: The nature of experiments (adversarial or corrective)
         ground_truth_cache_dir: Optional path to directory containing cached ground truth logs
         results: Dictionary storing simulation results keyed by (scenario_id, run_id)
     """
@@ -26,6 +28,7 @@ class Job:
     scenarios: List[int]
     ground_truth_count: int = 1
     experiment_count: int = 1
+    experiment_nature: ExperimentNature = ExperimentNature.ADVERSARIAL
     ground_truth_cache_dir: str = ""
     results: Dict[tuple, Any] = field(default_factory=dict)
 
@@ -132,6 +135,13 @@ class JobHandler:
                 else:
                     raise ValueError(f"Job {job_index}: 'scenarios' must be a list or 'all'")
                 
+                # Parse experiment_nature (defaults to adversarial)
+                experiment_nature_str = job_data.get('experiment_nature', 'adversarial')
+                try:
+                    experiment_nature = ExperimentNature.from_string(experiment_nature_str)
+                except ValueError as e:
+                    raise ValueError(f"Job {job_index}: {e}")
+                
                 # Create Job instance with auto-assigned ID
                 job = Job(
                     id=job_index,
@@ -139,6 +149,7 @@ class JobHandler:
                     scenarios=scenarios,
                     ground_truth_count=job_data.get('ground_truth_count', 1),
                     experiment_count=job_data.get('experiment_count', 1),
+                    experiment_nature=experiment_nature,
                     ground_truth_cache_dir=job_data.get('ground_truth_cache_dir', ''),
                 )
                 
