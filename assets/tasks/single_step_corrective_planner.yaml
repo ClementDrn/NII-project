@@ -8,7 +8,7 @@ description: >
   the exact moment of failure and generate corrective natural language
   instructions that would prevent the failure.
 
-system_prompt_path: "assets/prompts/independent_friendly_planner_task.txt"
+system_prompt_path: "assets/prompts/independent_corrective_planner_task.txt"
 
 inputs:
   images: true
