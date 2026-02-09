@@ -519,8 +519,9 @@ class Pipeline:
             return
         
         total_experiments = 0
-        adversarial_successes = 0
-        
+        adversarial_count = 0
+        corrective_count = 0
+
         for scenario_id in job.scenarios:
             LOG.info(f"")
             LOG.info(f"Scenario {scenario_id}:")
@@ -552,17 +553,16 @@ class Pipeline:
                     exp_penalty = exp_result.scores.score_penalty
                     exp_infractions = exp_result.infractions.total_count
                     
-                    # Determine if adversarial (lower penalty = more infractions = adversarial success)
+                    # Determine if adversarial (lower penalty = more infractions = adversarial success) or corrective
                     # score_penalty is a multiplier: 1.0 = no infractions, <1.0 = infractions occurred
-                    is_adversarial = False
-                    adversarial_marker = ""
+                    change_marker = ""
                     if avg_gt_penalty is not None:
                         if avg_gt_penalty > exp_penalty:
-                            is_adversarial = True
-                            adversarial_successes += 1
-                            adversarial_marker = " [ADVERSARIAL]"
+                            adversarial_count += 1
+                            change_marker = " [ADVERSARIAL]"
                         elif avg_gt_penalty < exp_penalty:
-                            adversarial_marker = " [IMPROVED]"
+                            corrective_count += 1
+                            change_marker = " [IMPROVED]"
                     
                     # Count specific collision types for clarity
                     collisions = (
@@ -573,7 +573,7 @@ class Pipeline:
                     
                     LOG.info(
                         f"  Run {run_id}: penalty={exp_penalty:.3f}, "
-                        f"infractions={exp_infractions}, collisions={collisions}{adversarial_marker}"
+                        f"infractions={exp_infractions}, collisions={collisions}{change_marker}"
                     )
                 else:
                     LOG.info(f"  Run {run_id}: No result available")
@@ -584,10 +584,15 @@ class Pipeline:
         LOG.info("INSTRUCTION EFFECTIVENESS SUMMARY")
         LOG.info("=" * 80)
         if total_experiments > 0:
-            adversarial_rate = (adversarial_successes / total_experiments) * 100
+            adversarial_rate = (adversarial_count / total_experiments) * 100
+            corrective_rate = (corrective_count / total_experiments) * 100
             LOG.info(f"Total experiments: {total_experiments}")
-            LOG.info(f"Adversarial successes: {adversarial_successes}")     # TODO: Also consider corrective instructions
-            LOG.info(f"Adversarial rate: {adversarial_rate:.1f}%")
+            LOG.info(f"Instruction success rate: {(adversarial_rate if job.experiment_nature == ExperimentNature.ADVERSARIAL else corrective_rate):.1f}%")
+            LOG.info(f"Instruction failure rate: {(100 - adversarial_rate if job.experiment_nature == ExperimentNature.ADVERSARIAL else 100 - corrective_rate):.1f}%")
+            LOG.info(f"Adversarial results: {adversarial_count}")
+            LOG.info(f"Corrective results: {corrective_count}")
+            LOG.info(f"No change results: {total_experiments - adversarial_count - corrective_count}")
+
         else:
             LOG.info("No experiment results to analyze.")
         LOG.info("=" * 80)
