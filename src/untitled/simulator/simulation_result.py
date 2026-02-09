@@ -18,8 +18,10 @@ class SimulationStatus(Enum):
     @classmethod
     def from_string(cls, status_str: str) -> "SimulationStatus":
         """Convert a status string to SimulationStatus enum."""
+        # Take first word only, lowercase for comparison
+        status_keyword = status_str.split()[0].lower()
         for status in cls:
-            if status.value.lower() == status_str.lower():
+            if status.value.lower() == status_keyword:
                 return status
         LOG.warning(f"Unknown simulation status: '{status_str}'. Defaulting to UNKNOWN.")
         return cls.UNKNOWN
