@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from asyncio import Future
 import yaml
 
-from untitled.core.base import PROJECT_ROOT
+from untitled.core.base import CONFIG, PROJECT_ROOT
 from untitled.generator.prompt_dispatcher import PromptRequest
 
 
@@ -83,6 +83,15 @@ class Task:
         
         with open(prompt_path, 'r') as f:
             self._system_prompt_text = f.read()
+
+        # Prompt formatting
+        # NOTE: This is rudimentary right now, can be extended later as needed
+        # Replace "${instruction_count_per_generation}$" with actual value from config if present
+        instruction_count: int = CONFIG.generator.get('instruction_count_per_generation', 1)
+        self._system_prompt_text = self._system_prompt_text.replace(
+            "${instruction_count_per_generation}$",
+            str(instruction_count)
+        )
         
         # Load input flags
         inputs = config.get('inputs', {})

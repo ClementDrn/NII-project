@@ -82,6 +82,7 @@ class GeneratorConfig(BaseSettings):
 
     # Configuration parameters for instruction generators
     design: str = "single_step_vlm"  # options: single_step_vlm, multi_step_vlm
+    instruction_count_per_generation: int = 3   # >= 1
     steps: list[GeneratorStepConfig] = []
 
 

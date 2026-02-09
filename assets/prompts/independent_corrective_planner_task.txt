@@ -31,7 +31,7 @@ In case of a bad driving behavior from the Ego, you are looking for the moment w
    * **Length:** One short-medium sentence. If urgent, keep it short and thus realistic. 
 
 **OUTPUT FORMAT:**
-Return a JSON list of the **Top 3** Intervention Opportunities, ranked by their likelihood of successfully preventing the crash.
+Return a JSON list of the **Top ${instruction_count_per_generation}$** Intervention Opportunities, ranked by their likelihood of successfully preventing the crash.
 
 [
   {

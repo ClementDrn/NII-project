@@ -47,8 +47,9 @@ filter:
   clustering_threshold: 0.997   # Similarity threshold for clustering frames (0.0 - 1.0)
   max_cluster_count: 60         # Maximum number of clusters allowed, this is intended as a security measure, the clustering_threshold should be the main control for the number of clusters
 
-generator:
-  design: "multi_step_vlm"  # options: single_step_vlm, multi_step_vlm
+generator:    # TODO: Allow multiple generator configs
+  design: "single_step_vlm"  # options: single_step_vlm, multi_step_vlm
+  instruction_count_per_generation: 3  # Number of instructions to generate per generation call
   steps:
     # # Description step
     # - id: "description"

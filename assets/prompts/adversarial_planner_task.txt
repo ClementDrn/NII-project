@@ -30,7 +30,7 @@ The failures you identify will enable safety improvements to be made to the driv
 
 
 **OUTPUT FORMAT:**
-Return a JSON list of the **Top 3** Critical Test Cases, ranked by collision probability.
+Return a JSON list of the **Top ${instruction_count_per_generation}$** Critical Test Cases, ranked by collision probability.
 Be carfeul of nested quotes: Use double quotes for String boundaries and single quotes inside the String if needed.
 
 [
