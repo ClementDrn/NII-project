@@ -107,20 +107,20 @@ class Pipeline:
             LOG.error(f"    Ground truth run {run_id} failed: {e}")
             return (0, 1)
         
-    async def _cluster_frames_for_scenario(self, job: Job, scenario_id: int) -> SimulationData:
+    async def _cluster_frames_for_run(self, job: Job, scenario_id: int, run_id: int) -> SimulationData:
         """
-        Cluster frames from ground truth runs for a scenario to reduce redundancy.
+        Cluster frames from a ground truth run for a scenario to reduce redundancy.
         
         Args:
             job: The job being executed
             scenario_id: The ID of the scenario being executed
+            run_id: The generation/run index used to select the ground truth (modulo ground_truth_count)
         
         Returns:
             Filtered SimulationData with clustered frames
         """
-        # Get ground truth cache directory if it exists 
-        # WARN: Ground truth run index is hardcoded to 0 for now
-        ground_truth_index = 0
+        # Select ground truth based on run_id, cycling through available ground truths
+        ground_truth_index = run_id % job.ground_truth_count
         cache_dir = self.job_handler.get_ground_truth_cache_dir(job.id, scenario_id, ground_truth_index)
         
         # Get image and metadata from previously collected ground truth
@@ -291,14 +291,16 @@ class Pipeline:
         
         return (successful, failed)
 
-    async def _generate_scenario_instructions(self, job: Job, scenario_id: int, simulation_data: SimulationData) -> Dict[int, Optional[InstructionSet]]:
+    async def _generate_scenario_instructions(self, job: Job, scenario_id: int) -> Dict[int, Optional[InstructionSet]]:
         """
         Generate VLM instructions for all experiments in a scenario (Stage 2: VLM only).
+        
+        Each generation uses a different ground truth run (cycling through available ones)
+        to ensure diversity when multiple ground truths exist.
         
         Args:
             job: The job being executed
             scenario_id: The scenario ID
-            simulation_data: The simulation data containing frames and metadata
             
         Returns:
             Dictionary mapping experiment_index to InstructionSet or None
@@ -314,15 +316,28 @@ class Pipeline:
             self.simulator.set_job_context(job.id, scenario_id)
             self.simulator.set_scenario(scenario_id)
             
-            # Get ground truth result from first run (for corrective tasks)
-            # We use run_id=0 as the reference ground truth
-            ground_truth_result: Optional[SimulationResult] = job.results.get((scenario_id, 0))
-            if ground_truth_result is None and job.experiment_nature == ExperimentNature.CORRECTIVE:
-                LOG.warning(f"No ground truth result found for scenario {scenario_id}, corrective task may lack failure context")
+            # Cache simulation data per ground truth to avoid redundant clustering
+            simulation_data_cache: Dict[int, SimulationData] = {}
             
             # Generate instructions for all experiments
             LOG.info(f"Generating instructions: {job.instruction_generation_count} generation call(s)...")
             for generation_index in range(job.instruction_generation_count):
+                # Cluster frames from the appropriate ground truth for this generation
+                ground_truth_index = generation_index % job.ground_truth_count
+                LOG.debug(f"  Generation {generation_index} using ground truth run {ground_truth_index}")
+                
+                # Use cached simulation data if available, otherwise cluster and cache
+                if ground_truth_index in simulation_data_cache:
+                    simulation_data = simulation_data_cache[ground_truth_index]
+                else:
+                    simulation_data = await self._cluster_frames_for_run(job, scenario_id, generation_index)
+                    simulation_data_cache[ground_truth_index] = simulation_data
+                
+                # Get ground truth result for this generation (for corrective tasks)
+                ground_truth_result: Optional[SimulationResult] = job.results.get((scenario_id, ground_truth_index))
+                if ground_truth_result is None and job.experiment_nature == ExperimentNature.CORRECTIVE:
+                    LOG.warning(f"No ground truth result found for scenario {scenario_id} run {ground_truth_index}, corrective task may lack failure context")
+                
                 success, instruction_set = await self._generate_instruction_for_experiment(
                     job, scenario_id, generation_index, simulation_data, ground_truth_result
                 )
@@ -443,25 +458,17 @@ class Pipeline:
         LOG.info("=" * 80)
         LOG.info("STAGE 2: VLM Instruction Generation")
         LOG.info("=" * 80)
-
-        # Filter/Cluster frames before generating instructions
-        # TODO: Parallelize this with simulation runs. We can cluster frames together as they arrive since the clustering is greedy.
-        simulation_data_list: List[SimulationData] = []
-        for scenario_id in job.scenarios:
-            LOG.debug(f"Clustering frames for scenario {scenario_id} before instruction generation...")
-            data = await self._cluster_frames_for_scenario(job, scenario_id)
-            simulation_data_list.append(data)
         
         # Enable generator's full speed mode as the simulator is idle now (async)
         enable_full_speed_mode_task = asyncio.create_task(self.generator.enable_full_speed_mode())
         await enable_full_speed_mode_task
         
         # Generate instructions for all scenarios
+        # Each generation will cluster frames from a different ground truth run (modulo ground_truth_count)
         all_instructions = {}  # Map: scenario_id -> {experiment_index -> Instruction}
-        for i, scenario_id in enumerate(job.scenarios):
+        for scenario_id in job.scenarios:
             LOG.debug(f"Generating instructions for scenario {scenario_id}...")
-            simulation_data = simulation_data_list[i]
-            scenario_instructions = await self._generate_scenario_instructions(job, scenario_id, simulation_data)
+            scenario_instructions = await self._generate_scenario_instructions(job, scenario_id)
             all_instructions[scenario_id] = scenario_instructions
         
         # Disable full speed mode once all instructions are generated
