@@ -2,7 +2,7 @@
 
 # Version for configuration files
 CONFIG_VERSION = "2.0-dev"
-JOBS_VERSION = "1.1-dev"
+JOBS_VERSION = "2.0-dev"
 HOSTS_VERSION = "1.0-dev"
 
 

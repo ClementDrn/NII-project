@@ -18,7 +18,8 @@ class Job:
         name: Human-readable name for the job
         scenarios: List of scenario IDs to run
         ground_truth_count: Number of baseline runs without instructions
-        experiment_count: Number of runs with VLM-generated instructions
+        instruction_generation_count: Number of instruction generation calls to make
+        instruction_count_per_generation: Number of instructions to use per generation call
         experiment_nature: The nature of experiments (adversarial or corrective)
         ground_truth_cache_dir: Optional path to directory containing cached ground truth logs
         results: Dictionary storing simulation results keyed by (scenario_id, run_id)
@@ -27,7 +28,8 @@ class Job:
     name: str
     scenarios: List[int]
     ground_truth_count: int = 1
-    experiment_count: int = 1
+    instruction_generation_count: int = 1
+    instruction_count_per_generation: int = 1
     experiment_nature: ExperimentNature = ExperimentNature.ADVERSARIAL
     ground_truth_cache_dir: str = ""
     results: Dict[tuple, Any] = field(default_factory=dict)
@@ -57,17 +59,7 @@ class JobHandler:
     def _load_jobs_from_file(self, file_path: str):
         """
         Load jobs from a YAML file.
-        
-        The YAML file should have the following structure:
-        ```yaml
-        version: "0.0"
-        jobs:
-          - name: "Job Name"
-            scenarios: [1, 2, 3]
-            ground_truth_count: 1
-            experiment_count: 5
-        ```
-        
+
         Args:
             file_path: Path to the YAML file
             
@@ -148,7 +140,8 @@ class JobHandler:
                     name=job_data['name'],
                     scenarios=scenarios,
                     ground_truth_count=job_data.get('ground_truth_count', 1),
-                    experiment_count=job_data.get('experiment_count', 1),
+                    instruction_generation_count=job_data.get('instruction_generation_count', 1),
+                    instruction_count_per_generation=job_data.get('instruction_count_per_generation', 1),
                     experiment_nature=experiment_nature,
                     ground_truth_cache_dir=job_data.get('ground_truth_cache_dir', ''),
                 )

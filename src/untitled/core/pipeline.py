@@ -9,7 +9,7 @@ from untitled.simulator.simulation_result import SimulationResult
 from untitled.generator.single_step_vlm_instruction_generator import SingleStepVLMInstructionGenerator
 from untitled.generator.multi_step_vlm_instruction_generator import MultiStepVLMInstructionGenerator
 from untitled.simulator.simulation_data import SimulationFrameData
-from untitled.generator.instruction import Instruction
+from untitled.generator.instruction import Instruction, InstructionSet
 from untitled.filter.filter import cluster_frames
 from untitled.filter.embedder import DINOEmbedder, Embedder
 
@@ -169,25 +169,25 @@ class Pipeline:
         self, 
         job: Job, 
         scenario_id: int, 
-        experiment_index: int, 
+        generation_index: int, 
         simulation_data: SimulationData,
         ground_truth_result: Optional[SimulationResult] = None
-    ) -> Tuple[bool, Instruction]:
+    ) -> Tuple[bool, Optional[InstructionSet]]:
         """
         Generate VLM instruction for a single experiment (async, queues the prompt).
         
         Args:
             job: The job being executed
             scenario_id: The ID of the scenario being executed
-            experiment_index: The experiment index (0-based, relative to experiments only)
+            generation_index: The generation index (0-based, relative to instruction generations only)
             simulation_data: The simulation data containing frames and metadata
             ground_truth_result: Optional ground truth simulation result (for corrective tasks)
             
         Returns:
-            Tuple of (success, instruction or None)
+            Tuple of (success, InstructionSet or None)
         """
         try:
-            LOG.info(f"  Generating instruction for experiment {experiment_index} ({experiment_index + 1} / {job.experiment_count})")
+            LOG.info(f"  Generating instruction set {generation_index} ({generation_index + 1} / {job.instruction_generation_count})")
             
             # Extract failure info from ground truth result (for corrective tasks)
             failure_text = None
@@ -198,7 +198,7 @@ class Pipeline:
                 LOG.debug(f"    Ground truth: route_completed={was_route_completed}, failure_text={failure_text[:100] if failure_text else 'None'}...")
             
             LOG.debug(f"    Generating instructions from images...")
-            instruction_set = await self.generator.generate_instructions_from_images(
+            instruction_set: InstructionSet = await self.generator.generate_instructions_from_images(
                 simulation_data,
                 failure_text=failure_text,
                 was_route_completed=was_route_completed
@@ -207,21 +207,15 @@ class Pipeline:
                 LOG.error(f"    Failed to generate instruction from VLM")
                 raise RuntimeError("VLM instruction generation failed")
             
-            # Get the top-ranked instruction
-            top_instruction = instruction_set.get_top_instruction()
-            if not top_instruction:
-                LOG.error(f"    No valid instructions in generated set")
-                raise RuntimeError("No valid instructions generated")
-            
             LOG.debug(f"    Generated instruction set with {len(instruction_set.instructions)} test case(s)")
-            LOG.debug(f"    Using top-ranked instruction (rank {top_instruction.rank}): '{top_instruction.text}'")
-            LOG.debug(f"    Target: {top_instruction.target_module_logic}")
-            LOG.debug(f"    Injection window: {top_instruction.injection_window.start_timestamp}s - {top_instruction.injection_window.end_timestamp}s")
-            
-            return (True, top_instruction)
+            for i in range(1, len(instruction_set.instructions) + 1):
+                instruction = instruction_set.get_instruction_by_rank(i)
+                LOG.debug(f"    - Instruction {i}: Window=[{instruction.start_frame_index}, {instruction.end_frame_index}], Text='{instruction.text}'")
+
+            return (True, instruction_set)
             
         except Exception as e:
-            LOG.error(f"    Instruction generation for experiment {experiment_index} failed: {e}")
+            LOG.error(f"    Generation of instruction set {generation_index} failed: {e}")
             return (False, None)
 
     def _run_experiment(self, job: Job, scenario_id: int, run_id: int, instruction: Instruction) -> Tuple[int, int]:
@@ -239,7 +233,7 @@ class Pipeline:
         """
         try:
             experiment_index = run_id - job.ground_truth_count
-            LOG.info(f"  Experiment run {run_id} ({experiment_index + 1} / {job.experiment_count})")
+            LOG.info(f"  Experiment run {run_id} ({experiment_index + 1} / {job.instruction_count_per_generation * job.instruction_generation_count})")
             
             if instruction is None:
                 LOG.error(f"    No instruction available for this experiment")
@@ -297,7 +291,7 @@ class Pipeline:
         
         return (successful, failed)
 
-    async def _generate_scenario_instructions(self, job: Job, scenario_id: int, simulation_data: SimulationData) -> Dict[int, Instruction]:
+    async def _generate_scenario_instructions(self, job: Job, scenario_id: int, simulation_data: SimulationData) -> Dict[int, Optional[InstructionSet]]:
         """
         Generate VLM instructions for all experiments in a scenario (Stage 2: VLM only).
         
@@ -307,13 +301,13 @@ class Pipeline:
             simulation_data: The simulation data containing frames and metadata
             
         Returns:
-            Dictionary mapping experiment_index to Instruction
+            Dictionary mapping experiment_index to InstructionSet or None
         """
         LOG.info("-" * 80)
         LOG.info(f"Job {job.id} | Scenario {scenario_id} | VLM Instruction Generation Stage")
         LOG.info("-" * 80)
         
-        instructions = {}
+        instructions: Dict[int, Optional[InstructionSet]] = {}
         
         try:
             # Set job and scenario context
@@ -327,15 +321,15 @@ class Pipeline:
                 LOG.warning(f"No ground truth result found for scenario {scenario_id}, corrective task may lack failure context")
             
             # Generate instructions for all experiments
-            LOG.info(f"Generating instructions for {job.experiment_count} experiment(s)...")
-            for experiment_index in range(job.experiment_count):
-                success, instruction = await self._generate_instruction_for_experiment(
-                    job, scenario_id, experiment_index, simulation_data, ground_truth_result
+            LOG.info(f"Generating instructions: {job.instruction_generation_count} generation call(s)...")
+            for generation_index in range(job.instruction_generation_count):
+                success, instruction_set = await self._generate_instruction_for_experiment(
+                    job, scenario_id, generation_index, simulation_data, ground_truth_result
                 )
                 if success:
-                    instructions[experiment_index] = instruction
+                    instructions[generation_index] = instruction_set
                 else:
-                    instructions[experiment_index] = None
+                    instructions[generation_index] = None
             
             LOG.info(f"Scenario {scenario_id} instruction generation completed")
             
@@ -344,14 +338,14 @@ class Pipeline:
         
         return instructions
 
-    def _run_scenario_experiments(self, job: Job, scenario_id: int, instructions: Dict[int, Instruction]) -> Tuple[int, int]:
+    def _run_scenario_experiments(self, job: Job, scenario_id: int, instructions: Dict[int, Optional[InstructionSet]]) -> Tuple[int, int]:
         """
         Run all experiment runs for a single scenario with pre-generated instructions (Stage 3: CARLA again).
         
         Args:
             job: The job being executed
             scenario_id: The scenario ID to run
-            instructions: Dictionary mapping experiment_index to Instruction
+            instructions: Dictionary mapping experiment_index to InstructionSet or None
             
         Returns:
             Tuple of (successful_count, failed_count)
@@ -367,15 +361,36 @@ class Pipeline:
             # Set job and scenario context
             self.simulator.set_job_context(job.id, scenario_id)
             self.simulator.set_scenario(scenario_id)
-            
+
+            # Check how many instructions to run per experiment
+            instruction_count_per_generation = job.instruction_count_per_generation
+            if instruction_count_per_generation < 1:
+                LOG.warning(f"Invalid instruction_count_per_generation={instruction_count_per_generation}, defaulting to 1")
+                instruction_count_per_generation = 1
+
             # Run experiment runs with pre-generated instructions
-            LOG.info(f"Running {job.experiment_count} experiment run(s)...")
-            for experiment_index in range(job.experiment_count):
-                run_id = job.ground_truth_count + experiment_index
-                instruction = instructions.get(experiment_index)
-                exp_success, exp_failed = self._run_experiment(job, scenario_id, run_id, instruction)
-                successful += exp_success
-                failed += exp_failed
+            LOG.info(f"Running {job.instruction_generation_count} instruction generation call(s)...")
+            for generation_index in range(job.instruction_generation_count):
+                # Get instruction set for this experiment
+                instruction_set = instructions.get(generation_index)
+                if instruction_set is None:
+                    LOG.error(f"  No instruction set available for instruction generation {generation_index}, skipping run")
+                    failed += 1
+                    continue
+                
+                # Determine number of runs and their IDs
+                base_run_id = job.ground_truth_count + generation_index * instruction_count_per_generation
+                total_run_count = instruction_count_per_generation
+                if total_run_count > len(instruction_set.instructions):
+                    LOG.warning(f"  Requested {total_run_count} instructions for instruction generation {generation_index}, but only {len(instruction_set.instructions)} available. Reducing to available count.")
+                    total_run_count = len(instruction_set.instructions)
+
+                # Run the specified number of instructions for this experiment
+                for run_id in range(base_run_id, base_run_id + total_run_count):
+                    instruction = instruction_set.instructions[run_id - base_run_id]
+                    exp_success, exp_failed = self._run_experiment(job, scenario_id, run_id, instruction)
+                    successful += exp_success
+                    failed += exp_failed
             
             LOG.info(f"Scenario {scenario_id} experiment stage completed")
             
@@ -399,7 +414,8 @@ class Pipeline:
         """
         LOG.info("=" * 80)
         LOG.info(f"Starting Job {job.id}: '{job.name}'")
-        LOG.info(f"Scenarios: {len(job.scenarios)}, Ground truth runs: {job.ground_truth_count}, Experiment runs: {job.experiment_count}")
+        LOG.info(f"Scenarios: {len(job.scenarios)}, Ground truth runs: {job.ground_truth_count}, Instruction generations: {job.instruction_generation_count}, "
+                 f"Experiment runs: {job.instruction_count_per_generation * job.instruction_generation_count}")
         LOG.info(f"Experiment nature: {job.experiment_nature.value}")
         LOG.info("=" * 80)
         
@@ -520,8 +536,8 @@ class Pipeline:
                 LOG.info(f"  Ground Truth: No results available")
             
             # Get experiment results and compare
-            for experiment_index in range(job.experiment_count):
-                run_id = job.ground_truth_count + experiment_index
+            for generation_index in range(job.instruction_generation_count):
+                run_id = job.ground_truth_count + generation_index
                 exp_result: Optional[SimulationResult] = job.results.get((scenario_id, run_id))
                 
                 if exp_result:
@@ -549,11 +565,11 @@ class Pipeline:
                     )
                     
                     LOG.info(
-                        f"  Experiment {experiment_index}: penalty={exp_penalty:.3f}, "
+                        f"  Run {run_id}: penalty={exp_penalty:.3f}, "
                         f"infractions={exp_infractions}, collisions={collisions}{adversarial_marker}"
                     )
                 else:
-                    LOG.info(f"  Experiment {experiment_index}: No result available")
+                    LOG.info(f"  Run {run_id}: No result available")
         
         # Overall summary
         LOG.info("")
