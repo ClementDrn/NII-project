@@ -48,11 +48,11 @@ class Simulator:
             debug: Enable debug output (images with visualization). If None, uses config setting.
         """
         # Check required environment variables
-        if not CONFIG.carla.path or not CONFIG.carla.conda_path:
+        if not CONFIG.carla_env.path or not CONFIG.carla_env.conda_path:
             raise ValueError("CONDA_PATH and CARLA_PATH must be set in .env file")
         
         # Set debug mode (parameter overrides config)
-        self.debug = debug if debug is not None else CONFIG.carla.debug
+        self.debug = debug if debug is not None else CONFIG.simulator.debug
         
         # Initialize ADS agent (default to SimLingo)
         self.ads = ads if ads is not None else ADS("simlingo")
@@ -62,8 +62,8 @@ class Simulator:
             LOG.warning("ADS installation validation failed. Continuing anyway...")
         
         # CARLA configuration
-        self.carla_path: Path = Path(CONFIG.carla.path)
-        self.conda_path: Path = Path(CONFIG.carla.conda_path)
+        self.carla_path: Path = Path(CONFIG.carla_env.path)
+        self.conda_path: Path = Path(CONFIG.carla_env.conda_path)
         self.frame_rate: int = SIMULATION_FPS    # fps
         
         # Benchmark configuration (Bench2Drive)
@@ -82,7 +82,7 @@ class Simulator:
         self._validate_benchmark_installation()
         
         # Output directories
-        self.out_root = CONFIG.carla.output_path
+        self.out_root = CONFIG.carla_env.output_path
         self.base_dir = self.out_root / self.ads.agent_name / self.benchmark / str(self.seed)
         
         # Get first route (hardcoded scenario)
