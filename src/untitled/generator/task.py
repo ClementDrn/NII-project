@@ -87,7 +87,8 @@ class Task:
         # Prompt formatting
         # NOTE: This is rudimentary right now, can be extended later as needed
         # Replace "${instruction_count_per_generation}$" with actual value from config if present
-        instruction_count: int = CONFIG.generator.get('instruction_count_per_generation', 1)
+        # CONFIG.generator is set per-job and is a GeneratorConfig object (or None)
+        instruction_count: int = CONFIG.generator.instruction_count_per_generation if CONFIG.generator else 1
         self._system_prompt_text = self._system_prompt_text.replace(
             "${instruction_count_per_generation}$",
             str(instruction_count)
