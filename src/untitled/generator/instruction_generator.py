@@ -90,6 +90,7 @@ def get_api_parameters_from_config(step_config: GeneratorStepConfig) -> dict:
     """
     # Fetch model config
     model_config: ModelConfig = get_model_config(step_config.model_name)
+    LOG.debug(f"Extracting API parameters for step '{step_config.id}' using model '{model_config.served_name}'")
 
     # Common parameters
     params = {}

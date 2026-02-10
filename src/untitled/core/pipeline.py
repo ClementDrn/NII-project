@@ -35,13 +35,23 @@ class Pipeline:
 
     async def init(self):
         """
-        Initialize all pipeline components.
+        Initialize pipeline-level components (job handler only).
+        
+        Note: Simulator, generator, and filter_embedder are initialized per-job
+        in _init_job_components() after the job context is configured.
         """
         # Initialize JobHandler
         jobs_file = PROJECT_ROOT / "jobs.yaml"
         self.job_handler = JobHandler(str(jobs_file))
         LOG.info(f"Loaded {len(self.job_handler)} jobs")
 
+    async def _init_job_components(self):
+        """
+        Initialize components for the current job context.
+        
+        Must be called after configure_settings_for_job() sets up
+        CONFIG.simulator, CONFIG.generator, and CONFIG.filter.
+        """
         # Initialize simulator
         self.simulator = Simulator()
 
@@ -58,19 +68,30 @@ class Pipeline:
         # Initialize filter embedder
         self.filter_embedder = DINOEmbedder()
 
-    async def stop(self):
+    async def _cleanup_job_components(self):
         """
-        Stop and free all pipeline components.
+        Cleanup components after a job completes.
         """
         # Free simulator
         if self.simulator:
             self.simulator.free()
             self.simulator = None
 
-        # Free VLM
+        # Free generator
         if self.generator:
             await self.generator.free()
             self.generator = None
+
+        # Filter embedder doesn't need explicit cleanup
+        self.filter_embedder = None
+
+    async def stop(self):
+        """
+        Stop and free all pipeline components.
+        
+        Delegates to _cleanup_job_components() for component cleanup.
+        """
+        await self._cleanup_job_components()
 
     def _run_ground_truth(self, job: Job, scenario_id: int, run_id: int) -> Tuple[int, int]:
         """
@@ -211,7 +232,7 @@ class Pipeline:
             LOG.debug(f"    Generated instruction set with {len(instruction_set.instructions)} test case(s)")
             for i in range(1, len(instruction_set.instructions) + 1):
                 instruction = instruction_set.get_instruction_by_rank(i)
-                LOG.debug(f"    - Instruction {i}: Window=[{instruction.start_frame_index}, {instruction.end_frame_index}], Text='{instruction.text}'")
+                LOG.debug(f"    - Instruction {i}: Window=[{instruction.injection_window.start_timestamp:.2f}s, {instruction.injection_window.end_timestamp:.2f}s], Text='{instruction.text}'")
 
             return (True, instruction_set)
             
@@ -431,6 +452,9 @@ class Pipeline:
         # Configure settings for this job (sets CONFIG.generator, CONFIG.filter, CONFIG.simulator)
         configure_settings_for_job(CONFIG, job)
         
+        # Initialize components for this job context
+        await self._init_job_components()
+        
         LOG.info("=" * 80)
         LOG.info(f"Starting Job {job.id}: '{job.name}'")
         LOG.info(f"Scenarios: {len(job.scenarios)}, Ground truth runs: {job.ground_truth_count}, Instruction generations: {job.instruction_generation_count}, "
@@ -505,6 +529,9 @@ class Pipeline:
         
         # Print detailed results summary
         self._print_job_results_summary(job)
+        
+        # Cleanup job components
+        await self._cleanup_job_components()
         
         return (job_successful, job_failed)
 

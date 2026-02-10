@@ -158,6 +158,7 @@ class Settings(BaseSettings):
     _active_generator: GeneratorConfig | None = None
     _active_filter: FilterConfig | None = None
     _active_simulator: SimulatorConfig | None = None
+    _active_model_instances: list[ModelInstanceConfig] = []
     
     @property
     def generator(self) -> GeneratorConfig | None:
@@ -188,6 +189,16 @@ class Settings(BaseSettings):
     def simulator(self, value: SimulatorConfig | None):
         """Set the active simulator config."""
         self._active_simulator = value
+
+    @property
+    def active_model_instances(self) -> list[ModelInstanceConfig]:
+        """Get the active model instances for the current job."""
+        return self._active_model_instances
+    
+    @active_model_instances.setter
+    def active_model_instances(self, value: list[ModelInstanceConfig]):
+        """Set the active model instances."""
+        self._active_model_instances = value
 
 
 def load_config(root_path: Path, logger: logging.Logger) -> Settings:
@@ -308,9 +319,21 @@ def get_model_instance_config_by_id(settings: Settings, instance_id: str) -> Mod
 
 
 def get_model_instances_config_by_step_id(settings: Settings, step_id: str) -> list[ModelInstanceConfig]:
-    """Get list of ModelInstanceConfig that reference the given step ID."""
+    """
+    Get list of ModelInstanceConfig from active_model_instances that reference the given step ID.
+    
+    This filters the job's active model instances (set by configure_settings_for_job)
+    to only those that have the specified step_id in their step_ids list.
+    
+    Args:
+        settings: The Settings instance with active_model_instances set
+        step_id: The step ID to filter by
+        
+    Returns:
+        List of ModelInstanceConfig that are active and reference the step_id
+    """
     instances = []
-    for instance in settings.model_instances:
+    for instance in settings.active_model_instances:
         if step_id in instance.step_ids:
             instances.append(instance)
     return instances
@@ -348,3 +371,12 @@ def configure_settings_for_job(settings: Settings, job) -> None:
         settings.generator = get_generator_config_by_id(settings, job.generator)
     else:
         settings.generator = None
+    
+    # Set active model instances (resolve IDs to configs)
+    if job.model_instances:
+        settings.active_model_instances = [
+            get_model_instance_config_by_id(settings, instance_id)
+            for instance_id in job.model_instances
+        ]
+    else:
+        settings.active_model_instances = []

@@ -1,7 +1,9 @@
 import pytest
 import tempfile
 import shutil
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import List
 import yaml
 import logging
 
@@ -21,6 +23,7 @@ from untitled.core.settings import (
     get_generator_config_by_id,
     get_simulator_config_by_id,
     get_model_instance_config_by_id,
+    get_model_instances_config_by_step_id,
     configure_settings_for_job,
 )
 
@@ -471,21 +474,24 @@ class TestConfigureSettingsForJob:
 
     def test_configure_settings_for_job_all_fields(self):
         """Test configuring settings with all job fields populated."""
-        from dataclasses import dataclass
-        
         @dataclass
         class MockJob:
             simulator: str = ""
             filter: str = ""
             generator: str = ""
+            model_instances: List[str] = field(default_factory=list)
         
         settings = Settings(
             simulators=[SimulatorConfig(id="carla_basic", type="carla")],
             filters=[FilterConfig(id="fine_filter")],
-            generators=[GeneratorConfig(id="gen1")]
+            generators=[GeneratorConfig(id="gen1")],
+            model_instances=[
+                ModelInstanceConfig(id="vlm1", model_name="model1", type="vlm", step_ids=["planning"], local_config=LocalVLMConfig()),
+                ModelInstanceConfig(id="vlm2", model_name="model2", type="vlm", step_ids=["planning"], local_config=LocalVLMConfig()),
+            ]
         )
         
-        job = MockJob(simulator="carla_basic", filter="fine_filter", generator="gen1")
+        job = MockJob(simulator="carla_basic", filter="fine_filter", generator="gen1", model_instances=["vlm1", "vlm2"])
         configure_settings_for_job(settings, job)
         
         assert settings.simulator is not None
@@ -494,16 +500,18 @@ class TestConfigureSettingsForJob:
         assert settings.filter.id == "fine_filter"
         assert settings.generator is not None
         assert settings.generator.id == "gen1"
+        assert len(settings.active_model_instances) == 2
+        assert settings.active_model_instances[0].id == "vlm1"
+        assert settings.active_model_instances[1].id == "vlm2"
 
     def test_configure_settings_for_job_optional_fields_empty(self):
         """Test configuring settings with optional fields empty."""
-        from dataclasses import dataclass
-        
         @dataclass
         class MockJob:
             simulator: str = ""
             filter: str = ""
             generator: str = ""
+            model_instances: List[str] = field(default_factory=list)
         
         settings = Settings(
             simulators=[SimulatorConfig(id="carla_basic", type="carla")],
@@ -511,32 +519,110 @@ class TestConfigureSettingsForJob:
             generators=[GeneratorConfig(id="gen1")]
         )
         
-        job = MockJob(simulator="carla_basic", filter="", generator="")
+        job = MockJob(simulator="carla_basic", filter="", generator="", model_instances=[])
         configure_settings_for_job(settings, job)
         
         assert settings.simulator is not None
         assert settings.simulator.id == "carla_basic"
         assert settings.filter is None
         assert settings.generator is None
+        assert len(settings.active_model_instances) == 0
 
     def test_configure_settings_for_job_invalid_id(self):
         """Test configuring settings with invalid ID raises error."""
-        from dataclasses import dataclass
-        
         @dataclass
         class MockJob:
             simulator: str = ""
             filter: str = ""
             generator: str = ""
+            model_instances: List[str] = field(default_factory=list)
         
         settings = Settings(
             simulators=[SimulatorConfig(id="carla_basic", type="carla")]
         )
         
-        job = MockJob(simulator="nonexistent", filter="", generator="")
+        job = MockJob(simulator="nonexistent", filter="", generator="", model_instances=[])
         
         with pytest.raises(ValueError, match="Simulator with ID 'nonexistent' not found"):
             configure_settings_for_job(settings, job)
+
+    def test_configure_settings_for_job_invalid_model_instance_id(self):
+        """Test configuring settings with invalid model instance ID raises error."""
+        @dataclass
+        class MockJob:
+            simulator: str = ""
+            filter: str = ""
+            generator: str = ""
+            model_instances: List[str] = field(default_factory=list)
+        
+        settings = Settings(
+            simulators=[SimulatorConfig(id="carla_basic", type="carla")],
+            model_instances=[
+                ModelInstanceConfig(id="vlm1", model_name="model1", type="vlm", local_config=LocalVLMConfig())
+            ]
+        )
+        
+        job = MockJob(simulator="carla_basic", filter="", generator="", model_instances=["nonexistent"])
+        
+        with pytest.raises(ValueError, match="Model instance with ID 'nonexistent' not found"):
+            configure_settings_for_job(settings, job)
+
+
+class TestGetModelInstancesByStepId:
+    """Test suite for get_model_instances_config_by_step_id function."""
+
+    def test_get_model_instances_by_step_id_filters_active_instances(self):
+        """Test that only active model instances matching step_id are returned."""
+        settings = Settings(
+            model_instances=[
+                ModelInstanceConfig(id="vlm1", model_name="model1", type="vlm", step_ids=["planning"], local_config=LocalVLMConfig()),
+                ModelInstanceConfig(id="vlm2", model_name="model2", type="vlm", step_ids=["description"], local_config=LocalVLMConfig()),
+                ModelInstanceConfig(id="vlm3", model_name="model3", type="vlm", step_ids=["planning", "description"], local_config=LocalVLMConfig()),
+            ]
+        )
+        
+        # Set active model instances (simulating what configure_settings_for_job does)
+        settings.active_model_instances = [
+            settings.model_instances[0],  # vlm1 - planning
+            settings.model_instances[2],  # vlm3 - planning, description
+        ]
+        
+        # Get instances for "planning" step
+        planning_instances = get_model_instances_config_by_step_id(settings, "planning")
+        assert len(planning_instances) == 2
+        assert planning_instances[0].id == "vlm1"
+        assert planning_instances[1].id == "vlm3"
+        
+        # Get instances for "description" step - only vlm3 is active and has description
+        description_instances = get_model_instances_config_by_step_id(settings, "description")
+        assert len(description_instances) == 1
+        assert description_instances[0].id == "vlm3"
+
+    def test_get_model_instances_by_step_id_empty_when_no_match(self):
+        """Test that empty list is returned when no active instances match step_id."""
+        settings = Settings(
+            model_instances=[
+                ModelInstanceConfig(id="vlm1", model_name="model1", type="vlm", step_ids=["planning"], local_config=LocalVLMConfig()),
+            ]
+        )
+        settings.active_model_instances = [settings.model_instances[0]]
+        
+        # Get instances for non-existent step
+        instances = get_model_instances_config_by_step_id(settings, "nonexistent_step")
+        assert len(instances) == 0
+
+    def test_get_model_instances_by_step_id_empty_when_no_active(self):
+        """Test that empty list is returned when no active model instances."""
+        settings = Settings(
+            model_instances=[
+                ModelInstanceConfig(id="vlm1", model_name="model1", type="vlm", step_ids=["planning"], local_config=LocalVLMConfig()),
+            ]
+        )
+        # No active model instances set
+        settings.active_model_instances = []
+        
+        instances = get_model_instances_config_by_step_id(settings, "planning")
+        assert len(instances) == 0
 
 
 class TestSettingsActiveProperties:
@@ -571,6 +657,20 @@ class TestSettingsActiveProperties:
         settings.simulator = sim
         assert settings.simulator is not None
         assert settings.simulator.id == "test_sim"
+
+    def test_active_model_instances_property(self):
+        """Test active_model_instances property getter/setter."""
+        settings = Settings()
+        assert settings.active_model_instances == []
+        
+        instances = [
+            ModelInstanceConfig(id="vlm1", model_name="model1", type="vlm", local_config=LocalVLMConfig()),
+            ModelInstanceConfig(id="vlm2", model_name="model2", type="vlm", local_config=LocalVLMConfig()),
+        ]
+        settings.active_model_instances = instances
+        assert len(settings.active_model_instances) == 2
+        assert settings.active_model_instances[0].id == "vlm1"
+        assert settings.active_model_instances[1].id == "vlm2"
 
 
 class TestLoadConfig:
