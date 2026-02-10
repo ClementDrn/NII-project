@@ -12,9 +12,24 @@ from untitled.core.version import CONFIG_VERSION, HOSTS_VERSION, JOBS_VERSION, a
 # File paths
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 CONFIG_PATH = PROJECT_ROOT / "config.yaml"
-HOSTS_PATH = PROJECT_ROOT / "hosts.yaml"
 JOBS_PATH = PROJECT_ROOT / "jobs.yaml"
 ENV_PATH = PROJECT_ROOT / ".env"
+
+
+def get_hosts_path_from_env() -> Path | None:
+    """Read HOSTS_PATH from .env file."""
+    if not ENV_PATH.exists():
+        return None
+    with open(ENV_PATH, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                key, value = line.split('=', 1)
+                if key.strip() == 'HOSTS_PATH':
+                    path_str = value.strip()
+                    if path_str:
+                        return Path(path_str)
+    return None
 
 @pytest.fixture
 def logger():
@@ -36,9 +51,10 @@ class TestConfigFilesIntegration:
         
         assert isinstance(data, dict), "config.yaml must contain a dictionary"
         assert 'version' in data, "config.yaml must have a 'version' field"
-        assert 'generator' in data, "config.yaml must have a 'generator' section"
-        assert 'carla' in data, "config.yaml must have a 'carla' section"
+        assert 'generators' in data, "config.yaml must have a 'generators' section"
+        assert 'simulators' in data, "config.yaml must have a 'simulators' section"
         assert 'model_instances' in data, "config.yaml must have a 'model_instances' section"
+        assert 'filters' in data, "config.yaml must have a 'filters' section"
 
     def test_config_yaml_version_compatible(self):
         """Test that config.yaml version is compatible with supported version."""
@@ -51,15 +67,19 @@ class TestConfigFilesIntegration:
     def test_hosts_yaml_exists_or_not(self):
         """Test hosts.yaml existence (optional file)."""
         # This test just checks if we can determine existence - both outcomes are valid
-        exists = HOSTS_PATH.exists()
+        hosts_path = get_hosts_path_from_env()
+        if hosts_path is None:
+            pytest.skip("HOSTS_PATH not configured in .env (optional)")
+        exists = hosts_path.exists()
         assert isinstance(exists, bool), "Should be able to check hosts.yaml existence"
 
     def test_hosts_yaml_valid_structure_if_exists(self):
-        """Test that hosts.yaml has valid structure if it exists."""        
-        if not HOSTS_PATH.exists():
+        """Test that hosts.yaml has valid structure if it exists."""
+        hosts_path = get_hosts_path_from_env()
+        if hosts_path is None or not hosts_path.exists():
             pytest.skip("hosts.yaml does not exist (optional file)")
         
-        with open(HOSTS_PATH, 'r') as f:
+        with open(hosts_path, 'r') as f:
             data = yaml.safe_load(f)
         
         assert isinstance(data, dict), "hosts.yaml must contain a dictionary"
@@ -68,22 +88,24 @@ class TestConfigFilesIntegration:
         assert isinstance(data['hosts'], list), "hosts must be a list"
 
     def test_hosts_yaml_version_compatible_if_exists(self):
-        """Test that hosts.yaml version is compatible if file exists."""        
-        if not HOSTS_PATH.exists():
+        """Test that hosts.yaml version is compatible if file exists."""
+        hosts_path = get_hosts_path_from_env()
+        if hosts_path is None or not hosts_path.exists():
             pytest.skip("hosts.yaml does not exist (optional file)")
         
-        with open(HOSTS_PATH, 'r') as f:
+        with open(hosts_path, 'r') as f:
             data = yaml.safe_load(f)
         
         assert are_versions_compatible(data['version'], HOSTS_VERSION), \
             f"hosts.yaml version {data['version']} is not compatible with {HOSTS_VERSION}"
 
     def test_hosts_yaml_hosts_structure_if_exists(self):
-        """Test that each host in hosts.yaml has required fields."""        
-        if not HOSTS_PATH.exists():
+        """Test that each host in hosts.yaml has required fields."""
+        hosts_path = get_hosts_path_from_env()
+        if hosts_path is None or not hosts_path.exists():
             pytest.skip("hosts.yaml does not exist (optional file)")
         
-        with open(HOSTS_PATH, 'r') as f:
+        with open(hosts_path, 'r') as f:
             data = yaml.safe_load(f)
         
         for idx, host in enumerate(data['hosts']):
@@ -152,19 +174,49 @@ class TestConfigFilesIntegration:
             assert var in env_vars, f"Required environment variable '{var}' not found in .env"
             assert env_vars[var], f"Environment variable '{var}' is empty in .env"
 
+    def test_env_file_has_optional_variables(self):
+        """Test that .env file contains optional environment variables (info only)."""
+        # Read .env file
+        env_vars = {}
+        with open(ENV_PATH, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, value = line.split('=', 1)
+                    env_vars[key.strip()] = value.strip()
+        
+        # Check for optional variables - just skip if not present
+        optional_vars = ['HOSTS_PATH']
+        for var in optional_vars:
+            if var not in env_vars or not env_vars[var]:
+                pytest.skip(f"Optional environment variable '{var}' not configured in .env")
+
     def test_load_config_integration(self, logger):
         """Test that load_config successfully loads the actual project config."""
         try:
             settings = load_config(PROJECT_ROOT, logger)
             
-            # Verify basic structure
-            assert settings.generator is not None
-            assert settings.carla is not None
+            # Verify basic structure (lists of configs)
+            assert hasattr(settings, 'filters')
+            assert hasattr(settings, 'generators')
+            assert hasattr(settings, 'simulators')
             assert hasattr(settings, 'model_instances')
             assert hasattr(settings, 'hosts')
             
-            # Verify generator config
-            assert settings.generator.design in ['single_step_vlm', 'multi_step_vlm']
+            # Verify filters
+            for filter_config in settings.filters:
+                assert filter_config.id
+                assert filter_config.max_frames_per_minute >= 0
+            
+            # Verify generators
+            for generator in settings.generators:
+                assert generator.id
+                assert generator.design in ['single_step_vlm', 'multi_step_vlm']
+            
+            # Verify simulators
+            for simulator in settings.simulators:
+                assert simulator.id
+                assert simulator.type in ['carla']
             
             # Verify model instances
             for instance in settings.model_instances:
@@ -200,10 +252,16 @@ class TestConfigFilesIntegration:
             for job in job_handler.jobs:
                 assert job.id is not None
                 assert job.name
+                assert job.simulator, f"Job '{job.name}' missing simulator"
                 assert isinstance(job.scenarios, list)
                 assert len(job.scenarios) > 0, f"Job '{job.name}' has no scenarios"
                 assert job.ground_truth_count >= 0
-                assert job.experiment_count >= 0
+                assert job.instruction_generation_count >= 0
+                assert job.instruction_count_per_generation >= 0
+                # Optional fields (can be empty strings or empty lists)
+                assert isinstance(job.filter, str)
+                assert isinstance(job.generator, str)
+                assert isinstance(job.model_instances, list)
                 
         except Exception as e:
             pytest.fail(f"Failed to load jobs.yaml: {e}")
@@ -234,6 +292,40 @@ class TestConfigFilesIntegration:
                 f"Model instance '{instance.id}' references non-existent host '{instance.remote_config.host_id}'. " \
                 f"Available hosts: {list(host_ids)}"
 
+    def test_config_host_ids_exist_in_hosts_yaml(self):
+        """Test that host IDs referenced in config.yaml exist in hosts.yaml (direct file comparison)."""
+        # Read config.yaml directly
+        with open(CONFIG_PATH, 'r') as f:
+            config_data = yaml.safe_load(f)
+        
+        # Get all host IDs referenced in config.yaml remote_config sections
+        referenced_host_ids = set()
+        for instance in config_data.get('model_instances', []):
+            remote_config = instance.get('remote_config')
+            if remote_config and 'host_id' in remote_config:
+                referenced_host_ids.add(remote_config['host_id'])
+        
+        # Skip if no remote instances reference hosts
+        if not referenced_host_ids:
+            pytest.skip("No host IDs referenced in config.yaml")
+        
+        # Read hosts.yaml
+        hosts_path = get_hosts_path_from_env()
+        if hosts_path is None or not hosts_path.exists():
+            pytest.fail(f"config.yaml references host IDs {referenced_host_ids} but hosts.yaml is not configured")
+        
+        with open(hosts_path, 'r') as f:
+            hosts_data = yaml.safe_load(f)
+        
+        # Get all defined host IDs
+        defined_host_ids = {host['id'] for host in hosts_data.get('hosts', [])}
+        
+        # Check that all referenced host IDs exist
+        missing_hosts = referenced_host_ids - defined_host_ids
+        assert not missing_hosts, \
+            f"config.yaml references host IDs not defined in hosts.yaml: {missing_hosts}. " \
+            f"Available hosts: {defined_host_ids}"
+
     def test_generator_steps_reference_valid_models(self, logger):
         """Test that generator steps reference model names that exist in model_instances."""
         # Load config
@@ -242,21 +334,64 @@ class TestConfigFilesIntegration:
         # Get all model names
         model_names = {instance.model_name for instance in settings.model_instances}
         
-        # Check generator steps
-        for step in settings.generator.steps:
-            assert step.model_name in model_names, \
-                f"Generator step '{step.id}' references non-existent model '{step.model_name}'"
+        # Check all generators' steps
+        for generator in settings.generators:
+            for step in generator.steps:
+                assert step.model_name in model_names, \
+                    f"Generator '{generator.id}' step '{step.id}' references non-existent model '{step.model_name}'"
 
     def test_model_instances_step_ids_reference_valid_steps(self, logger):
         """Test that model instances reference step IDs that exist in generator steps."""
         # Load config
         settings = load_config(PROJECT_ROOT, logger)
         
-        # Get all step IDs
-        step_ids = {step.id for step in settings.generator.steps}
+        # Get all step IDs from all generators
+        step_ids = set()
+        for generator in settings.generators:
+            for step in generator.steps:
+                step_ids.add(step.id)
         
         # Check model instances
         for instance in settings.model_instances:
             for step_id in instance.step_ids:
                 assert step_id in step_ids, \
                     f"Model instance {instance.id} references non-existent step '{step_id}'"
+
+    def test_jobs_reference_valid_config_ids(self, logger):
+        """Test that jobs reference valid IDs from config.yaml."""
+        # Load config
+        settings = load_config(PROJECT_ROOT, logger)
+        
+        # Get all valid IDs from config
+        simulator_ids = {s.id for s in settings.simulators}
+        filter_ids = {f.id for f in settings.filters}
+        generator_ids = {g.id for g in settings.generators}
+        model_instance_ids = {m.id for m in settings.model_instances}
+        
+        # Load jobs
+        job_handler = JobHandler(str(JOBS_PATH))
+        
+        # Check each job references valid config IDs
+        for job in job_handler.jobs:
+            # Simulator is required
+            assert job.simulator in simulator_ids, \
+                f"Job '{job.name}' references non-existent simulator '{job.simulator}'. " \
+                f"Available: {simulator_ids}"
+            
+            # Filter is optional but must be valid if specified
+            if job.filter:
+                assert job.filter in filter_ids, \
+                    f"Job '{job.name}' references non-existent filter '{job.filter}'. " \
+                    f"Available: {filter_ids}"
+            
+            # Generator is optional but must be valid if specified
+            if job.generator:
+                assert job.generator in generator_ids, \
+                    f"Job '{job.name}' references non-existent generator '{job.generator}'. " \
+                    f"Available: {generator_ids}"
+            
+            # Model instances are optional but must be valid if specified
+            for instance_id in job.model_instances:
+                assert instance_id in model_instance_ids, \
+                    f"Job '{job.name}' references non-existent model instance '{instance_id}'. " \
+                    f"Available: {model_instance_ids}"

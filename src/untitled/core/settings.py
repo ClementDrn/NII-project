@@ -56,33 +56,70 @@ class GeneratorStepConfig(BaseSettings):
     extra_body: dict = {}
 
 
-class CARLAConfig(BaseSettings):
-    """Configuration for CARLA simulator."""
+class SimulatorConfig(BaseSettings):
+    """
+    Configuration for a simulator.
+    
+    Attributes:
+        id: Unique identifier for the simulator configuration
+        type: Simulator type (currently only "carla" is supported)
+        debug: Enable debug image output from SimLingo agent
+        gpu_id: GPU device ID to use for the simulator
+    """
+    model_config = ConfigDict(extra='ignore')
+    
+    id: str
+    type: str  # Simulator type (e.g., "carla")
+    debug: bool = False
+    gpu_id: int = 0
+
+
+class CARLAEnvConfig(BaseSettings):
+    """
+    Environment configuration for CARLA simulator.
+    
+    Contains paths and environment-specific settings loaded from .env file.
+    """
     model_config = ConfigDict(extra='ignore')
     
     path: Path = Field(validation_alias="CARLA_PATH")
     conda_path: str = Field(validation_alias="CONDA_PATH")
     output_path: Path = Field(validation_alias="OUTPUT_PATH")
-    debug: bool = False  # Enable debug image output from SimLingo agent
-    gpu_id: int = 0
 
 
 class FilterConfig(BaseSettings):
-    """Configuration for filters."""
+    """
+    Configuration for frame filters.
+    
+    Attributes:
+        id: Unique identifier for the filter configuration
+        max_frames_per_minute: Number of frames per minute to retain before clustering (0 = keep all)
+        clustering_threshold: Similarity threshold for clustering frames (0.0 - 1.0)
+        max_cluster_count: Maximum number of clusters allowed (security measure)
+    """
     model_config = ConfigDict(extra='ignore')
     
+    id: str
     max_frames_per_minute: int = 60
     clustering_threshold: float = 0.990
     max_cluster_count: int = 30
 
 
 class GeneratorConfig(BaseSettings):
-    """Configuration for instruction generators."""
+    """
+    Configuration for instruction generators.
+    
+    Attributes:
+        id: Unique identifier for the generator configuration
+        design: Generator design type ("single_step_vlm" or "multi_step_vlm")
+        instruction_count_per_generation: Number of instructions to generate per generation call (>= 1)
+        steps: List of generator steps configuration
+    """
     model_config = ConfigDict(extra='ignore')
 
-    # Configuration parameters for instruction generators
-    design: str = "single_step_vlm"  # options: single_step_vlm, multi_step_vlm
-    instruction_count_per_generation: int = 3   # >= 1
+    id: str
+    design: str = "single_step_vlm"
+    instruction_count_per_generation: int = 3
     steps: list[GeneratorStepConfig] = []
 
 
@@ -95,17 +132,62 @@ class HostConfig(BaseSettings):
     api_key: str
 
 
-# Definition of environment variables and configuration settings
 class Settings(BaseSettings):
-    """Main settings container."""
+    """
+    Main settings container.
+    
+    Contains lists of configuration objects that are referenced by ID in jobs.yaml.
+    
+    For backward compatibility, the following properties can be set dynamically
+    to point to the active config for the current job:
+    - generator: Active GeneratorConfig
+    - filter: Active FilterConfig
+    - simulator: Active SimulatorConfig
+    """
     model_config = ConfigDict(extra='ignore')
     
-    # NOTE: Define settings here for type checking and auto-completion   
-    filter: FilterConfig 
-    generator: GeneratorConfig
-    carla: CARLAConfig
+    filters: list[FilterConfig] = []
+    generators: list[GeneratorConfig] = []
+    simulators: list[SimulatorConfig] = []
     model_instances: list[ModelInstanceConfig] = []
     hosts: list[HostConfig] = []
+    carla_env: CARLAEnvConfig | None = None
+    
+    # Active config references (set per-job for backward compatibility)
+    # TODO: Handle job context more cleanly from pipeline module and pass context to simulator/filter/generator as needed
+    _active_generator: GeneratorConfig | None = None
+    _active_filter: FilterConfig | None = None
+    _active_simulator: SimulatorConfig | None = None
+    
+    @property
+    def generator(self) -> GeneratorConfig | None:
+        """Get the active generator config (set per-job)."""
+        return self._active_generator
+    
+    @generator.setter
+    def generator(self, value: GeneratorConfig | None):
+        """Set the active generator config."""
+        self._active_generator = value
+    
+    @property
+    def filter(self) -> FilterConfig | None:
+        """Get the active filter config (set per-job)."""
+        return self._active_filter
+    
+    @filter.setter
+    def filter(self, value: FilterConfig | None):
+        """Set the active filter config."""
+        self._active_filter = value
+    
+    @property
+    def simulator(self) -> SimulatorConfig | None:
+        """Get the active simulator config (set per-job)."""
+        return self._active_simulator
+    
+    @simulator.setter
+    def simulator(self, value: SimulatorConfig | None):
+        """Set the active simulator config."""
+        self._active_simulator = value
 
 
 def load_config(root_path: Path, logger: logging.Logger) -> Settings:
@@ -142,52 +224,127 @@ def load_config(root_path: Path, logger: logging.Logger) -> Settings:
     
     # Filter out comment fields (fields starting with _) and version
     yaml_data = {k: v for k, v in yaml_data.items() if not k.startswith('_') and k != 'version'}
-    if 'carla' in yaml_data and isinstance(yaml_data['carla'], dict):
-        yaml_data['carla'] = {k: v for k, v in yaml_data['carla'].items() if not k.startswith('_')}
     
     # Load hosts.yaml if it exists
     # HOSTS_PATH is in .env file
-    hosts_path = Path(os.environ.get("HOSTS_PATH", ""))
-    if hosts_path.exists():
-        with open(hosts_path, "r") as f:
-            hosts_data = yaml.safe_load(f)
-        
-        # Check version compatibility for hosts.yaml
-        if 'version' in hosts_data:
-            try:
-                if not are_versions_compatible(hosts_data['version'], HOSTS_VERSION):
-                    logger.error(f"Hosts version {hosts_data['version']} is not compatible with supported version {HOSTS_VERSION}")
-                    raise ValueError(f"Incompatible hosts version: {hosts_data['version']} (supported: {HOSTS_VERSION})")
-            except ValueError as e:
-                logger.error(f"Version check failed: {e}")
-                raise
-        
-        # Add hosts to yaml_data
-        if 'hosts' in hosts_data:
-            yaml_data['hosts'] = hosts_data['hosts']
+    hosts_path_str = os.environ.get("HOSTS_PATH", "")
+    if hosts_path_str:
+        hosts_path = Path(hosts_path_str)
+        if hosts_path.exists() and hosts_path.is_file():
+            with open(hosts_path, "r") as f:
+                hosts_data = yaml.safe_load(f)
+            
+            # Check version compatibility for hosts.yaml
+            if 'version' in hosts_data:
+                try:
+                    if not are_versions_compatible(hosts_data['version'], HOSTS_VERSION):
+                        logger.error(f"Hosts version {hosts_data['version']} is not compatible with supported version {HOSTS_VERSION}")
+                        raise ValueError(f"Incompatible hosts version: {hosts_data['version']} (supported: {HOSTS_VERSION})")
+                except ValueError as e:
+                    logger.error(f"Version check failed: {e}")
+                    raise
+            
+            # Add hosts to yaml_data
+            if 'hosts' in hosts_data:
+                yaml_data['hosts'] = hosts_data['hosts']
+        else:
+            logger.info("No hosts.yaml file found, skipping host configuration")
+            yaml_data['hosts'] = []
     else:
-        logger.info("No hosts.yaml file found, skipping host configuration")
+        logger.info("No HOSTS_PATH configured, skipping host configuration")
         yaml_data['hosts'] = []
     
-    # Create Settings instance (env vars are loaded from os.environ)
+    # Load CARLA environment config from environment variables
+    try:
+        carla_env = CARLAEnvConfig()
+        yaml_data['carla_env'] = carla_env
+    except Exception as e:
+        logger.warning(f"Could not load CARLA environment config: {e}")
+        yaml_data['carla_env'] = None
+    
+    # Create Settings instance
     settings = Settings(**yaml_data)
     return settings
 
+
 def get_host_config_by_id(settings: Settings, host_id: str) -> HostConfig:
-    """
-    Get HostConfig by its ID.
-    """
+    """Get HostConfig by its ID."""
     for host in settings.hosts:
         if host.id == host_id:
             return host
     raise ValueError(f"Host with ID '{host_id}' not found in configuration.")
 
+
+def get_filter_config_by_id(settings: Settings, filter_id: str) -> FilterConfig:
+    """Get FilterConfig by its ID."""
+    for filter_config in settings.filters:
+        if filter_config.id == filter_id:
+            return filter_config
+    raise ValueError(f"Filter with ID '{filter_id}' not found in configuration.")
+
+
+def get_generator_config_by_id(settings: Settings, generator_id: str) -> GeneratorConfig:
+    """Get GeneratorConfig by its ID."""
+    for generator in settings.generators:
+        if generator.id == generator_id:
+            return generator
+    raise ValueError(f"Generator with ID '{generator_id}' not found in configuration.")
+
+
+def get_simulator_config_by_id(settings: Settings, simulator_id: str) -> SimulatorConfig:
+    """Get SimulatorConfig by its ID."""
+    for simulator in settings.simulators:
+        if simulator.id == simulator_id:
+            return simulator
+    raise ValueError(f"Simulator with ID '{simulator_id}' not found in configuration.")
+
+
+def get_model_instance_config_by_id(settings: Settings, instance_id: str) -> ModelInstanceConfig:
+    """Get ModelInstanceConfig by its ID."""
+    for instance in settings.model_instances:
+        if instance.id == instance_id:
+            return instance
+    raise ValueError(f"Model instance with ID '{instance_id}' not found in configuration.")
+
+
 def get_model_instances_config_by_step_id(settings: Settings, step_id: str) -> list[ModelInstanceConfig]:
-    """
-    Get list of ModelInstanceConfig that reference the given step ID.
-    """
+    """Get list of ModelInstanceConfig that reference the given step ID."""
     instances = []
     for instance in settings.model_instances:
         if step_id in instance.step_ids:
             instances.append(instance)
     return instances
+
+
+def configure_settings_for_job(settings: Settings, job) -> None:
+    """
+    Configure settings with active configs for a specific job.
+    
+    This sets the generator, filter, and simulator properties on settings
+    based on the job's referenced config IDs. This provides backward
+    compatibility for code that accesses CONFIG.generator, CONFIG.filter, etc.
+    
+    Args:
+        settings: The Settings instance to configure
+        job: A Job instance with simulator, filter, and generator IDs
+    
+    Raises:
+        ValueError: If any referenced config ID is not found
+    """
+    # Set active simulator (required)
+    if job.simulator:
+        settings.simulator = get_simulator_config_by_id(settings, job.simulator)
+    else:
+        settings.simulator = None
+    
+    # Set active filter (optional)
+    if job.filter:
+        settings.filter = get_filter_config_by_id(settings, job.filter)
+    else:
+        settings.filter = None
+    
+    # Set active generator (optional)
+    if job.generator:
+        settings.generator = get_generator_config_by_id(settings, job.generator)
+    else:
+        settings.generator = None

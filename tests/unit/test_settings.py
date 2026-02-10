@@ -8,14 +8,20 @@ import logging
 from untitled.core.settings import (
     Settings,
     GeneratorConfig,
-    CARLAConfig,
+    SimulatorConfig,
+    CARLAEnvConfig,
     ModelInstanceConfig,
     LocalVLMConfig,
     RemoteVLMConfig,
     HostConfig,
     GeneratorStepConfig,
     FilterConfig,
-    load_config
+    load_config,
+    get_filter_config_by_id,
+    get_generator_config_by_id,
+    get_simulator_config_by_id,
+    get_model_instance_config_by_id,
+    configure_settings_for_job,
 )
 
 
@@ -165,33 +171,74 @@ class TestGeneratorStepConfig:
         assert step.extra_body == {"chat_template_kwargs": {"thinking_mode": "long"}}
 
 
-class TestCARLAConfig:
-    """Test suite for CARLAConfig."""
+class TestSimulatorConfig:
+    """Test suite for SimulatorConfig."""
+
+    def test_default_values(self):
+        """Test that default values are set correctly."""
+        config = SimulatorConfig(id="carla_basic", type="carla")
+        
+        assert config.id == "carla_basic"
+        assert config.type == "carla"
+        assert config.debug is False
+        assert config.gpu_id == 0
+
+    def test_custom_values(self):
+        """Test that custom values can be set."""
+        config = SimulatorConfig(
+            id="carla_debug",
+            type="carla",
+            debug=True,
+            gpu_id=1
+        )
+        
+        assert config.id == "carla_debug"
+        assert config.type == "carla"
+        assert config.debug is True
+        assert config.gpu_id == 1
+
+
+class TestCARLAEnvConfig:
+    """Test suite for CARLAEnvConfig."""
 
     def test_initialization_from_env(self, monkeypatch):
-        """Test that CARLAConfig can be initialized from environment variables."""
+        """Test that CARLAEnvConfig can be initialized from environment variables."""
         monkeypatch.setenv("CARLA_PATH", "/path/to/carla")
         monkeypatch.setenv("CONDA_PATH", "/path/to/conda")
         monkeypatch.setenv("OUTPUT_PATH", "/path/to/output")
         
-        config = CARLAConfig()
+        config = CARLAEnvConfig()
         
         assert config.path == Path("/path/to/carla")
         assert config.conda_path == "/path/to/conda"
         assert config.output_path == Path("/path/to/output")
-        assert config.debug is False
-        assert config.gpu_id == 0
 
-    def test_debug_flag(self, monkeypatch):
-        """Test that debug flag can be set."""
-        monkeypatch.setenv("CARLA_PATH", "/path/to/carla")
-        monkeypatch.setenv("CONDA_PATH", "/path/to/conda")
-        monkeypatch.setenv("OUTPUT_PATH", "/path/to/output")
+
+class TestFilterConfig:
+    """Test suite for FilterConfig."""
+
+    def test_default_values(self):
+        """Test that default values are set correctly."""
+        config = FilterConfig(id="default_filter")
         
-        config = CARLAConfig(debug=True, gpu_id=1)
+        assert config.id == "default_filter"
+        assert config.max_frames_per_minute == 60
+        assert config.clustering_threshold == 0.990
+        assert config.max_cluster_count == 30
+
+    def test_custom_values(self):
+        """Test that custom values can be set."""
+        config = FilterConfig(
+            id="fine_filter",
+            max_frames_per_minute=240,
+            clustering_threshold=0.997,
+            max_cluster_count=100
+        )
         
-        assert config.debug is True
-        assert config.gpu_id == 1
+        assert config.id == "fine_filter"
+        assert config.max_frames_per_minute == 240
+        assert config.clustering_threshold == 0.997
+        assert config.max_cluster_count == 100
 
 
 class TestGeneratorConfig:
@@ -199,9 +246,11 @@ class TestGeneratorConfig:
 
     def test_default_design(self):
         """Test default generator design."""
-        config = GeneratorConfig()
+        config = GeneratorConfig(id="test_generator")
         
+        assert config.id == "test_generator"
         assert config.design == "single_step_vlm"
+        assert config.instruction_count_per_generation == 3
         assert config.steps == []
 
     def test_multi_step_design(self):
@@ -210,9 +259,16 @@ class TestGeneratorConfig:
             GeneratorStepConfig(id="description", model_name="r4b"),
             GeneratorStepConfig(id="planning", model_name="r4b")
         ]
-        config = GeneratorConfig(design="multi_step_vlm", steps=steps)
+        config = GeneratorConfig(
+            id="multi_step_gen",
+            design="multi_step_vlm",
+            instruction_count_per_generation=5,
+            steps=steps
+        )
         
+        assert config.id == "multi_step_gen"
         assert config.design == "multi_step_vlm"
+        assert config.instruction_count_per_generation == 5
         assert len(config.steps) == 2
         assert config.steps[0].id == "description"
         assert config.steps[1].id == "planning"
@@ -244,13 +300,11 @@ class TestSettings:
         monkeypatch.setenv("CONDA_PATH", "/path/to/conda")
         monkeypatch.setenv("OUTPUT_PATH", "/path/to/output")
         
-        filter_config = FilterConfig()
-        generator = GeneratorConfig()
-        carla = CARLAConfig()
-        settings = Settings(filter=filter_config, generator=generator, carla=carla)
+        settings = Settings()
         
-        assert settings.generator.design == "single_step_vlm"
-        assert settings.carla.debug is False
+        assert settings.filters == []
+        assert settings.generators == []
+        assert settings.simulators == []
         assert settings.model_instances == []
         assert settings.hosts == []
 
@@ -261,15 +315,25 @@ class TestSettings:
         monkeypatch.setenv("CONDA_PATH", "/path/to/conda")
         monkeypatch.setenv("OUTPUT_PATH", "/path/to/output")
         
+        # Create filter configs
+        filters = [
+            FilterConfig(id="fine_filter", max_frames_per_minute=240),
+            FilterConfig(id="coarse_filter", max_frames_per_minute=60)
+        ]
+        
         # Create generator config
         steps = [
             GeneratorStepConfig(id="description", model_name="r4b"),
             GeneratorStepConfig(id="planning", model_name="r4b")
         ]
-        generator = GeneratorConfig(design="multi_step_vlm", steps=steps)
+        generators = [
+            GeneratorConfig(id="multi_step_gen", design="multi_step_vlm", steps=steps)
+        ]
         
-        # Create CARLA config
-        carla = CARLAConfig(debug=True, gpu_id=0)
+        # Create simulator configs
+        simulators = [
+            SimulatorConfig(id="carla_basic", type="carla", debug=True, gpu_id=0)
+        ]
         
         # Create model instances
         model_instances = [
@@ -300,21 +364,213 @@ class TestSettings:
         
         # Create settings
         settings = Settings(
-            filter=FilterConfig(),
-            generator=generator,
-            carla=carla,
+            filters=filters,
+            generators=generators,
+            simulators=simulators,
             model_instances=model_instances,
             hosts=hosts
         )
         
-        assert settings.generator.design == "multi_step_vlm"
-        assert len(settings.generator.steps) == 2
-        assert settings.carla.debug is True
+        assert len(settings.filters) == 2
+        assert settings.filters[0].id == "fine_filter"
+        assert len(settings.generators) == 1
+        assert settings.generators[0].design == "multi_step_vlm"
+        assert len(settings.generators[0].steps) == 2
+        assert len(settings.simulators) == 1
+        assert settings.simulators[0].debug is True
         assert len(settings.model_instances) == 2
         assert len(settings.hosts) == 1
         assert settings.model_instances[0].local_config is not None
         assert settings.model_instances[1].remote_config is not None
         assert settings.hosts[0].id == "my_vlm_host"
+
+
+class TestGetConfigByIdFunctions:
+    """Test suite for get_*_config_by_id functions."""
+
+    def test_get_filter_config_by_id(self):
+        """Test getting filter config by ID."""
+        filters = [
+            FilterConfig(id="fine_filter", max_frames_per_minute=240),
+            FilterConfig(id="coarse_filter", max_frames_per_minute=60)
+        ]
+        settings = Settings(filters=filters)
+        
+        result = get_filter_config_by_id(settings, "fine_filter")
+        assert result.id == "fine_filter"
+        assert result.max_frames_per_minute == 240
+
+    def test_get_filter_config_by_id_not_found(self):
+        """Test getting non-existent filter config raises error."""
+        settings = Settings(filters=[FilterConfig(id="existing")])
+        
+        with pytest.raises(ValueError, match="Filter with ID 'nonexistent' not found"):
+            get_filter_config_by_id(settings, "nonexistent")
+
+    def test_get_generator_config_by_id(self):
+        """Test getting generator config by ID."""
+        generators = [
+            GeneratorConfig(id="gen1", design="single_step_vlm"),
+            GeneratorConfig(id="gen2", design="multi_step_vlm")
+        ]
+        settings = Settings(generators=generators)
+        
+        result = get_generator_config_by_id(settings, "gen2")
+        assert result.id == "gen2"
+        assert result.design == "multi_step_vlm"
+
+    def test_get_generator_config_by_id_not_found(self):
+        """Test getting non-existent generator config raises error."""
+        settings = Settings(generators=[GeneratorConfig(id="existing")])
+        
+        with pytest.raises(ValueError, match="Generator with ID 'nonexistent' not found"):
+            get_generator_config_by_id(settings, "nonexistent")
+
+    def test_get_simulator_config_by_id(self):
+        """Test getting simulator config by ID."""
+        simulators = [
+            SimulatorConfig(id="carla_basic", type="carla"),
+            SimulatorConfig(id="carla_debug", type="carla", debug=True)
+        ]
+        settings = Settings(simulators=simulators)
+        
+        result = get_simulator_config_by_id(settings, "carla_debug")
+        assert result.id == "carla_debug"
+        assert result.debug is True
+
+    def test_get_simulator_config_by_id_not_found(self):
+        """Test getting non-existent simulator config raises error."""
+        settings = Settings(simulators=[SimulatorConfig(id="existing", type="carla")])
+        
+        with pytest.raises(ValueError, match="Simulator with ID 'nonexistent' not found"):
+            get_simulator_config_by_id(settings, "nonexistent")
+
+    def test_get_model_instance_config_by_id(self):
+        """Test getting model instance config by ID."""
+        instances = [
+            ModelInstanceConfig(id="r4b_0", model_name="r4b", type="vlm", local_config=LocalVLMConfig()),
+            ModelInstanceConfig(id="r4b_1", model_name="r4b", type="vlm", local_config=LocalVLMConfig())
+        ]
+        settings = Settings(model_instances=instances)
+        
+        result = get_model_instance_config_by_id(settings, "r4b_1")
+        assert result.id == "r4b_1"
+
+    def test_get_model_instance_config_by_id_not_found(self):
+        """Test getting non-existent model instance config raises error."""
+        settings = Settings(model_instances=[
+            ModelInstanceConfig(id="existing", model_name="r4b", type="vlm", local_config=LocalVLMConfig())
+        ])
+        
+        with pytest.raises(ValueError, match="Model instance with ID 'nonexistent' not found"):
+            get_model_instance_config_by_id(settings, "nonexistent")
+
+
+class TestConfigureSettingsForJob:
+    """Test suite for configure_settings_for_job function."""
+
+    def test_configure_settings_for_job_all_fields(self):
+        """Test configuring settings with all job fields populated."""
+        from dataclasses import dataclass
+        
+        @dataclass
+        class MockJob:
+            simulator: str = ""
+            filter: str = ""
+            generator: str = ""
+        
+        settings = Settings(
+            simulators=[SimulatorConfig(id="carla_basic", type="carla")],
+            filters=[FilterConfig(id="fine_filter")],
+            generators=[GeneratorConfig(id="gen1")]
+        )
+        
+        job = MockJob(simulator="carla_basic", filter="fine_filter", generator="gen1")
+        configure_settings_for_job(settings, job)
+        
+        assert settings.simulator is not None
+        assert settings.simulator.id == "carla_basic"
+        assert settings.filter is not None
+        assert settings.filter.id == "fine_filter"
+        assert settings.generator is not None
+        assert settings.generator.id == "gen1"
+
+    def test_configure_settings_for_job_optional_fields_empty(self):
+        """Test configuring settings with optional fields empty."""
+        from dataclasses import dataclass
+        
+        @dataclass
+        class MockJob:
+            simulator: str = ""
+            filter: str = ""
+            generator: str = ""
+        
+        settings = Settings(
+            simulators=[SimulatorConfig(id="carla_basic", type="carla")],
+            filters=[FilterConfig(id="fine_filter")],
+            generators=[GeneratorConfig(id="gen1")]
+        )
+        
+        job = MockJob(simulator="carla_basic", filter="", generator="")
+        configure_settings_for_job(settings, job)
+        
+        assert settings.simulator is not None
+        assert settings.simulator.id == "carla_basic"
+        assert settings.filter is None
+        assert settings.generator is None
+
+    def test_configure_settings_for_job_invalid_id(self):
+        """Test configuring settings with invalid ID raises error."""
+        from dataclasses import dataclass
+        
+        @dataclass
+        class MockJob:
+            simulator: str = ""
+            filter: str = ""
+            generator: str = ""
+        
+        settings = Settings(
+            simulators=[SimulatorConfig(id="carla_basic", type="carla")]
+        )
+        
+        job = MockJob(simulator="nonexistent", filter="", generator="")
+        
+        with pytest.raises(ValueError, match="Simulator with ID 'nonexistent' not found"):
+            configure_settings_for_job(settings, job)
+
+
+class TestSettingsActiveProperties:
+    """Test suite for Settings active property getters/setters."""
+
+    def test_generator_property(self):
+        """Test generator property getter/setter."""
+        settings = Settings()
+        assert settings.generator is None
+        
+        gen = GeneratorConfig(id="test_gen")
+        settings.generator = gen
+        assert settings.generator is not None
+        assert settings.generator.id == "test_gen"
+
+    def test_filter_property(self):
+        """Test filter property getter/setter."""
+        settings = Settings()
+        assert settings.filter is None
+        
+        flt = FilterConfig(id="test_filter")
+        settings.filter = flt
+        assert settings.filter is not None
+        assert settings.filter.id == "test_filter"
+
+    def test_simulator_property(self):
+        """Test simulator property getter/setter."""
+        settings = Settings()
+        assert settings.simulator is None
+        
+        sim = SimulatorConfig(id="test_sim", type="carla")
+        settings.simulator = sim
+        assert settings.simulator is not None
+        assert settings.simulator.id == "test_sim"
 
 
 class TestLoadConfig:
@@ -333,19 +589,29 @@ OUTPUT_PATH=/path/to/output
         # Create config.yaml
         config_data = {
             "version": "2.0-dev",
-            "filter": {
-                "max_frames_per_minute": 60,
-                "clustering_threshold": 0.99,
-                "max_cluster_count": 30
-            },
-            "generator": {
-                "design": "single_step_vlm",
-                "steps": []
-            },
-            "carla": {
-                "debug": False,
-                "gpu_id": 0
-            },
+            "filters": [
+                {
+                    "id": "default_filter",
+                    "max_frames_per_minute": 60,
+                    "clustering_threshold": 0.99,
+                    "max_cluster_count": 30
+                }
+            ],
+            "generators": [
+                {
+                    "id": "default_generator",
+                    "design": "single_step_vlm",
+                    "steps": []
+                }
+            ],
+            "simulators": [
+                {
+                    "id": "carla_basic",
+                    "type": "carla",
+                    "debug": False,
+                    "gpu_id": 0
+                }
+            ],
             "model_instances": []
         }
         with open(temp_config_dir / "config.yaml", "w") as f:
@@ -354,17 +620,23 @@ OUTPUT_PATH=/path/to/output
         # Load config
         settings = load_config(temp_config_dir, logger)
         
-        assert settings.generator.design == "single_step_vlm"
-        assert settings.carla.debug is False
+        assert len(settings.filters) == 1
+        assert settings.filters[0].id == "default_filter"
+        assert len(settings.generators) == 1
+        assert settings.generators[0].design == "single_step_vlm"
+        assert len(settings.simulators) == 1
+        assert settings.simulators[0].debug is False
         assert settings.model_instances == []
         assert settings.hosts == []
 
     def test_load_config_with_hosts(self, temp_config_dir, logger, monkeypatch):
         """Test loading configuration with hosts.yaml."""
-        # Create .env file
-        env_content = """CARLA_PATH=/path/to/carla
+        # Create .env file with HOSTS_PATH
+        hosts_yaml_path = temp_config_dir / "hosts.yaml"
+        env_content = f"""CARLA_PATH=/path/to/carla
 CONDA_PATH=/path/to/conda
 OUTPUT_PATH=/path/to/output
+HOSTS_PATH={hosts_yaml_path}
 """
         with open(temp_config_dir / ".env", "w") as f:
             f.write(env_content)
@@ -372,26 +644,36 @@ OUTPUT_PATH=/path/to/output
         # Create config.yaml
         config_data = {
             "version": "2.0-dev",
-            "filter": {
-                "max_frames_per_minute": 60,
-                "clustering_threshold": 0.99,
-                "max_cluster_count": 30
-            },
-            "generator": {
-                "design": "multi_step_vlm",
-                "steps": [
-                    {
-                        "id": "description",
-                        "model_name": "r4b",
-                        "temperature": 0.0,
-                        "max_tokens": 1024
-                    }
-                ]
-            },
-            "carla": {
-                "debug": True,
-                "gpu_id": 0
-            },
+            "filters": [
+                {
+                    "id": "fine_filter",
+                    "max_frames_per_minute": 240,
+                    "clustering_threshold": 0.997,
+                    "max_cluster_count": 100
+                }
+            ],
+            "generators": [
+                {
+                    "id": "multi_step_gen",
+                    "design": "multi_step_vlm",
+                    "steps": [
+                        {
+                            "id": "description",
+                            "model_name": "r4b",
+                            "temperature": 0.0,
+                            "max_tokens": 1024
+                        }
+                    ]
+                }
+            ],
+            "simulators": [
+                {
+                    "id": "carla_debug",
+                    "type": "carla",
+                    "debug": True,
+                    "gpu_id": 0
+                }
+            ],
             "model_instances": [
                 {
                     "id": "r4b_0",
@@ -425,10 +707,14 @@ OUTPUT_PATH=/path/to/output
         # Load config
         settings = load_config(temp_config_dir, logger)
         
-        assert settings.generator.design == "multi_step_vlm"
-        assert len(settings.generator.steps) == 1
-        assert settings.generator.steps[0].id == "description"
-        assert settings.carla.debug is True
+        assert len(settings.filters) == 1
+        assert settings.filters[0].id == "fine_filter"
+        assert len(settings.generators) == 1
+        assert settings.generators[0].design == "multi_step_vlm"
+        assert len(settings.generators[0].steps) == 1
+        assert settings.generators[0].steps[0].id == "description"
+        assert len(settings.simulators) == 1
+        assert settings.simulators[0].debug is True
         assert len(settings.model_instances) == 1
         assert settings.model_instances[0].id == "r4b_0"
         assert settings.model_instances[0].local_config.gpu_id == 0
@@ -449,19 +735,9 @@ OUTPUT_PATH=/path/to/output
         # Create config.yaml
         config_data = {
             "version": "2.0-dev",
-            "filter": {
-                "max_frames_per_minute": 60,
-                "clustering_threshold": 0.99,
-                "max_cluster_count": 30
-            },
-            "generator": {
-                "design": "single_step_vlm",
-                "steps": []
-            },
-            "carla": {
-                "debug": False,
-                "gpu_id": 0
-            },
+            "filters": [{"id": "default", "max_frames_per_minute": 60}],
+            "generators": [{"id": "default", "design": "single_step_vlm", "steps": []}],
+            "simulators": [{"id": "carla_basic", "type": "carla", "debug": False, "gpu_id": 0}],
             "model_instances": []
         }
         with open(temp_config_dir / "config.yaml", "w") as f:
@@ -486,20 +762,9 @@ OUTPUT_PATH=/path/to/output
         config_data = {
             "version": "2.0-dev",
             "_comment": "This is a comment",
-            "filter": {
-                "max_frames_per_minute": 60,
-                "clustering_threshold": 0.99,
-                "max_cluster_count": 30
-            },
-            "generator": {
-                "design": "single_step_vlm",
-                "steps": []
-            },
-            "carla": {
-                "_note": "Some note",
-                "debug": False,
-                "gpu_id": 0
-            },
+            "filters": [{"id": "default", "max_frames_per_minute": 60}],
+            "generators": [{"id": "default", "design": "single_step_vlm", "steps": []}],
+            "simulators": [{"id": "carla_basic", "type": "carla", "debug": False, "gpu_id": 0}],
             "model_instances": []
         }
         with open(temp_config_dir / "config.yaml", "w") as f:
@@ -509,8 +774,8 @@ OUTPUT_PATH=/path/to/output
         settings = load_config(temp_config_dir, logger)
         
         # Should load successfully without comment fields
-        assert settings.generator.design == "single_step_vlm"
-        assert settings.carla.debug is False
+        assert len(settings.generators) == 1
+        assert settings.generators[0].design == "single_step_vlm"
 
     def test_load_config_version_mismatch(self, temp_config_dir, logger):
         """Test that incompatible version raises an error."""
@@ -525,14 +790,9 @@ OUTPUT_PATH=/path/to/output
         # Create config.yaml with incompatible version
         config_data = {
             "version": "99.0",  # Incompatible version
-            "generator": {
-                "design": "single_step_vlm",
-                "steps": []
-            },
-            "carla": {
-                "debug": False,
-                "gpu_id": 0
-            },
+            "filters": [],
+            "generators": [],
+            "simulators": [],
             "model_instances": []
         }
         with open(temp_config_dir / "config.yaml", "w") as f:

@@ -1,6 +1,7 @@
 import asyncio
 from untitled.core.base import LOG, PROJECT_ROOT, CONFIG, SIMULATION_FPS
 from untitled.core.job_handler import Job, JobHandler
+from untitled.core.settings import configure_settings_for_job
 from untitled.generator.instruction_generator import InstructionGenerator
 from untitled.generator.experiment_nature import ExperimentNature
 from untitled.simulator.simulator import Simulator
@@ -427,11 +428,20 @@ class Pipeline:
         Returns:
             Tuple of (successful_count, failed_count)
         """
+        # Configure settings for this job (sets CONFIG.generator, CONFIG.filter, CONFIG.simulator)
+        configure_settings_for_job(CONFIG, job)
+        
         LOG.info("=" * 80)
         LOG.info(f"Starting Job {job.id}: '{job.name}'")
         LOG.info(f"Scenarios: {len(job.scenarios)}, Ground truth runs: {job.ground_truth_count}, Instruction generations: {job.instruction_generation_count}, "
                  f"Experiment runs: {job.instruction_count_per_generation * job.instruction_generation_count}")
         LOG.info(f"Experiment nature: {job.experiment_nature.value}")
+        if CONFIG.generator:
+            LOG.info(f"Generator: {CONFIG.generator.id} ({CONFIG.generator.design})")
+        if CONFIG.filter:
+            LOG.info(f"Filter: {CONFIG.filter.id}")
+        if CONFIG.simulator:
+            LOG.info(f"Simulator: {CONFIG.simulator.id} ({CONFIG.simulator.type})")
         LOG.info("=" * 80)
         
         job_start_time = time.time()

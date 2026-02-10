@@ -1,135 +1,162 @@
-# Configuration file for the project
-# TODO: Update documentation 
-# 
+# Configuration file for the project.
+# The following documentation describes version 2.0-dev of this file format.
+#
+# Structure:
 # - version: Version of this file's format
-# - vlm: Vision-Language Model configuration (follows OpenAI chat completion API format)
-# - carla: CARLA simulator configuration
-# 
-# VLM properties:
-# - model: The VLM model to use (e.g., "r4b")
-# - temperature (optional): Sampling temperature [0.0, 1.0]
-# - max_tokens (optional): Maximum number of tokens to generate (strictly positive integer)
-# - extra_body (optional): Additional parameters passed to the API
-# 
-# CARLA properties:
-# - debug: Enable debug image output from SimLingo agent (true/false)
-# 
-# Note: Environment variables (VLM_HOST, VLM_API_KEY, CARLA_PATH, CONDA_PATH, OUTPUT_PATH)
+# - filters: List of frame filter configurations (referenced by ID in jobs.yaml)
+# - generators: List of instruction generator configurations (referenced by ID in jobs.yaml)
+# - model_instances: List of model instance configurations (referenced by ID in jobs.yaml)
+# - simulators: List of simulator configurations (referenced by ID in jobs.yaml)
+#
+# Filter properties:
+# - id: Unique identifier for this filter (referenced by jobs.yaml)
+# - max_frames_per_minute: Number of frames per minute to retain before clustering, 0 = keep all (default: 60)
+# - clustering_threshold: Similarity threshold for clustering frames, [0.0 - 1.0] (default: 0.990)
+# - max_cluster_count: Maximum number of clusters allowed (default: 30)
+#
+# Generator properties:
+# - id: Unique identifier for this generator (referenced by jobs.yaml)
+# - design: Generator design type, "single_step_vlm" or "multi_step_vlm" (default: "single_step_vlm")
+# - instruction_count_per_generation: Number of instructions to generate per generation call (default: 3)
+# - steps: List of generator steps, each with:
+#   - id: Step identifier
+#   - model_name: Authorized model for this step
+#   - temperature: Sampling temperature (default: 0.7)
+#   - max_tokens: Output length limit, should not exceed context window - prompt size (default: 512)
+#   - thinking_mode: Options: "disabled", "enabled", "default" (default: "default")
+#
+# Model instance properties:
+# - id: Unique identifier for this instance (can be referenced by jobs.yaml)
+# - model_name: Should match the model_name in the generator step
+# - type: Instance type ("vlm" or "llm")
+# - priority: Priority level for instance selection, higher = preferred (default: 0)
+# - batch_size: Number of requests to batch together (default: 1)
+# - step_ids: List of step IDs this instance can serve (default: [])
+# - local_config: Configuration for local instances
+#   - port: Port number for the local server (default: 8000)
+#   - gpu_id: GPU device ID to use (default: 0)
+#   - is_parallel_to_simulator: True means VLM can run in parallel with simulator (default: false)
+#   - tensor_parallel_size: Number of GPUs for tensor parallelism (default: 1)
+#   - gpu_memory_utilization: Fraction of GPU memory to use, [0.0 - 1.0] (default: 0.95)
+#   - context_window: Token capacity of this model instance (default: 8192)
+#   - max_num_seqs: Maximum number of sequences to process concurrently (default: 64)
+#   - enable_chunked_prefill: Enable chunked prefill for better memory efficiency (default: true)
+#   - enable_prefix_caching: Enable prefix caching for repeated prompts (default: false)
+#   - dtype: Data type for model weights, "bfloat16", "float16", etc. (default: "bfloat16")
+# - remote_config: Configuration for remote instances
+#   - host_id: References a host defined in hosts.yaml
+#
+# Simulator properties:
+# - id: Unique identifier for this simulator (referenced by jobs.yaml)
+# - type: Simulator type (currently only "carla" is supported)
+# - debug: Enable debug image output from SimLingo agent (default: false)
+# - gpu_id: GPU device ID to use (default: 0)
+#
+# Note: Environment variables (CARLA_PATH, CONDA_PATH, OUTPUT_PATH, HOSTS_PATH)
 #       must be set in a .env file at the root of the project.
-# 
-# Example:
-# ---
-# version: "1.0"
-# vlm:
-#   model: "r4b"
-#   temperature: 0.7
-#   max_tokens: 1024
-#   extra_body:
-#     chat_template_kwargs:
-#       thinking_mode: "long"
-# carla:
-#   debug: true
 ---
 version: "2.0-dev"
 
-# generator:
-#   design: "single_step_vlm"
-#   models:
-#     - model: "r4b"              # options: r4b
-#       temperature: 0.7          # [0.0, 1.0]
-#       max_tokens: 1024          # strictly positive integer
-#       extra_body:
-#         chat_template_kwargs:
-#           thinking_mode: "long"  # options for r4b: short (disabled), long (enabled), auto
+filters:
+  - id: "fine_filter"
+    max_frames_per_minute: 240
+    clustering_threshold: 0.997
+    max_cluster_count: 100
+  - id: "undersampled_filter"
+    max_frames_per_minute: 60
+    clustering_threshold: 0.997
+    max_cluster_count: 100
 
-filter:
-  max_frames_per_minute: 60     # Number of frames per minute to retain before clustering (0 = keep all frames)
-  clustering_threshold: 0.997   # Similarity threshold for clustering frames (0.0 - 1.0)
-  max_cluster_count: 60         # Maximum number of clusters allowed, this is intended as a security measure, the clustering_threshold should be the main control for the number of clusters
+generators:
+  # GPT-5-mini based VLM generators
+  - id: "gpt5_mini_single_step"
+    design: "single_step_vlm"
+    instruction_count_per_generation: 3
+    steps:
+      - id: "planning"
+        model_name: "gpt-5-mini"
+        max_tokens: 128000
+        thinking_mode: "enabled"
+  - id: "gpt5_mini_multi_step"
+    design: "multi_step_vlm"
+    instruction_count_per_generation: 3
+    steps:
+      - id: "description"
+        model_name: "gpt-5-mini"
+        max_tokens: 32000
+        thinking_mode: "disabled"
+      - id: "planning"
+        model_name: "gpt-5-mini"
+        max_tokens: 128000
+        thinking_mode: "enabled"
+  # Local VLM generators
+  - id: "local_multi_step"
+    design: "multi_step_vlm"
+    instruction_count_per_generation: 3
+    steps:
+      - id: "description"
+        model_name: "r4b"
+        temperature: 0.0
+        max_tokens: 1024
+        thinking_mode: "disabled"
+      - id: "planning"
+        model_name: "qwen3-4b-thinking"
+        temperature: 0.7
+        max_tokens: 81920
+        thinking_mode: "enabled"
 
-generator:    # TODO: Allow multiple generator configs
-  design: "single_step_vlm"  # options: single_step_vlm, multi_step_vlm
-  instruction_count_per_generation: 3  # Number of instructions to generate per generation call
-  steps:
-    # # Description step
-    # - id: "description"
-    #   model_name: "r4b"   # Authorized model
-    #   temperature: 0.0
-    #   max_tokens: 1024    # Output length limit. Should not be greater than: context window - prompt size
-    #   thinking_mode: "disabled"   # options: "disabled", "enabled", "default"
-    # # Planning step
-    # - id: "planning"
-    #   model_name: "qwen3-4b-thinking"
-    #   temperature: 0.7
-    #   max_tokens: 81920
-    #   thinking_mode: "enabled"
-    # Description step
-    - id: "description"
-      model_name: "gpt-5-mini"   # Authorized model
-      temperature: 0.0
-      max_tokens: 1024    # Output length limit. Should not be greater than: context window - prompt size
-      thinking_mode: "disabled"   # options: "disabled", "enabled", "default"
-    # Planning step
-    - id: "planning"
-      model_name: "gpt-5-mini"
-      temperature: 0.7
-      max_tokens: 81920
-      thinking_mode: "enabled"
-
-# All available model instances
 model_instances:
-  # # High-performance local instance
-  # - id: "r4b_0"
-  #   model_name: "r4b"   # Should match its step's model_name
-  #   type: "vlm"
-  #   priority: 1
-  #   batch_size: 32
-  #   step_ids:
-  #     - "description"
-  #   local_config:
-  #     port: 8000
-  #     gpu_id: 0
-  #     is_parallel_to_simulator: false  # True means that we can run the VLM parallely with the simulator
-  #     tensor_parallel_size: 1
-  #     gpu_memory_utilization: 0.95
-  #     context_window: 8192  # Token capacity of this model instance, should not exceed the model's max context window
-  #     max_num_seqs: 64
-  #     enable_chunked_prefill: true
-  #     enable_prefix_caching: false
-  #     dtype: "bfloat16"
-  # # Local LLM
-  # - id: "qwen3_0"
-  #   model_name: "qwen3-4b-thinking"
-  #   type: "llm"
-  #   priority: 1
-  #   batch_size: 1
-  #   step_ids:
-  #     - "planning"
-  #   local_config:
-  #     port: 8000
-  #     gpu_id: 0
-  #     is_parallel_to_simulator: false  # True means that we can run the VLM parallely with the simulator
-  #     tensor_parallel_size: 1
-  #     gpu_memory_utilization: 0.98
-  #     context_window: 110000
-  #     max_num_seqs: 1
-  #     enable_chunked_prefill: true
-  #     enable_prefix_caching: false
-  #     dtype: "bfloat16"
-
+  # Local instances
+  - id: "r4b_0"
+    model_name: "r4b"
+    type: "vlm"
+    priority: 1
+    batch_size: 32
+    step_ids:
+      - "description"
+    local_config:
+      port: 8000
+      gpu_id: 0
+      is_parallel_to_simulator: false
+      tensor_parallel_size: 1
+      gpu_memory_utilization: 0.95
+      context_window: 8192
+      max_num_seqs: 64
+      enable_chunked_prefill: true
+      enable_prefix_caching: false
+      dtype: "bfloat16"
+  - id: "qwen3_0"
+    model_name: "qwen3-4b-thinking"
+    type: "llm"
+    priority: 1
+    batch_size: 1
+    step_ids:
+      - "planning"
+    local_config:
+      port: 8000
+      gpu_id: 0
+      is_parallel_to_simulator: false
+      tensor_parallel_size: 1
+      gpu_memory_utilization: 0.98
+      context_window: 110000
+      max_num_seqs: 1
+      enable_chunked_prefill: true
+      enable_prefix_caching: false
+      dtype: "bfloat16"
   # Remote instances
-  
   - id: "gpt5_mini_0"
     model_name: "gpt-5-mini"
     type: "vlm"
     priority: 1
-    batch_size: 32
+    batch_size: 5
     step_ids:
       - "description"
       - "planning"
     remote_config:
       host_id: "openai"   # Defined in hosts.yaml
 
-carla:
-  debug: true  # Enable debug image output from SimLingo agent (set to true to enable)
-  gpu_id: 0
+simulators:
+  - id: "carla_basic"
+    type: "carla"
+    debug: true
+    gpu_id: 0

@@ -16,22 +16,30 @@ class Job:
     Attributes:
         id: Unique identifier for the job (auto-assigned)
         name: Human-readable name for the job
+        simulator: ID of the simulator config to use (from config.yaml)
         scenarios: List of scenario IDs to run
         ground_truth_count: Number of baseline runs without instructions
+        ground_truth_cache_dir: Optional path to directory containing cached ground truth logs
+        filter: ID of the filter config to use (from config.yaml)
+        generator: ID of the generator config to use (from config.yaml)
+        model_instances: List of model instance IDs to use (from config.yaml)
+        experiment_nature: The nature of experiments (adversarial or corrective)
         instruction_generation_count: Number of instruction generation calls to make
         instruction_count_per_generation: Number of instructions to use per generation call
-        experiment_nature: The nature of experiments (adversarial or corrective)
-        ground_truth_cache_dir: Optional path to directory containing cached ground truth logs
         results: Dictionary storing simulation results keyed by (scenario_id, run_id)
     """
     id: int
     name: str
+    simulator: str
     scenarios: List[int]
     ground_truth_count: int = 1
+    ground_truth_cache_dir: str = ""
+    filter: str = ""
+    generator: str = ""
+    model_instances: List[str] = field(default_factory=list)
+    experiment_nature: ExperimentNature = ExperimentNature.ADVERSARIAL
     instruction_generation_count: int = 1
     instruction_count_per_generation: int = 1
-    experiment_nature: ExperimentNature = ExperimentNature.ADVERSARIAL
-    ground_truth_cache_dir: str = ""
     results: Dict[tuple, Any] = field(default_factory=dict)
 
 
@@ -138,12 +146,16 @@ class JobHandler:
                 job = Job(
                     id=job_index,
                     name=job_data['name'],
+                    simulator=job_data.get('simulator', ''),
                     scenarios=scenarios,
                     ground_truth_count=job_data.get('ground_truth_count', 1),
+                    ground_truth_cache_dir=job_data.get('ground_truth_cache_dir', ''),
+                    filter=job_data.get('filter', ''),
+                    generator=job_data.get('generator', ''),
+                    model_instances=job_data.get('model_instances', []),
+                    experiment_nature=experiment_nature,
                     instruction_generation_count=job_data.get('instruction_generation_count', 1),
                     instruction_count_per_generation=job_data.get('instruction_count_per_generation', 1),
-                    experiment_nature=experiment_nature,
-                    ground_truth_cache_dir=job_data.get('ground_truth_cache_dir', ''),
                 )
                 
                 self.jobs.append(job)
