@@ -578,6 +578,9 @@ class TestLoadConfig:
 
     def test_load_config_minimal(self, temp_config_dir, logger, monkeypatch):
         """Test loading minimal configuration."""
+        # Clear HOSTS_PATH to ensure no hosts are loaded
+        monkeypatch.delenv("HOSTS_PATH", raising=False)
+        
         # Create .env file
         env_content = """CARLA_PATH=/path/to/carla
 CONDA_PATH=/path/to/conda

@@ -20,19 +20,21 @@ def sample_jobs_yaml(temp_dir):
     """Create a sample jobs.yaml file."""
     jobs_file = temp_dir / "jobs.yaml"
     jobs_data = {
-        "version": "1.1-dev",
+        "version": "2.0-dev",
         "jobs": [
             {
                 "name": "Test Job 1",
+                "simulator": "carla_basic",
                 "scenarios": [1, 2, 3],
                 "ground_truth_count": 2,
-                "experiment_count": 5
+                "instruction_generation_count": 5
             },
             {
                 "name": "Test Job 2",
+                "simulator": "carla_basic",
                 "scenarios": [10, 20],
                 "ground_truth_count": 1,
-                "experiment_count": 3,
+                "instruction_generation_count": 3,
                 "ground_truth_cache_dir": "cache"
             }
         ]
@@ -49,13 +51,14 @@ def jobs_yaml_with_all_scenarios(temp_dir):
     """Create a jobs.yaml file with 'all' scenarios."""
     jobs_file = temp_dir / "jobs_all.yaml"
     jobs_data = {
-        "version": "1.1-dev",
+        "version": "2.0-dev",
         "jobs": [
             {
                 "name": "All Scenarios",
+                "simulator": "carla_basic",
                 "scenarios": "all",
                 "ground_truth_count": 1,
-                "experiment_count": 1
+                "instruction_generation_count": 1
             }
         ]
     }
@@ -90,20 +93,23 @@ def jobs_yaml_with_experiment_nature(temp_dir):
     """Create a jobs.yaml file with experiment_nature specified."""
     jobs_file = temp_dir / "jobs_nature.yaml"
     jobs_data = {
-        "version": "1.1-dev",
+        "version": "2.0-dev",
         "jobs": [
             {
                 "name": "Adversarial Job",
+                "simulator": "carla_basic",
                 "scenarios": [1, 2],
                 "experiment_nature": "adversarial"
             },
             {
                 "name": "Corrective Job",
+                "simulator": "carla_basic",
                 "scenarios": [3, 4],
                 "experiment_nature": "corrective"
             },
             {
                 "name": "Default Nature Job",
+                "simulator": "carla_basic",
                 "scenarios": [5]
             }
         ]
@@ -123,14 +129,16 @@ class TestJob:
         job = Job(
             id=0,
             name="Test Job",
+            simulator="carla_basic",
             scenarios=[1, 2, 3]
         )
         
         assert job.id == 0
         assert job.name == "Test Job"
+        assert job.simulator == "carla_basic"
         assert job.scenarios == [1, 2, 3]
         assert job.ground_truth_count == 1
-        assert job.experiment_count == 1
+        assert job.instruction_generation_count == 1
         assert job.experiment_nature == ExperimentNature.ADVERSARIAL
         assert job.ground_truth_cache_dir == ""
     
@@ -139,18 +147,20 @@ class TestJob:
         job = Job(
             id=5,
             name="Full Job",
+            simulator="carla_debug",
             scenarios=[10, 20, 30],
             ground_truth_count=3,
-            experiment_count=10,
+            instruction_generation_count=10,
             experiment_nature=ExperimentNature.CORRECTIVE,
             ground_truth_cache_dir="/path/to/cache"
         )
         
         assert job.id == 5
         assert job.name == "Full Job"
+        assert job.simulator == "carla_debug"
         assert job.scenarios == [10, 20, 30]
         assert job.ground_truth_count == 3
-        assert job.experiment_count == 10
+        assert job.instruction_generation_count == 10
         assert job.experiment_nature == ExperimentNature.CORRECTIVE
         assert job.ground_truth_cache_dir == "/path/to/cache"
 
@@ -178,17 +188,19 @@ class TestJobHandler:
         # Check first job
         assert jobs[0].id == 0
         assert jobs[0].name == "Test Job 1"
+        assert jobs[0].simulator == "carla_basic"
         assert jobs[0].scenarios == [1, 2, 3]
         assert jobs[0].ground_truth_count == 2
-        assert jobs[0].experiment_count == 5
+        assert jobs[0].instruction_generation_count == 5
         assert jobs[0].ground_truth_cache_dir == ""
         
         # Check second job
         assert jobs[1].id == 1
         assert jobs[1].name == "Test Job 2"
+        assert jobs[1].simulator == "carla_basic"
         assert jobs[1].scenarios == [10, 20]
         assert jobs[1].ground_truth_count == 1
-        assert jobs[1].experiment_count == 3
+        assert jobs[1].instruction_generation_count == 3
         assert jobs[1].ground_truth_cache_dir == "cache"
     
     def test_load_jobs_with_all_scenarios(self, jobs_yaml_with_all_scenarios):
@@ -224,10 +236,11 @@ class TestJobHandler:
         """Test loading jobs with invalid experiment_nature raises ValueError."""
         jobs_file = temp_dir / "jobs_invalid_nature.yaml"
         jobs_data = {
-            "version": "1.1-dev",
+            "version": "2.0-dev",
             "jobs": [
                 {
                     "name": "Invalid Nature Job",
+                    "simulator": "carla_basic",
                     "scenarios": [1],
                     "experiment_nature": "invalid_nature"
                 }
@@ -260,7 +273,7 @@ class TestJobHandler:
         """Test loading YAML without 'jobs' key raises ValueError."""
         no_jobs_yaml = temp_dir / "no_jobs.yaml"
         with open(no_jobs_yaml, 'w') as f:
-            yaml.dump({"version": "1.1-dev"}, f)
+            yaml.dump({"version": "2.0-dev"}, f)
         
         with pytest.raises(ValueError, match="missing 'jobs' key"):
             JobHandler(str(no_jobs_yaml))
@@ -269,7 +282,7 @@ class TestJobHandler:
         """Test loading YAML with non-list 'jobs' raises ValueError."""
         invalid_jobs_yaml = temp_dir / "invalid_jobs.yaml"
         with open(invalid_jobs_yaml, 'w') as f:
-            yaml.dump({"version": "1.1-dev", "jobs": "not a list"}, f)
+            yaml.dump({"version": "2.0-dev", "jobs": "not a list"}, f)
         
         with pytest.raises(ValueError, match="'jobs' must be a list"):
             JobHandler(str(invalid_jobs_yaml))
@@ -278,9 +291,10 @@ class TestJobHandler:
         """Test loading job without 'name' field raises ValueError."""
         missing_name_yaml = temp_dir / "missing_name.yaml"
         jobs_data = {
-            "version": "1.1-dev",
+            "version": "2.0-dev",
             "jobs": [
                 {
+                    "simulator": "carla_basic",
                     "scenarios": [1, 2, 3]
                 }
             ]
@@ -296,10 +310,11 @@ class TestJobHandler:
         """Test loading job without 'scenarios' field raises ValueError."""
         missing_scenarios_yaml = temp_dir / "missing_scenarios.yaml"
         jobs_data = {
-            "version": "1.1-dev",
+            "version": "2.0-dev",
             "jobs": [
                 {
-                    "name": "Test Job"
+                    "name": "Test Job",
+                    "simulator": "carla_basic"
                 }
             ]
         }
@@ -314,10 +329,11 @@ class TestJobHandler:
         """Test loading job with invalid scenarios type raises ValueError."""
         invalid_scenarios_yaml = temp_dir / "invalid_scenarios.yaml"
         jobs_data = {
-            "version": "1.1-dev",
+            "version": "2.0-dev",
             "jobs": [
                 {
                     "name": "Test Job",
+                    "simulator": "carla_basic",
                     "scenarios": 123  # Should be list or "all"
                 }
             ]
@@ -333,10 +349,11 @@ class TestJobHandler:
         """Test loading jobs with incompatible version raises ValueError."""
         incompatible_version_yaml = temp_dir / "incompatible_version.yaml"
         jobs_data = {
-            "version": "2.0",  # Incompatible with 1.1-dev
+            "version": "1.0",  # Incompatible with 2.0-dev
             "jobs": [
                 {
                     "name": "Test Job",
+                    "simulator": "carla_basic",
                     "scenarios": [1, 2, 3]
                 }
             ]
@@ -376,10 +393,11 @@ class TestIsGroundTruthCached:
         """Test that method returns True when cached logs exist."""
         jobs_file = temp_dir / "jobs.yaml"
         jobs_data = {
-            "version": "1.1-dev",
+            "version": "2.0-dev",
             "jobs": [
                 {
                     "name": "Test Job",
+                    "simulator": "carla_basic",
                     "scenarios": [5, 7],
                     "ground_truth_cache_dir": str(cache_dir_with_logs)
                 }
@@ -401,10 +419,11 @@ class TestIsGroundTruthCached:
         """Test that method returns False when cached logs don't exist."""
         jobs_file = temp_dir / "jobs.yaml"
         jobs_data = {
-            "version": "1.1-dev",
+            "version": "2.0-dev",
             "jobs": [
                 {
                     "name": "Test Job",
+                    "simulator": "carla_basic",
                     "scenarios": [5, 7],
                     "ground_truth_cache_dir": str(cache_dir_with_logs)
                 }
@@ -438,10 +457,11 @@ class TestIsGroundTruthCached:
         
         jobs_file = temp_dir / "jobs.yaml"
         jobs_data = {
-            "version": "1.1-dev",
+            "version": "2.0-dev",
             "jobs": [
                 {
                     "name": "Test Job",
+                    "simulator": "carla_basic",
                     "scenarios": [5],
                     "ground_truth_cache_dir": str(cache_dir)
                 }
@@ -465,10 +485,11 @@ class TestIsGroundTruthCached:
         
         jobs_file = temp_dir / "jobs.yaml"
         jobs_data = {
-            "version": "1.1-dev",
+            "version": "2.0-dev",
             "jobs": [
                 {
                     "name": "Test Job",
+                    "simulator": "carla_basic",
                     "scenarios": [10],
                     "ground_truth_cache_dir": "relative_cache"
                 }

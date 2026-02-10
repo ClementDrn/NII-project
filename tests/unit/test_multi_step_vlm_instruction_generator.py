@@ -1,24 +1,15 @@
 from untitled.generator.instruction import Instruction, InstructionSet, InjectionWindow
 from untitled.core.settings import GeneratorStepConfig, ModelInstanceConfig, LocalVLMConfig
 from untitled.generator.model import ModelClient
+from untitled.generator.prompt_dispatcher import PromptRequest
+from untitled.generator.multi_step_vlm_instruction_generator import MultiStepVLMInstructionGenerator
+from untitled.simulator.simulation_data import SimulationData, SimulationFrameData, SimulationMetadata
 
 import pytest
 from unittest.mock import Mock, patch, mock_open, MagicMock, AsyncMock
 from pathlib import Path
 import json
-import sys
 import asyncio
-
-# Mock the CONFIG before importing any modules that depend on it
-with patch('untitled.core.settings.load_config') as mock_load_config:
-    mock_config = MagicMock()
-    mock_config.vlm.host = "http://localhost:8000"
-    mock_config.vlm.api_key = "test-key"
-    mock_config.generator.models = [MagicMock(), MagicMock()]  # Two models for multi-step
-    mock_load_config.return_value = mock_config
-    
-    from untitled.generator.multi_step_vlm_instruction_generator import MultiStepVLMInstructionGenerator
-    from untitled.simulator.simulation_data import SimulationData, SimulationFrameData, SimulationMetadata
 
 
 # --- Fixtures and Mocks ------------------------------------------------------
@@ -48,7 +39,8 @@ def mock_simulation_data_multi_frame():
                 right_vector=[0, 1, 0],
                 velocity=[0, 0, 0],
                 angular_velocity=[0, 0, 0],
-                acceleration=[0, 0, 0]
+                acceleration=[0, 0, 0],
+                scene=[]
             )
         )
         for i, frame_data in enumerate(data_dict["frames"][:3])
@@ -86,7 +78,8 @@ def mock_simulation_data_all_frames():
                 right_vector=[0, 1, 0],
                 velocity=[0, 0, 0],
                 angular_velocity=[0, 0, 0],
-                acceleration=[0, 0, 0]
+                acceleration=[0, 0, 0],
+                scene=[]
             )
         )
         for i, frame_data in enumerate(data_dict["frames"])
@@ -158,13 +151,13 @@ def mock_task_messages():
 # --- Tests -------------------------------------------------------------------
 
 @pytest.mark.asyncio
+@patch("untitled.generator.multi_step_vlm_instruction_generator.Task")
 @patch("untitled.generator.multi_step_vlm_instruction_generator.PromptDispatcher")
 @patch("untitled.generator.multi_step_vlm_instruction_generator.ModelClientFactory")
 @patch("untitled.generator.instruction_generator.get_model_config")
 @patch("untitled.generator.multi_step_vlm_instruction_generator.CONFIG")
-@patch("builtins.open", new_callable=mock_open)
-async def test_init_with_two_models(mock_file, mock_config, mock_get_model_config, mock_factory,
-                                     mock_dispatcher, mock_config_two_models, mock_task_messages):
+async def test_init_with_two_models(mock_config, mock_get_model_config, mock_factory,
+                                     mock_dispatcher, mock_task, mock_config_two_models, mock_task_messages):
     """Test initialization with exactly two models configured."""
     # Setup CONFIG with proper steps and model_instances
     descriptor_step = GeneratorStepConfig(
@@ -201,9 +194,11 @@ async def test_init_with_two_models(mock_file, mock_config, mock_get_model_confi
     )
     mock_config.model_instances = [descriptor_instance, planner_instance]
     
-    # Setup file reads for task messages
+    # Setup mock Task
     descriptor_task, planner_task = mock_task_messages
-    mock_file.return_value.read.side_effect = [descriptor_task, planner_task]
+    mock_task_instance = MagicMock()
+    mock_task_instance.get_prompt_system_text.side_effect = [descriptor_task, planner_task]
+    mock_task.return_value = mock_task_instance
     
     # Setup mock VLM clients
     mock_descriptor_vlm = MagicMock()
@@ -223,14 +218,13 @@ async def test_init_with_two_models(mock_file, mock_config, mock_get_model_confi
     # Verify ModelClientFactory.create was called twice (descriptor and planner)
     assert mock_factory.create.call_count == 2
     
-    # Verify task messages were loaded
-    assert generator._scene_descriptor_task_message == descriptor_task
-    assert generator._planner_task_message == planner_task
+    # Verify Task was created for all 3 tasks (descriptor, adversarial planner, corrective planner)
+    assert mock_task.call_count == 3
 
 @pytest.mark.asyncio
+@patch("untitled.generator.multi_step_vlm_instruction_generator.Task")
 @patch("untitled.generator.multi_step_vlm_instruction_generator.CONFIG")
-@patch("builtins.open", new_callable=mock_open)
-async def test_init_with_wrong_number_of_models(mock_file, mock_config):
+async def test_init_with_wrong_number_of_models(mock_config, mock_task):
     """Test that initialization fails with incorrect number of steps."""
     # Test with only one step
     mock_config.generator.steps = [Mock()]
@@ -245,15 +239,16 @@ async def test_init_with_wrong_number_of_models(mock_file, mock_config):
         MultiStepVLMInstructionGenerator()
 
 @pytest.mark.asyncio
+@patch("untitled.generator.multi_step_vlm_instruction_generator.Task")
 @patch("untitled.generator.multi_step_vlm_instruction_generator.parse_instructions_from_json")
 @patch("untitled.generator.multi_step_vlm_instruction_generator.parse_model_response")
 @patch("untitled.generator.multi_step_vlm_instruction_generator.PromptDispatcher")
 @patch("untitled.generator.multi_step_vlm_instruction_generator.ModelClientFactory")
 @patch("untitled.generator.instruction_generator.get_model_config")
 @patch("untitled.generator.multi_step_vlm_instruction_generator.CONFIG")
-@patch("builtins.open", new_callable=mock_open)
-async def test_generate_instruction_multi_frame(mock_file, mock_config, mock_get_model_config, mock_factory,
+async def test_generate_instruction_multi_frame(mock_config, mock_get_model_config, mock_factory,
                                                  mock_dispatcher, mock_parse, mock_parse_instruction,
+                                                 mock_task,
                                                  mock_config_two_models, mock_task_messages,
                                                  mock_simulation_data_multi_frame, mock_vlm_responses,
                                                  mock_parsed_responses):
@@ -266,9 +261,25 @@ async def test_generate_instruction_multi_frame(mock_file, mock_config, mock_get
     plan_inst = ModelInstanceConfig(id="i2", model_name="test-2", type="vlm", step_ids=["plan"], local_config=LocalVLMConfig(port=8001))
     mock_config.model_instances = [desc_inst, plan_inst]
     
-    # Setup file reads
+    # Setup mock Task that returns real PromptRequest objects
     descriptor_task, planner_task = mock_task_messages
-    mock_file.return_value.read.side_effect = [descriptor_task, planner_task]
+    mock_task_instance = MagicMock()
+    mock_task_instance.get_prompt_system_text.side_effect = [descriptor_task, planner_task, planner_task]
+    mock_task_instance.has_images_input = True
+    mock_task_instance.has_metadata_input = True
+    mock_task_instance.has_descriptions_input = False
+    mock_task_instance.has_failure_text_input = False
+    mock_task_instance.has_route_completion_input = False
+    
+    def mock_prepare_prompt(future, **kwargs):
+        return PromptRequest(
+            system_text="Test system",
+            user_text="Test user",
+            user_image_paths=[],
+            future=future
+        )
+    mock_task_instance.prepare_prompt = mock_prepare_prompt
+    mock_task.return_value = mock_task_instance
     
     # Setup mock VLM clients
     mock_descriptor_vlm = MagicMock()
@@ -315,8 +326,7 @@ async def test_generate_instruction_multi_frame(mock_file, mock_config, mock_get
     expected_instruction_set = InstructionSet(instructions=[instruction])
     mock_parse_instruction.return_value = expected_instruction_set
 
-    # Create generator
-    generator = MultiStepVLMInstructionGenerator()    # Mock the dispatchers' add methods
+    # Mock the dispatchers' add methods BEFORE creating generator
     descriptor_call_count = 0
 
     async def descriptor_add_side_effect(prompt_request):
@@ -329,8 +339,17 @@ async def test_generate_instruction_multi_frame(mock_file, mock_config, mock_get
     async def planner_add_side_effect(prompt_request):
         prompt_request.future.set_result(f"<think>Planning adversarial instruction...</think>\n\n{json_response}")
 
-    generator._descriptor_dispatcher.add = descriptor_add_side_effect
-    generator._planner_dispatcher.add = planner_add_side_effect
+    # Setup mock dispatchers with mocked add methods
+    mock_descriptor_dispatcher = MagicMock()
+    mock_descriptor_dispatcher.add = descriptor_add_side_effect
+    mock_descriptor_dispatcher.flush = AsyncMock()
+    mock_planner_dispatcher = MagicMock()
+    mock_planner_dispatcher.add = planner_add_side_effect
+    mock_planner_dispatcher.flush = AsyncMock()
+    mock_dispatcher.side_effect = [mock_descriptor_dispatcher, mock_planner_dispatcher]
+
+    # Create generator
+    generator = MultiStepVLMInstructionGenerator()
 
     instruction_set = await generator.generate_instructions_from_images(mock_simulation_data_multi_frame)    # Verify the final instruction set
     assert instruction_set == expected_instruction_set
@@ -338,18 +357,18 @@ async def test_generate_instruction_multi_frame(mock_file, mock_config, mock_get
     assert instruction_set.instructions[0].text == "Run the red light and turn left immediately"
 
 @pytest.mark.asyncio
+@patch("untitled.generator.multi_step_vlm_instruction_generator.Task")
 @patch("untitled.generator.multi_step_vlm_instruction_generator.parse_instructions_from_json")
 @patch("untitled.generator.multi_step_vlm_instruction_generator.parse_model_response")
 @patch("untitled.generator.multi_step_vlm_instruction_generator.PromptDispatcher")
 @patch("untitled.generator.multi_step_vlm_instruction_generator.ModelClientFactory")
 @patch("untitled.generator.instruction_generator.get_model_config")
 @patch("untitled.generator.multi_step_vlm_instruction_generator.CONFIG")
-@patch("builtins.open", new_callable=mock_open)
-async def test_generate_instruction_single_frame(mock_file, mock_config, mock_get_model_config, mock_factory,
+async def test_generate_instruction_single_frame(mock_config, mock_get_model_config, mock_factory,
                                                  mock_dispatcher, mock_parse, mock_parse_instruction,
+                                                 mock_task,
                                                  mock_config_two_models, mock_task_messages):
     """Test generating instruction from a single frame."""
-    from untitled.generator.instruction import Instruction, InstructionSet, InjectionWindow
     
     # Setup CONFIG with proper steps and model_instances
     descriptor_step = GeneratorStepConfig(id="desc", model_name="test-1", temperature=0.7, max_tokens=512)
@@ -359,9 +378,25 @@ async def test_generate_instruction_single_frame(mock_file, mock_config, mock_ge
     plan_inst = ModelInstanceConfig(id="i2", model_name="test-2", type="vlm", step_ids=["plan"], local_config=LocalVLMConfig(port=8001))
     mock_config.model_instances = [desc_inst, plan_inst]
     
-    # Setup file reads
+    # Setup mock Task that returns real PromptRequest objects
     descriptor_task, planner_task = mock_task_messages
-    mock_file.return_value.read.side_effect = [descriptor_task, planner_task]
+    mock_task_instance = MagicMock()
+    mock_task_instance.get_prompt_system_text.side_effect = [descriptor_task, planner_task, planner_task]
+    mock_task_instance.has_images_input = True
+    mock_task_instance.has_metadata_input = True
+    mock_task_instance.has_descriptions_input = False
+    mock_task_instance.has_failure_text_input = False
+    mock_task_instance.has_route_completion_input = False
+    
+    def mock_prepare_prompt(future, **kwargs):
+        return PromptRequest(
+            system_text="Test system",
+            user_text="Test user",
+            user_image_paths=[],
+            future=future
+        )
+    mock_task_instance.prepare_prompt = mock_prepare_prompt
+    mock_task.return_value = mock_task_instance
     
     # Setup mock VLM clients
     mock_descriptor_vlm = MagicMock()
@@ -399,7 +434,8 @@ async def test_generate_instruction_single_frame(mock_file, mock_config, mock_ge
                     right_vector=[0, 1, 0],
                     velocity=[0, 0, 0],
                     angular_velocity=[0, 0, 0],
-                    acceleration=[0, 0, 0]
+                    acceleration=[0, 0, 0],
+                    scene=[]
                 )
             )
         ]
@@ -425,19 +461,25 @@ async def test_generate_instruction_single_frame(mock_file, mock_config, mock_ge
     )
     expected_instruction_set = InstructionSet(instructions=[instruction])
     mock_parse_instruction.return_value = expected_instruction_set
-    
-    # Create generator and generate instruction
-    generator = MultiStepVLMInstructionGenerator()
 
-    # Mock the dispatchers' add methods
+    # Mock the dispatchers' add methods BEFORE creating generator
     async def descriptor_add_side_effect(prompt_request):
         prompt_request.future.set_result("<think>Analyzing scene...</think>\n\nScene description")
 
     async def planner_add_side_effect(prompt_request):
         prompt_request.future.set_result(f"<think>Planning instruction...</think>\n\n{json_response}")
 
-    generator._descriptor_dispatcher.add = descriptor_add_side_effect
-    generator._planner_dispatcher.add = planner_add_side_effect
+    # Setup mock dispatchers with mocked add methods
+    mock_descriptor_dispatcher = MagicMock()
+    mock_descriptor_dispatcher.add = descriptor_add_side_effect
+    mock_descriptor_dispatcher.flush = AsyncMock()
+    mock_planner_dispatcher = MagicMock()
+    mock_planner_dispatcher.add = planner_add_side_effect
+    mock_planner_dispatcher.flush = AsyncMock()
+    mock_dispatcher.side_effect = [mock_descriptor_dispatcher, mock_planner_dispatcher]
+    
+    # Create generator and generate instruction
+    generator = MultiStepVLMInstructionGenerator()
 
     instruction_set = await generator.generate_instructions_from_images(single_frame_data)
     
@@ -446,13 +488,13 @@ async def test_generate_instruction_single_frame(mock_file, mock_config, mock_ge
     assert instruction_set.instructions[0].text == "Adversarial instruction"
 
 @pytest.mark.asyncio
+@patch("untitled.generator.multi_step_vlm_instruction_generator.Task")
 @patch("untitled.generator.multi_step_vlm_instruction_generator.PromptDispatcher")
 @patch("untitled.generator.multi_step_vlm_instruction_generator.ModelClientFactory")
 @patch("untitled.generator.instruction_generator.get_model_config")
 @patch("untitled.generator.multi_step_vlm_instruction_generator.CONFIG")
-@patch("builtins.open", new_callable=mock_open)
-async def test_generate_instruction_no_frames_raises_error(mock_file, mock_config, mock_get_model_config,
-                                                           mock_factory, mock_dispatcher,
+async def test_generate_instruction_no_frames_raises_error(mock_config, mock_get_model_config,
+                                                           mock_factory, mock_dispatcher, mock_task,
                                                            mock_config_two_models, mock_task_messages):
     """Test that generating instruction with no frames raises an error."""
     # Setup CONFIG with proper steps and model_instances
@@ -463,9 +505,11 @@ async def test_generate_instruction_no_frames_raises_error(mock_file, mock_confi
     plan_inst = ModelInstanceConfig(id="i2", model_name="test-2", type="vlm", step_ids=["plan"], local_config=LocalVLMConfig(port=8001))
     mock_config.model_instances = [desc_inst, plan_inst]
     
-    # Setup file reads
+    # Setup mock Task
     descriptor_task, planner_task = mock_task_messages
-    mock_file.return_value.read.side_effect = [descriptor_task, planner_task]
+    mock_task_instance = MagicMock()
+    mock_task_instance.get_prompt_system_text.side_effect = [descriptor_task, planner_task, planner_task]
+    mock_task.return_value = mock_task_instance
     
     # Setup mock VLM clients
     mock_descriptor_vlm = MagicMock()
@@ -494,12 +538,13 @@ async def test_generate_instruction_no_frames_raises_error(mock_file, mock_confi
         await generator.generate_instructions_from_images(empty_data)
 
 @pytest.mark.asyncio
+@patch("untitled.generator.multi_step_vlm_instruction_generator.Task")
 @patch("untitled.generator.multi_step_vlm_instruction_generator.PromptDispatcher")
 @patch("untitled.generator.multi_step_vlm_instruction_generator.ModelClientFactory")
 @patch("untitled.generator.instruction_generator.get_model_config")
 @patch("untitled.generator.multi_step_vlm_instruction_generator.CONFIG")
-@patch("builtins.open", new_callable=mock_open)
-async def test_free_method(mock_file, mock_config, mock_get_model_config, mock_factory, mock_dispatcher,
+async def test_free_method(mock_config, mock_get_model_config, mock_factory, mock_dispatcher,
+                          mock_task,
                           mock_config_two_models, mock_task_messages):
     """Test the free method shuts down dispatchers and stops VLMs."""
     # Setup CONFIG with proper steps and model_instances
@@ -510,9 +555,11 @@ async def test_free_method(mock_file, mock_config, mock_get_model_config, mock_f
     plan_inst = ModelInstanceConfig(id="i2", model_name="test-2", type="vlm", step_ids=["plan"], local_config=LocalVLMConfig(port=8001))
     mock_config.model_instances = [desc_inst, plan_inst]
     
-    # Setup file reads
+    # Setup mock Task
     descriptor_task, planner_task = mock_task_messages
-    mock_file.return_value.read.side_effect = [descriptor_task, planner_task]
+    mock_task_instance = MagicMock()
+    mock_task_instance.get_prompt_system_text.side_effect = [descriptor_task, planner_task, planner_task]
+    mock_task.return_value = mock_task_instance
     
     # Setup mock VLM clients
     mock_descriptor_vlm = MagicMock()

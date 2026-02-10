@@ -22,6 +22,7 @@ def create_mock_metadata() -> SimulationMetadata:
         velocity=[0.0, 0.0, 0.0],
         angular_velocity=[0.0, 0.0, 0.0],
         acceleration=[0.0, 0.0, 0.0],
+        scene=[],
     )
 
 
