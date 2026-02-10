@@ -8,24 +8,52 @@ from untitled.core.base import LOG
 
 
 class SimulationStatus(Enum):
-    """Status of a simulation run."""
+    """Status of a simulation run.
+    
+    Based on statuses from simlingo's statistics_manager.py:
+    - Perfect: Route completed with no infractions
+    - Completed: Route completed with infractions
+    - Failed: Generic failure (route not completed)
+    - Failed - Agent timed out: Route timeout
+    - Failed - Agent deviated from the route: Route deviation
+    - Failed - Agent got blocked: Vehicle blocked
+    """
+    PERFECT = "Perfect"
     COMPLETED = "Completed"
     FAILED = "Failed"
-    CRASHED = "Crashed"
-    TIMEOUT = "Timeout"
+    FAILED_TIMEOUT = "Failed - Agent timed out"
+    FAILED_ROUTE_DEVIATION = "Failed - Agent deviated from the route"
+    FAILED_BLOCKED = "Failed - Agent got blocked"
     UNKNOWN = "Unknown"
 
     @classmethod
     def from_string(cls, status_str: str) -> "SimulationStatus":
         """Convert a status string to SimulationStatus enum."""
-        # Take first word only, lowercase for comparison
-        status_keyword = status_str.split()[0].lower()
+        # Try exact match first
         for status in cls:
-            if status.value.lower() == status_keyword:
+            if status.value == status_str:
+                return status
+        # Fallback: check if status_str starts with any known value
+        for status in cls:
+            if status_str.startswith(status.value):
                 return status
         LOG.warning(f"Unknown simulation status: '{status_str}'. Defaulting to UNKNOWN.")
         return cls.UNKNOWN
 
+    @property
+    def is_success(self) -> bool:
+        """Return True if the simulation was successful (Perfect or Completed)."""
+        return self in (SimulationStatus.PERFECT, SimulationStatus.COMPLETED)
+
+    @property
+    def is_failure(self) -> bool:
+        """Return True if the simulation failed."""
+        return self in (
+            SimulationStatus.FAILED,
+            SimulationStatus.FAILED_TIMEOUT,
+            SimulationStatus.FAILED_ROUTE_DEVIATION,
+            SimulationStatus.FAILED_BLOCKED,
+        )
 
 @dataclass
 class SimulationInfractions:
