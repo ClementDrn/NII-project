@@ -581,7 +581,7 @@ class Pipeline:
                 LOG.info(f"  Ground Truth: No results available")
             
             # Get experiment results and compare
-            for generation_index in range(job.instruction_generation_count):
+            for generation_index in range(job.instruction_generation_count * job.instruction_count_per_generation):
                 run_id = job.ground_truth_count + generation_index
                 exp_result: Optional[SimulationResult] = job.results.get((scenario_id, run_id))
                 
