@@ -85,7 +85,7 @@ class Simulator:
         # Output directories
         self.out_root = CONFIG.carla_env.output_path
         self.time_str = time.strftime("%Y%m%d-%H%M%S")
-        self.base_dir = self.out_root / self.ads.agent_name / self.benchmark / self.seed / self.time_str
+        self.base_dir = self.out_root / self.ads.agent_name / self.benchmark / str(self.seed) / self.time_str
         self.base_subdir: Path = ""     # e.g., "groundtruths", "experiments", etc.
 
         # Make sure base directory exists
