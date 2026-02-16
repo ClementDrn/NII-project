@@ -121,15 +121,6 @@ class Simulator:
         
         LOG.info(f"Simulator initialized with route: {self.current_route}")
         LOG.info(f"Route ID: {self.route_id_str}")
-    
-    def get_base_dir(self) -> Path:
-        """
-        Get the base output directory for the current simulation session.
-        
-        Returns:
-            Path to the base directory where simulation outputs are stored.
-        """
-        return self.base_dir
 
     def _validate_benchmark_installation(self):
         """Validate that the benchmark is properly installed."""
@@ -782,6 +773,29 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         Set a custom base subdirectory for storing results.
         """
         self.base_subdir = base_subdir
+
+    def get_base_dir(self) -> Path:
+        """
+        Get the base output directory for the current simulation session.
+        
+        Returns:
+            Path to the base directory where simulation outputs are stored.
+        """
+        return self.base_dir
+
+    def get_run_dir(self, scenario_id: int, run_id: int) -> Path:
+        """
+        Get the directory for a specific scenario and run.
+        
+        Args:
+            scenario_id: The scenario ID number
+            run_id: The run ID number
+
+        Returns:
+            Path to the run directory
+        """
+        return self._calculate_run_base_dir(self.base_dir / self.base_subdir, self.current_job_id, scenario_id, run_id)
+
 
     def free(self):
         """Clean up any running processes."""

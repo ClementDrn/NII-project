@@ -1,4 +1,5 @@
 import asyncio
+import json
 from pathlib import Path
 from untitled import simulator
 from untitled.core.base import LOG, PROJECT_ROOT, CONFIG, SIMULATION_FPS
@@ -40,6 +41,7 @@ class Pipeline:
         # Constants
         self._ground_truth_dir_name: str = "ground_truths"
         self._jobs_filepath: Path = PROJECT_ROOT / "jobs.yaml"
+        self._experiment_json_filename: str = "experiment_info.json"
 
     async def init(self):
         """
@@ -353,6 +355,7 @@ class Pipeline:
             LOG.info(f"Generating instructions: {job.instruction_generation_count} generation call(s)...")
             for generation_index in range(job.instruction_generation_count):
                 # Cluster frames from the appropriate ground truth for this generation
+                # Cycle through ground truths for diverse ground_truth_index selection
                 ground_truth_index = generation_index % job.ground_truth_count
                 LOG.debug(f"  Generation {generation_index} using ground truth run {ground_truth_index}")
                 
@@ -375,6 +378,18 @@ class Pipeline:
                     instructions[generation_index] = instruction_set
                 else:
                     instructions[generation_index] = None
+
+                # Serialize chosen ground truth index for debugging
+                # Make sure directory exists and write JSON data
+                experiment_json_dir: Path = self.simulator.get_run_dir(scenario_id, generation_index)
+                experiment_json_path: Path = experiment_json_dir / self._experiment_json_filename
+                experiment_json_dir.mkdir(parents=True, exist_ok=True)
+                json_data = {
+                    "ground_truth_index": ground_truth_index,
+                    "generation_index": generation_index
+                }
+                with open(experiment_json_path, "w") as f:
+                    json.dump(json_data, f)
             
             LOG.info(f"Scenario {scenario_id} instruction generation completed")
             
