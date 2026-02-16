@@ -404,6 +404,8 @@ class Simulator:
                 "flag": 2,      # 0: safety, 1: instruction following as extra prompt, 2: instruction following as override, 3: other
                 "injection_time": instruction.injection_window.start_timestamp,
                 "injection_duration": instruction.injection_window.end_timestamp - instruction.injection_window.start_timestamp,
+                "target_module_logic": instruction.target_module_logic,     # for debugging
+                "reasoning": instruction.reasoning,                         # for debugging
             }
             with open(instruction_file, 'w', encoding='utf-8') as f:
                 json.dump([instruction_data], f)    # Store as array of instructions
