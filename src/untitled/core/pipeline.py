@@ -28,10 +28,15 @@ class Pipeline:
 
     def __init__(self):
         """Initialize pipeline components."""
+        # TODO: Use underscore prefix for private attributes
+        # Components
         self.simulator: Simulator = None
         self.filter_embedder: Embedder = None
         self.generator: InstructionGenerator = None
         self.job_handler: JobHandler = None
+
+        # Constants
+        self._ground_truth_dir_name = "ground_truths"
 
     async def init(self):
         """
@@ -480,12 +485,16 @@ class Pipeline:
         LOG.info("=" * 80)
         LOG.info("STAGE 1: CARLA Ground Truth Runs")
         LOG.info("=" * 80)
+
+        # Set base subdir for ground truth runs to keep them organized and separate from experiments
+        self.simulator.set_base_subdir(self._ground_truth_dir_name)
+        
         # TODO: Add parallelized VLM instruction generation during ground truth runs
         for scenario_id in job.scenarios:
             gt_success, gt_failed = self._run_scenario_ground_truths(job, scenario_id)
             job_successful += gt_success
             job_failed += gt_failed
-        
+
         # TODO: Add async VLM instruction generation during ground truth runs
         # Stage 2: VLM - Generate instructions for all experiments
         LOG.info("")
@@ -508,6 +517,9 @@ class Pipeline:
         # Disable full speed mode once all instructions are generated
         # await enable_full_speed_mode_task
         await self.generator.disable_full_speed_mode()
+
+        # Unset base subdir as we are done with running accessing ground truths
+        self.simulator.set_base_subdir("")
         
         # Stage 3: CARLA - Run all experiments with generated instructions
         LOG.info("")

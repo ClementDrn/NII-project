@@ -229,6 +229,7 @@ class JobHandler:
             return None
         
         # Build the expected cache path: ${cache_dir}/sce_XXX/run_YYY
+        # TODO: Maybe we should generalize this structure somewhere else. If it changes in the simulator, it should also change here. Solution: call Simulator._calculate_run_base_dir()??
         cache_path = Path(job.ground_truth_cache_dir) / f"sce_{scenario_id:03d}" / f"run_{run_id:03d}"
         
         # Return cache path if the directory exists

@@ -47,6 +47,7 @@ class Simulator:
             ads: ADS agent configuration. If None, creates default SimLingo agent.
             debug: Enable debug output (images with visualization). If None, uses config setting.
         """
+        # TODO: Use private attribute naming convention (i.e., underscore prefix).
         # Check required environment variables
         if not CONFIG.carla_env.path or not CONFIG.carla_env.conda_path:
             raise ValueError("CONDA_PATH and CARLA_PATH must be set in .env file")
@@ -83,8 +84,10 @@ class Simulator:
         
         # Output directories
         self.out_root = CONFIG.carla_env.output_path
-        self.base_dir = self.out_root / self.ads.agent_name / self.benchmark / str(self.seed)
-        
+        self.time_str = time.strftime("%Y%m%d-%H%M%S")
+        self.base_dir = self.out_root / self.ads.agent_name / self.benchmark / self.seed / self.time_str
+        self.base_subdir: Path = ""     # e.g., "groundtruths", "experiments", etc.
+
         # Get first route (hardcoded scenario)
         routes = sorted(
             [x for x in os.listdir(self.route_path) if x.endswith(".xml")],
@@ -166,6 +169,7 @@ class Simulator:
         run_dir = f"run_{run_id:03d}"
         return self._calculate_scenario_base_dir(base_dir, job_id, scenario_id) / run_dir
 
+# TODO: Group all public methods together
     def set_job_context(self, job_id: int, scenario_id: int):
         """
         Set the current job and scenario context for directory structure.
@@ -180,7 +184,8 @@ class Simulator:
         self.current_job_id = job_id
         self.current_scenario_id = scenario_id
         LOG.debug(f"Set job context: job_{job_id:03d}/sce_{scenario_id:03d}")
-    
+
+# TODO: Evaluate if we still need this method
     def set_scenario(self, scenario_id: int):
         """
         Set the current scenario to run.
@@ -358,7 +363,7 @@ class Simulator:
         self.run_counter += 1
 
         # Build directory structure based on job/scenario context
-        run_base_dir = self._calculate_run_base_dir(self.base_dir, self.current_job_id, self.current_scenario_id, run_id)
+        run_base_dir = self._calculate_run_base_dir(self.base_dir / self.base_subdir, self.current_job_id, self.current_scenario_id, run_id)
 
         # Setup paths for this run
         # Directories
@@ -526,8 +531,9 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
             SimulationResult object, or None if result cannot be loaded
         """
         # Calculate run base directory if it was not provided
+        # run_base_dir is typically of the form: base_dir/base_subdir/job_XXX/sce_XXX/run_XXX
         if run_base_dir is None:
-            run_base_dir = self._calculate_run_base_dir(self.base_dir, job_id, scenario_id, run_id)
+            run_base_dir = self._calculate_run_base_dir(self.base_dir / self.base_subdir, job_id, scenario_id, run_id)
         
         result_file = run_base_dir / LOG_RES_FILE_NAME
         
@@ -554,7 +560,7 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         """
         # Calculate run base directory if it was not provided
         if run_base_dir is None:
-            run_base_dir = self._calculate_run_base_dir(self.base_dir, job_id, scenario_id, run_id)
+            run_base_dir = self._calculate_run_base_dir(self.base_dir / self.base_subdir, job_id, scenario_id, run_id)
 
         # Check if the image directory exists
         image_dir = run_base_dir / IMAGES_DIR_NAME
@@ -605,17 +611,17 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         """
         # Calculate run base directory if it was not provided
         if run_base_dir is None:
-            run_base_dir = self._calculate_run_base_dir(self.base_dir, job_id, scenario_id, run_id)
-        
+            run_base_dir = self._calculate_run_base_dir(self.base_dir / self.base_subdir, job_id, scenario_id, run_id)
+
         # Check if the image directory exists
         image_dir = run_base_dir / IMAGES_DIR_NAME
         if not image_dir.exists():
             LOG.error(f"Image directory does not exist: {image_dir}")
             return []
-        
+
         # Retrieve all image files (assuming .png and .jpg formats)
         image_files = chain(image_dir.glob("*.png"), image_dir.glob("*.jpg"))
-        
+
         # Sort by filename without extension. BUT: "5.png" should come before "10.png", so we sort by integer value
         sorted_image_files = sorted(image_files, key=lambda path: int(path.stem))
 
@@ -661,7 +667,7 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         """
         # Calculate run base directory if it was not provided
         if run_base_dir is None:
-            run_base_dir = self._calculate_run_base_dir(self.base_dir, job_id, scenario_id, run_id)
+            run_base_dir = self._calculate_run_base_dir(self.base_dir / self.base_subdir, job_id, scenario_id, run_id)
         
         # Check if the metadata directory exists
         metadata_dir = run_base_dir / METADATA_DIR_NAME
@@ -709,7 +715,7 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         """
         # Calculate run base directory if it was not provided
         if run_base_dir is None:
-            run_base_dir = self._calculate_run_base_dir(self.base_dir, job_id, scenario_id, run_id)
+            run_base_dir = self._calculate_run_base_dir(self.base_dir / self.base_subdir, job_id, scenario_id, run_id)
         
         # Check if the metadata directory exists
         metadata_dir = run_base_dir / METADATA_DIR_NAME
@@ -757,6 +763,12 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         
         return metadata_list
 
+    def set_base_subdir(self, base_subdir: Path):
+        """
+        Set a custom base subdirectory for storing results.
+        """
+        self.base_subdir = base_subdir
+
     def free(self):
         """Clean up any running processes."""
         LOG.info("Cleaning up simulator processes...")
@@ -770,6 +782,7 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         # Then kill any remaining CARLA processes
         self._kill_carla_processes()
     
+# TODO: Move this method to after __init__()
     def __del__(self):
         """Destructor to ensure cleanup."""
         try:
