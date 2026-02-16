@@ -42,6 +42,7 @@ class Pipeline:
         self._ground_truth_dir_name: str = "ground_truths"
         self._jobs_filepath: Path = PROJECT_ROOT / "jobs.yaml"
         self._experiment_json_filename: str = "experiment_info.json"
+        self._config_copied: bool = False
 
     async def init(self):
         """
@@ -478,6 +479,14 @@ class Pipeline:
         # Initialize components for this job context
         await self._init_job_components()
         
+        # Copy settings to simulator's output directory for record-keeping (once)
+        # NOTE: Instead of having a "once" flag, we could copy each job by one in their respective job directory, this is less straigthforward though.
+        if not self._config_copied:
+            simulator_base_dir = self.simulator.get_base_dir()
+            copy_config_to_directory(PROJECT_ROOT, simulator_base_dir, LOG)
+            copy_jobs_to_directory(self._jobs_filepath, simulator_base_dir)
+            self._config_copied = True
+        
         LOG.info("=" * 80)
         LOG.info(f"Starting Job {job.id}: '{job.name}'")
         LOG.info(f"Scenarios: {len(job.scenarios)}, Ground truth runs: {job.ground_truth_count}, Instruction generations: {job.instruction_generation_count}, "
@@ -682,10 +691,6 @@ class Pipeline:
         successful_runs = 0
         failed_runs = 0
 
-        # Copy settings to simulator's output directory for record-keeping
-        simulator_base_dir = simulator.get_base_dir()
-        copy_config_to_directory(PROJECT_ROOT, simulator_base_dir, LOG)
-        copy_jobs_to_directory(self._jobs_filepath, simulator_base_dir)
         
         try:
             # Iterate through all jobs
