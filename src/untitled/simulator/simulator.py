@@ -88,6 +88,9 @@ class Simulator:
         self.base_dir = self.out_root / self.ads.agent_name / self.benchmark / self.seed / self.time_str
         self.base_subdir: Path = ""     # e.g., "groundtruths", "experiments", etc.
 
+        # Make sure base directory exists
+        self.base_dir.mkdir(parents=True, exist_ok=True)
+
         # Get first route (hardcoded scenario)
         routes = sorted(
             [x for x in os.listdir(self.route_path) if x.endswith(".xml")],
@@ -119,6 +122,15 @@ class Simulator:
         LOG.info(f"Simulator initialized with route: {self.current_route}")
         LOG.info(f"Route ID: {self.route_id_str}")
     
+    def get_base_dir(self) -> Path:
+        """
+        Get the base output directory for the current simulation session.
+        
+        Returns:
+            Path to the base directory where simulation outputs are stored.
+        """
+        return self.base_dir
+
     def _validate_benchmark_installation(self):
         """Validate that the benchmark is properly installed."""
         required_paths = [

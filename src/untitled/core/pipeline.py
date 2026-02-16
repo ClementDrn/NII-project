@@ -1,7 +1,9 @@
 import asyncio
+from pathlib import Path
+from untitled import simulator
 from untitled.core.base import LOG, PROJECT_ROOT, CONFIG, SIMULATION_FPS
-from untitled.core.job_handler import Job, JobHandler
-from untitled.core.settings import configure_settings_for_job
+from untitled.core.job_handler import Job, JobHandler, copy_jobs_to_directory
+from untitled.core.settings import configure_settings_for_job, copy_config_to_directory
 from untitled.generator.instruction_generator import InstructionGenerator
 from untitled.generator.experiment_nature import ExperimentNature
 from untitled.simulator.simulator import Simulator
@@ -36,7 +38,8 @@ class Pipeline:
         self.job_handler: JobHandler = None
 
         # Constants
-        self._ground_truth_dir_name = "ground_truths"
+        self._ground_truth_dir_name: str = "ground_truths"
+        self._jobs_filepath: Path = PROJECT_ROOT / "jobs.yaml"
 
     async def init(self):
         """
@@ -46,8 +49,8 @@ class Pipeline:
         in _init_job_components() after the job context is configured.
         """
         # Initialize JobHandler
-        jobs_file = PROJECT_ROOT / "jobs.yaml"
-        self.job_handler = JobHandler(str(jobs_file))
+        
+        self.job_handler = JobHandler(str(self._jobs_filepath))
         LOG.info(f"Loaded {len(self.job_handler)} jobs")
 
     async def _init_job_components(self):
@@ -663,6 +666,11 @@ class Pipeline:
         total_runs = 0
         successful_runs = 0
         failed_runs = 0
+
+        # Copy settings to simulator's output directory for record-keeping
+        simulator_base_dir = simulator.get_base_dir()
+        copy_config_to_directory(PROJECT_ROOT, simulator_base_dir, LOG)
+        copy_jobs_to_directory(self._jobs_filepath, simulator_base_dir)
         
         try:
             # Iterate through all jobs

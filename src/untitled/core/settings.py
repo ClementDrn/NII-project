@@ -1,6 +1,7 @@
 from pydantic import Field, ConfigDict
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import yaml
+import shutil
 from pathlib import Path
 import os
 from untitled.core.version import CONFIG_VERSION, HOSTS_VERSION, are_versions_compatible
@@ -380,3 +381,28 @@ def configure_settings_for_job(settings: Settings, job) -> None:
         ]
     else:
         settings.active_model_instances = []
+
+
+def copy_config_to_directory(root_path: Path, destination: Path, logger: logging.Logger) -> None:
+    """
+    Copy config.yaml to a destination directory.
+    
+    This allows tracking which configuration was used for each
+    simulation run.
+    
+    Args:
+        root_path: Project root directory containing the config file
+        destination: Directory where config file should be copied
+        logger: Logger instance for debug/warning messages
+    """
+    # Ensure destination directory exists
+    destination.mkdir(parents=True, exist_ok=True)
+    
+    # Copy config.yaml
+    src_config = root_path / "config.yaml"
+    dst_config = destination / "config.yaml"
+    if src_config.exists():
+        shutil.copy2(src_config, dst_config)
+        logger.debug(f"Copied config.yaml to {dst_config}")
+    else:
+        logger.warning(f"Source config file not found: {src_config}")

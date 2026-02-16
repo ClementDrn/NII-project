@@ -5,6 +5,7 @@ from untitled.generator.experiment_nature import ExperimentNature
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Dict, Any
+import shutil
 import yaml
 
 
@@ -235,3 +236,26 @@ class JobHandler:
         # Return cache path if the directory exists
         exists = cache_path.exists() and cache_path.is_dir()
         return cache_path if exists else None
+
+
+def copy_jobs_to_directory(source_path: Path, destination: Path) -> None:
+    """
+    Copy jobs.yaml to a destination directory.
+    
+    This allows tracking which job configuration was used for each
+    simulation run.
+    
+    Args:
+        source_path: Path to the jobs.yaml file
+        destination: Directory where jobs.yaml should be copied
+    """
+    # Ensure destination directory exists
+    destination.mkdir(parents=True, exist_ok=True)
+    
+    # Copy jobs.yaml
+    dst_jobs = destination / "jobs.yaml"
+    if source_path.exists():
+        shutil.copy2(source_path, dst_jobs)
+        LOG.debug(f"Copied jobs.yaml to {dst_jobs}")
+    else:
+        LOG.warning(f"Source jobs file not found: {source_path}")
