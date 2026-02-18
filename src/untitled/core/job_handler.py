@@ -25,8 +25,10 @@ class Job:
         generator: ID of the generator config to use (from config.yaml)
         model_instances: List of model instance IDs to use (from config.yaml)
         experiment_nature: The nature of experiments (adversarial or corrective)
-        instruction_generation_count: Number of instruction generation calls to make
+        instruction_generation_count: Number of instruction generation calls to make per scenario in one iteration
         instruction_count_per_generation: Number of instructions to use per generation call
+        repeat_count: Number of times to repeat execution loop
+        stop_repeat_on_success: If True, stop repeating when a scenario achieves success
         results: Dictionary storing simulation results keyed by (scenario_id, run_id)
     """
     id: int
@@ -41,6 +43,8 @@ class Job:
     experiment_nature: ExperimentNature = ExperimentNature.ADVERSARIAL
     instruction_generation_count: int = 1
     instruction_count_per_generation: int = 1
+    repeat_count: int = 1
+    stop_repeat_on_success: bool = False
     results: Dict[tuple, Any] = field(default_factory=dict)
 
 
@@ -157,6 +161,8 @@ class JobHandler:
                     experiment_nature=experiment_nature,
                     instruction_generation_count=job_data.get('instruction_generation_count', 1),
                     instruction_count_per_generation=job_data.get('instruction_count_per_generation', 1),
+                    repeat_count=job_data.get('repeat_count', 1),
+                    stop_repeat_on_success=job_data.get('stop_repeat_on_success', False),
                 )
                 
                 self.jobs.append(job)

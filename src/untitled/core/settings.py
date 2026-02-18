@@ -101,7 +101,7 @@ class FilterConfig(BaseSettings):
     model_config = ConfigDict(extra='ignore')
     
     id: str
-    max_frames_per_minute: int = 60
+    max_frames_per_minute: int = 60     # TODO: Switch from 0 to -1 for more general "keep all"
     clustering_threshold: float = 0.990
     max_cluster_count: int = 30
 
@@ -114,6 +114,8 @@ class GeneratorConfig(BaseSettings):
         id: Unique identifier for the generator configuration
         design: Generator design type ("single_step_vlm" or "multi_step_vlm")
         instruction_count_per_generation: Number of instructions to generate per generation call (>= 1)
+        is_incremental: Whether to use incremental generation
+        max_previous_instructions: For incremental generation, how many previous instructions to include in context (-1 = keep all)
         steps: List of generator steps configuration
     """
     model_config = ConfigDict(extra='ignore')
@@ -121,6 +123,8 @@ class GeneratorConfig(BaseSettings):
     id: str
     design: str = "single_step_vlm"
     instruction_count_per_generation: int = 3
+    is_incremental: bool = False
+    max_previous_instructions: int = 5
     steps: list[GeneratorStepConfig] = []
 
 
@@ -355,6 +359,7 @@ def configure_settings_for_job(settings: Settings, job) -> None:
     Raises:
         ValueError: If any referenced config ID is not found
     """
+    # TODO: CONFIG should not be global but held by the pipeline and passed down to its components.
     # Set active simulator (required)
     if job.simulator:
         settings.simulator = get_simulator_config_by_id(settings, job.simulator)

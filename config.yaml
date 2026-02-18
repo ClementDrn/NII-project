@@ -77,6 +77,16 @@ generators:
         model_name: "gpt-5-mini"
         max_tokens: 128000
         thinking_mode: "enabled"
+  - id: "gpt5_mini_single_step_incremental"
+    design: "single_step_vlm"
+    instruction_count_per_generation: 1   # edited
+    is_incremental: true
+    max_previous_instructions: 5
+    steps:
+      - id: "planning"
+        model_name: "gpt-5-mini"
+        max_tokens: 128000
+        thinking_mode: "enabled"
   - id: "gpt5_mini_multi_step"
     design: "multi_step_vlm"
     instruction_count_per_generation: 3

@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import Optional, List, Any
 from dataclasses import dataclass
@@ -5,6 +6,7 @@ from asyncio import Future
 import yaml
 
 from untitled.core.base import CONFIG, PROJECT_ROOT
+from untitled.generator.instruction import InstructionResult
 from untitled.generator.prompt_dispatcher import PromptRequest
 
 
@@ -101,6 +103,7 @@ class Task:
         self.has_descriptions_input: bool = inputs.get('descriptions', False)
         self.has_failure_text_input: bool = inputs.get('failure_text', False)
         self.has_route_completion_input: bool = inputs.get('route_completion', False)
+        self.has_previously_tried_instructions_input: bool = inputs.get('previously_tried_instructions', False)
         
         # Load output flags
         outputs = config.get('outputs', {})
@@ -124,6 +127,7 @@ class Task:
         descriptions: Optional[str] = None,
         failure_text: Optional[str] = None,
         was_route_completed: Optional[bool] = None,
+        previously_tried_instructions: Optional[List[InstructionResult]] = None
     ) -> PromptRequest:
         """
         Prepare a complete PromptRequest based on task inputs.
@@ -138,7 +142,7 @@ class Task:
             descriptions: Scene descriptions (for multi-step pipelines)
             failure_text: Description of the failure that occurred (for corrective tasks)
             was_route_completed: Whether the route was completed (for corrective tasks)
-            
+            previously_tried_instructions: List of previous instruction results (for incremental generation)
         Returns:
             A PromptRequest ready to be dispatched.
         """
@@ -152,7 +156,23 @@ class Task:
         if self.has_route_completion_input and was_route_completed is not None:
             status = "completed" if was_route_completed else "not completed"
             parts.append(f"ROUTE STATUS: The route was {status}.")
-        
+
+        # Add previously tried instructions and their results for incremental generation
+        if self.has_previously_tried_instructions_input and previously_tried_instructions:
+            previous_instructions_text = "PREVIOUSLY TRIED INSTRUCTIONS:\n"
+            for i, instruction_result in enumerate(previously_tried_instructions):
+                json_result = {
+                    "text": instruction_result.instruction.text,
+                    "injection_window": {
+                        "start_timestamp": instruction_result.instruction.injection_window.start_timestamp,
+                        "end_timestamp": instruction_result.instruction.injection_window.end_timestamp
+                    },
+                    "reasoning": instruction_result.instruction.reasoning,
+                    "was_successful": instruction_result.was_successful
+                }
+                previous_instructions_text += f"Instruction {i+1}: {json.dumps(json_result)}\n"
+            parts.append(previous_instructions_text)
+
         # Add scene descriptions (for LLM-only planning step)
         if self.has_descriptions_input and descriptions:
             parts.append(descriptions)
@@ -202,6 +222,8 @@ class Task:
             inputs.append('failure_text')
         if self.has_route_completion_input:
             inputs.append('route_completion')
+        if self.has_previously_tried_instructions_input:
+            inputs.append('previously_tried_instructions')
         
         outputs = []
         if self.has_instruction_output:

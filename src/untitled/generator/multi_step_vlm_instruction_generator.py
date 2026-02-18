@@ -5,7 +5,8 @@ from untitled.generator.prompt_dispatcher import PromptDispatcher, PromptRequest
 from untitled.generator.model import create_model_client, parse_model_response, ModelClient, ModelClientFactory, ModelType
 from untitled.generator.experiment_nature import ExperimentNature
 from untitled.generator.task import Task
-from untitled.generator.instruction import InstructionSet, parse_instructions_from_json
+from untitled.generator.task_manager import TaskManager
+from untitled.generator.instruction import InstructionResult, InstructionSet, parse_instructions_from_json
 from untitled.core.base import VLM_LOG, PROJECT_ROOT, LOG, CONFIG
 from untitled.simulator.simulation_data import SimulationData
 from typing import List, Optional, override
@@ -15,12 +16,12 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
     """
     Multi-step instruction generator using VLM for scene description and LLM/VLM for planning.
     The actual model process can be local or remote, and this class interacts with it via OpenAI-compatible API.
-    
-    The planner task used for instruction generation depends on the experiment nature:
-    - ADVERSARIAL: Uses multi_step_adversarial_planner task
-    - CORRECTIVE: Uses multi_step_corrective_planner task
     """
-    def __init__(self):
+    def __init__(
+        self,
+        experiment_nature: ExperimentNature = ExperimentNature.ADVERSARIAL,
+        is_incremental: bool = False
+    ):
         super().__init__()
         
         # Check that there are exactly two steps configured
@@ -35,11 +36,15 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
         self._planner_dispatcher: PromptDispatcher = None
         self._is_full_speed_mode_enabled: bool = False
 
-        # Load tasks
-        self._descriptor_task: Task = Task("scene_descriptor.yaml")
-        self._adversarial_planner_task: Task = Task("multi_step_adversarial_planner.yaml")
-        self._corrective_planner_task: Task = Task("multi_step_corrective_planner.yaml")
-        LOG.debug(f"Loaded tasks: {self._descriptor_task}, {self._adversarial_planner_task}, {self._corrective_planner_task}")
+        # Create tasks using TaskManager
+        task_set = TaskManager.create_task(
+            experiment_nature=experiment_nature,
+            is_incremental=is_incremental,
+            has_descriptor=True
+        )
+        self._descriptor_task: Task = task_set.descriptor_task
+        self._planner_task: Task = task_set.planner_task
+        LOG.debug(f"Loaded tasks: {self._descriptor_task}, {self._planner_task}")
 
         # Get API parameters from config for both steps
         descriptor_step: GeneratorStepConfig = CONFIG.generator.steps[0]
@@ -72,17 +77,27 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
         parallel_planner_list = [client for client in self._planner_clients if client.is_parallelizable()]
         self._planner_dispatcher: PromptDispatcher = PromptDispatcher(parallel_planner_list)
 
-    def _get_planner_task(self) -> Task:
+    def set_planner_task(
+        self,
+        experiment_nature: ExperimentNature = ExperimentNature.ADVERSARIAL,
+        is_incremental: bool = False
+    ) -> None:
         """
-        Get the appropriate planner task based on current experiment nature.
+        Set the planner task to use for instruction generation.
         
-        Returns:
-            The task to use for planning/instruction generation
+        Args:
+            experiment_nature: The experiment nature (ADVERSARIAL, CORRECTIVE)
+            is_incremental: Whether to use incremental generation mode
+        
+        Raises:
+            NotImplementedError: If the requested task combination is not yet implemented
         """
-        if self._experiment_nature == ExperimentNature.CORRECTIVE:
-            return self._corrective_planner_task
-        else:
-            return self._adversarial_planner_task
+        self._planner_task = TaskManager.create_planner_task(
+            experiment_nature=experiment_nature,
+            is_incremental=is_incremental,
+            has_descriptor=True
+        )
+        LOG.debug(f"Planner task set to: {self._planner_task.name}")
 
     @override
     async def init(self):
@@ -137,6 +152,7 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
         data: SimulationData,
         failure_text: Optional[str] = None,
         was_route_completed: Optional[bool] = None,
+        previously_tried_instructions: Optional[List[InstructionResult]] = None,
     ) -> Optional[InstructionSet]:
         """
         Generate instruction from images and metadata using LLM/VLM models.
@@ -157,9 +173,8 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
             LOG.error("At least one frame is required to generate instructions!")
             raise ValueError("At least one frame is required to generate instructions.")
 
-        # Get the appropriate planner task based on experiment nature
-        planner_task = self._get_planner_task()
-        LOG.debug(f"Using planner task: {planner_task.name} (experiment nature: {self._experiment_nature.value})")
+        # Use the configured planner task
+        LOG.debug(f"Using planner task: {self._planner_task.name}")
 
         # Step 1:
         # Generate a scene description for each frame
@@ -221,13 +236,24 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
             # Finally, activate planner clients
             await self._activate_clients(self._planner_dispatcher, self._planner_clients)
 
+        # Apply max_previous_instructions limit if configured
+        limited_previous_instructions = []
+        if previously_tried_instructions and CONFIG.generator.is_incremental:
+            max_previous = CONFIG.generator.max_previous_instructions
+            if max_previous > 0 and len(previously_tried_instructions) > max_previous:
+                limited_previous_instructions = previously_tried_instructions[-max_previous:]
+                LOG.debug(f"Limited previously tried instructions from {len(previously_tried_instructions)} to {max_previous}")
+            else:
+                limited_previous_instructions = previously_tried_instructions
+
         # Prepare planner prompt request using task
         planner_future = asyncio.Future()
-        prompt_request = planner_task.prepare_prompt(
+        prompt_request = self._planner_task.prepare_prompt(
             future=planner_future,
             descriptions=concatenated_descriptions,
             failure_text=failure_text,
             was_route_completed=was_route_completed,
+            previously_tried_instructions=limited_previous_instructions
         )
         await self._planner_dispatcher.add(prompt_request)
         chat_response = await planner_future

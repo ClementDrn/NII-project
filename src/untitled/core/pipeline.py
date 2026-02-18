@@ -13,7 +13,7 @@ from untitled.simulator.simulation_result import SimulationResult
 from untitled.generator.single_step_vlm_instruction_generator import SingleStepVLMInstructionGenerator
 from untitled.generator.multi_step_vlm_instruction_generator import MultiStepVLMInstructionGenerator
 from untitled.simulator.simulation_data import SimulationFrameData
-from untitled.generator.instruction import Instruction, InstructionSet
+from untitled.generator.instruction import Instruction, InstructionResult, InstructionSet
 from untitled.filter.filter import cluster_frames
 from untitled.filter.embedder import DINOEmbedder, Embedder
 
@@ -56,22 +56,25 @@ class Pipeline:
         self.job_handler = JobHandler(str(self._jobs_filepath))
         LOG.info(f"Loaded {len(self.job_handler)} jobs")
 
-    async def _init_job_components(self):
+    async def _init_job_components(self, job: Job):
         """
         Initialize components for the current job context.
         
         Must be called after configure_settings_for_job() sets up
         CONFIG.simulator, CONFIG.generator, and CONFIG.filter.
+
+        Args:
+            job: The job for which to initialize components (used for context)
         """
         # Initialize simulator
         self.simulator = Simulator()
 
         # Initialize instruction generator based on config
         if CONFIG.generator.design == "single_step_vlm":
-            self.generator = SingleStepVLMInstructionGenerator()
+            self.generator = SingleStepVLMInstructionGenerator(job.experiment_nature, CONFIG.generator.is_incremental)
             await self.generator.init()
         elif CONFIG.generator.design == "multi_step_vlm":
-            self.generator = MultiStepVLMInstructionGenerator()
+            self.generator = MultiStepVLMInstructionGenerator(job.experiment_nature, CONFIG.generator.is_incremental)
             await self.generator.init()
         else:
             raise ValueError(f"Unknown generator design: {CONFIG.generator.design}")
@@ -204,7 +207,8 @@ class Pipeline:
         scenario_id: int, 
         generation_index: int, 
         simulation_data: SimulationData,
-        ground_truth_result: Optional[SimulationResult] = None
+        ground_truth_result: Optional[SimulationResult] = None,
+        previously_tried_instructions: Optional[List[InstructionResult]] = None
     ) -> Tuple[bool, Optional[InstructionSet]]:
         """
         Generate VLM instruction for a single experiment (async, queues the prompt).
@@ -215,6 +219,7 @@ class Pipeline:
             generation_index: The generation index (0-based, relative to instruction generations only)
             simulation_data: The simulation data containing frames and metadata
             ground_truth_result: Optional ground truth simulation result (for corrective tasks)
+            previously_tried_instructions: List of previous instruction results (for incremental generation)
             
         Returns:
             Tuple of (success, InstructionSet or None)
@@ -234,7 +239,8 @@ class Pipeline:
             instruction_set: InstructionSet = await self.generator.generate_instructions_from_images(
                 simulation_data,
                 failure_text=failure_text,
-                was_route_completed=was_route_completed
+                was_route_completed=was_route_completed,
+                previously_tried_instructions=previously_tried_instructions
             )
             if not instruction_set:
                 LOG.error(f"    Failed to generate instruction from VLM")
@@ -287,6 +293,37 @@ class Pipeline:
             LOG.error(f"    Experiment run {run_id} failed: {e}")
             return (0, 1)
 
+    def _evaluate_instruction_success(
+        self,
+        job: Job,
+        experiment_result: SimulationResult,
+        ground_truth_result: Optional[SimulationResult]
+    ) -> bool:
+        """
+        Evaluate whether an instruction was successful based on experiment results.
+        
+        Args:
+            job: The job being executed (contains experiment_nature)
+            experiment_result: The result of running the experiment with the instruction
+            ground_truth_result: The ground truth result to compare against
+            
+        Returns:
+            True if the instruction achieved its goal, False otherwise
+        """
+        if ground_truth_result is None:
+            # Cannot determine success without ground truth
+            return False
+        
+        gt_penalty = ground_truth_result.scores.score_penalty
+        exp_penalty = experiment_result.scores.score_penalty
+        
+        if job.experiment_nature == ExperimentNature.ADVERSARIAL:
+            # Adversarial success: experiment penalty is lower (more infractions)
+            return exp_penalty < gt_penalty
+        else:
+            # Corrective success: experiment penalty is higher (fewer infractions)
+            return exp_penalty > gt_penalty
+
     def _run_scenario_ground_truths(self, job: Job, scenario_id: int) -> Tuple[int, int]:
         """
         Run all ground truth runs for a single scenario (Stage 1: CARLA only).
@@ -324,7 +361,12 @@ class Pipeline:
         
         return (successful, failed)
 
-    async def _generate_scenario_instructions(self, job: Job, scenario_id: int) -> Dict[int, Optional[InstructionSet]]:
+    async def _generate_scenario_instructions(
+        self, 
+        job: Job, 
+        scenario_id: int,
+        previously_tried_instructions: Optional[List[InstructionResult]] = None
+    ) -> Dict[int, Optional[InstructionSet]]:
         """
         Generate VLM instructions for all experiments in a scenario (Stage 2: VLM only).
         
@@ -334,6 +376,7 @@ class Pipeline:
         Args:
             job: The job being executed
             scenario_id: The scenario ID
+            previously_tried_instructions: List of instruction results from previous repeats (modified in-place)
             
         Returns:
             Dictionary mapping experiment_index to InstructionSet or None
@@ -354,6 +397,7 @@ class Pipeline:
             
             # Generate instructions for all experiments
             LOG.info(f"Generating instructions: {job.instruction_generation_count} generation call(s)...")
+            
             for generation_index in range(job.instruction_generation_count):
                 # Cluster frames from the appropriate ground truth for this generation
                 # Cycle through ground truths for diverse ground_truth_index selection
@@ -372,8 +416,10 @@ class Pipeline:
                 if ground_truth_result is None and job.experiment_nature == ExperimentNature.CORRECTIVE:
                     LOG.warning(f"No ground truth result found for scenario {scenario_id} run {ground_truth_index}, corrective task may lack failure context")
                 
+                # Pass previously tried instructions for incremental generation (limiting is done in generator)
                 success, instruction_set = await self._generate_instruction_for_experiment(
-                    job, scenario_id, generation_index, simulation_data, ground_truth_result
+                    job, scenario_id, generation_index, simulation_data, ground_truth_result,
+                    previously_tried_instructions=previously_tried_instructions
                 )
                 if success:
                     instructions[generation_index] = instruction_set
@@ -460,6 +506,48 @@ class Pipeline:
         
         return (successful, failed)
 
+    def _collect_instruction_results(
+        self,
+        job: Job,
+        scenario_id: int,
+        instructions: Dict[int, Optional[InstructionSet]],
+        tried_instructions: List[InstructionResult]
+    ) -> None:
+        """
+        Collect experiment results into InstructionResult objects for incremental generation.
+        
+        After experiments are run, this method evaluates each instruction's success
+        and appends the results to tried_instructions for use in subsequent repeats.
+        
+        Args:
+            job: The job being executed
+            scenario_id: The scenario ID
+            instructions: Dictionary mapping generation_index to InstructionSet
+            tried_instructions: List to append InstructionResult objects to (modified in-place)
+        """
+        for generation_index, instruction_set in instructions.items():
+            if instruction_set is None:
+                continue
+            
+            # Get ground truth result for comparison
+            ground_truth_index = generation_index % job.ground_truth_count
+            ground_truth_result = job.results.get((scenario_id, ground_truth_index))
+            
+            # Collect results for each instruction in the set
+            instruction_count = min(job.instruction_count_per_generation, len(instruction_set.instructions))
+            for i in range(instruction_count):
+                instruction = instruction_set.instructions[i]
+                run_id = job.ground_truth_count + generation_index * job.instruction_count_per_generation + i
+                exp_result = job.results.get((scenario_id, run_id))
+                
+                if exp_result:
+                    was_successful = self._evaluate_instruction_success(job, exp_result, ground_truth_result)
+                    tried_instructions.append(InstructionResult(
+                        instruction=instruction,
+                        was_successful=was_successful
+                    ))
+                    LOG.debug(f"  Collected result for run {run_id}: {'success' if was_successful else 'failure'}")
+
     async def _run_job(self, job: Job) -> Tuple[int, int]:
         """
         Run a single job with all its scenarios using 3-stage approach:
@@ -477,7 +565,7 @@ class Pipeline:
         configure_settings_for_job(CONFIG, job)
         
         # Initialize components for this job context
-        await self._init_job_components()
+        await self._init_job_components(job)
         
         # Copy settings to simulator's output directory for record-keeping (once)
         # NOTE: Instead of having a "once" flag, we could copy each job by one in their respective job directory, this is less straigthforward though.
@@ -490,7 +578,7 @@ class Pipeline:
         LOG.info("=" * 80)
         LOG.info(f"Starting Job {job.id}: '{job.name}'")
         LOG.info(f"Scenarios: {len(job.scenarios)}, Ground truth runs: {job.ground_truth_count}, Instruction generations: {job.instruction_generation_count}, "
-                 f"Experiment runs: {job.instruction_count_per_generation * job.instruction_generation_count}")
+                 f"Experiment runs: {job.instruction_count_per_generation * job.instruction_generation_count}, Repeats: {job.repeat_count}")
         LOG.info(f"Experiment nature: {job.experiment_nature.value}")
         if CONFIG.generator:
             LOG.info(f"Generator: {CONFIG.generator.id} ({CONFIG.generator.design})")
@@ -514,7 +602,7 @@ class Pipeline:
         LOG.info("=" * 80)
 
         # Set base subdir for ground truth runs to keep them organized and separate from experiments
-        self.simulator.set_base_subdir(self._ground_truth_dir_name)
+        self.simulator.set_base_job_subdir(self._ground_truth_dir_name)
         
         # TODO: Add parallelized VLM instruction generation during ground truth runs
         for scenario_id in job.scenarios:
@@ -523,40 +611,89 @@ class Pipeline:
             job_failed += gt_failed
 
         # TODO: Add async VLM instruction generation during ground truth runs
-        # Stage 2: VLM - Generate instructions for all experiments
-        LOG.info("")
-        LOG.info("=" * 80)
-        LOG.info("STAGE 2: VLM Instruction Generation")
-        LOG.info("=" * 80)
+        # Initialize tracking for repeat loop
+        repeat_count = job.repeat_count
+        stop_on_success = job.stop_repeat_on_success
         
-        # Enable generator's full speed mode as the simulator is idle now (async)
-        enable_full_speed_mode_task = asyncio.create_task(self.generator.enable_full_speed_mode())
-        await enable_full_speed_mode_task
+        # Track previously tried instructions per scenario (for incremental generation across repeats)
+        scenario_tried_instructions: Dict[int, List[InstructionResult]] = {sid: [] for sid in job.scenarios}
+        # Track which scenarios have achieved success (for stop_repeat_on_success)
+        scenario_success: Dict[int, bool] = {sid: False for sid in job.scenarios}
         
-        # Generate instructions for all scenarios
-        # Each generation will cluster frames from a different ground truth run (modulo ground_truth_count)
-        all_instructions = {}  # Map: scenario_id -> {experiment_index -> Instruction}
-        for scenario_id in job.scenarios:
-            LOG.debug(f"Generating instructions for scenario {scenario_id}...")
-            scenario_instructions = await self._generate_scenario_instructions(job, scenario_id)
-            all_instructions[scenario_id] = scenario_instructions
-        
-        # Disable full speed mode once all instructions are generated
-        # await enable_full_speed_mode_task
-        await self.generator.disable_full_speed_mode()
+        # Repeat loop for instruction generation + experiment execution
+        for repeat_index in range(repeat_count):
+            # Check if we should stop early (all scenarios have success)
+            if stop_on_success and all(scenario_success.values()):
+                LOG.info(f"All scenarios achieved success, stopping at repeat {repeat_index}")
+                break
+                
+            LOG.info("")
+            LOG.info("=" * 80)
+            LOG.info(f"REPEAT {repeat_index + 1} / {repeat_count}")
+            LOG.info("=" * 80)
+            
+            # Stage 2: VLM - Generate instructions for all experiments
+            LOG.info("")
+            LOG.info("=" * 80)
+            LOG.info(f"STAGE 2: VLM Instruction Generation (Repeat {repeat_index + 1})")
+            LOG.info("=" * 80)
+            
+            # Enable generator's full speed mode as the simulator is idle now (async)
+            enable_full_speed_mode_task = asyncio.create_task(self.generator.enable_full_speed_mode())
+            await enable_full_speed_mode_task
+            
+            # Generate instructions for all scenarios
+            # Each generation will cluster frames from a different ground truth run (modulo ground_truth_count)
+            all_instructions = {}  # Map: scenario_id -> {experiment_index -> Instruction}
+            for scenario_id in job.scenarios:
+                # Skip scenarios that already achieved success (if stop_on_success is enabled)
+                if stop_on_success and scenario_success[scenario_id]:
+                    LOG.debug(f"Skipping scenario {scenario_id} (already achieved success)")
+                    continue
+                    
+                LOG.debug(f"Generating instructions for scenario {scenario_id}...")
+                scenario_instructions = await self._generate_scenario_instructions(
+                    job, scenario_id, 
+                    previously_tried_instructions=scenario_tried_instructions[scenario_id]
+                )
+                all_instructions[scenario_id] = scenario_instructions
+            
+            # Disable full speed mode once all instructions are generated
+            await self.generator.disable_full_speed_mode()
 
-        # Unset base subdir as we are done with running accessing ground truths
-        self.simulator.set_base_subdir("")
-        
-        # Stage 3: CARLA - Run all experiments with generated instructions
-        LOG.info("")
-        LOG.info("=" * 80)
-        LOG.info("STAGE 3: CARLA Experiment Runs")
-        LOG.info("=" * 80)
-        for scenario_id in job.scenarios:
-            exp_success, exp_failed = self._run_scenario_experiments(job, scenario_id, all_instructions[scenario_id])
-            job_successful += exp_success
-            job_failed += exp_failed
+            # Unset base subdir as we are done with running accessing ground truths
+            self.simulator.set_base_job_subdir("")
+            
+            # Stage 3: CARLA - Run all experiments with generated instructions
+            LOG.info("")
+            LOG.info("=" * 80)
+            LOG.info(f"STAGE 3: CARLA Experiment Runs (Repeat {repeat_index + 1})")
+            LOG.info("=" * 80)
+            for scenario_id in job.scenarios:
+                # Skip scenarios that already achieved success (if stop_on_success is enabled)
+                if stop_on_success and scenario_success[scenario_id]:
+                    continue
+                    
+                if scenario_id not in all_instructions:
+                    continue
+                    
+                exp_success, exp_failed = self._run_scenario_experiments(job, scenario_id, all_instructions[scenario_id])
+                job_successful += exp_success
+                job_failed += exp_failed
+                
+                # Collect instruction results from this repeat for incremental generation in next repeat
+                self._collect_instruction_results(
+                    job, scenario_id, all_instructions[scenario_id],
+                    scenario_tried_instructions[scenario_id]
+                )
+                
+                # Check if this scenario achieved success in this repeat
+                # Look at the tried_instructions to see if any was successful
+                for instruction_result in scenario_tried_instructions[scenario_id]:
+                    if instruction_result.was_successful:
+                        scenario_success[scenario_id] = True
+                        LOG.info(f"Scenario {scenario_id} achieved success!")
+                        break
         
         # Job summary
         job_elapsed = time.time() - job_start_time

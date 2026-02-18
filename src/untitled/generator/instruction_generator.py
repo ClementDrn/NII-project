@@ -1,12 +1,12 @@
 from untitled.simulator.simulation_data import SimulationData
 from untitled.core.settings import GeneratorStepConfig, get_model_instances_config_by_step_id
-from untitled.generator.instruction import InstructionSet
+from untitled.generator.instruction import InstructionSet, InstructionResult
 from untitled.generator.model_config import ModelConfig, get_model_config
 from untitled.generator.experiment_nature import ExperimentNature
 from untitled.core.base import LOG
 
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import List, Optional
 
 
 # Abstract class
@@ -55,6 +55,7 @@ class InstructionGenerator(ABC):
         data: SimulationData,
         failure_text: Optional[str] = None,
         was_route_completed: Optional[bool] = None,
+        previously_tried_instructions: Optional[List[InstructionResult]] = None,
     ) -> InstructionSet:
         """
         Generate instructions from simulation data (async to support VLM calls).
@@ -63,7 +64,7 @@ class InstructionGenerator(ABC):
             data: Simulation data containing frames and metadata
             failure_text: Description of failure that occurred (for corrective tasks)
             was_route_completed: Whether route was completed (for corrective tasks)
-            
+            previously_tried_instructions: List of previous instruction results
         Returns:
             Generated instruction set
         """

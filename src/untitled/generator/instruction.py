@@ -39,6 +39,14 @@ class Instruction:
     reasoning: str                      # Explanation of why this window is critical
 
 @dataclass
+class InstructionResult:
+    """
+    Represents the result of a previously tried instruction.
+    """
+    instruction: Instruction
+    was_successful: bool
+
+@dataclass
 class InstructionSet:
     """
     Represents a set of ranked adversarial test cases.

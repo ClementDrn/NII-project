@@ -38,22 +38,75 @@
 #     instruction_generation_count: 1
 #     instruction_count_per_generation: 3
 ---
+# Cached scenarios:
+# 5
+# 8
+# 18
+# 20
+# 32
+# 41
+# 43
+# 54
+# 63
+# 66
+# 71
+# 73
+# 77
+# 79
+# 80
+# 83
+# 91
+# 95
+# 99
+# 100
+# 102
+# 105
+# 110
+# 113
+# 116
+# 120
+# 122
+# 123
+# 127
+# 134
 version: "2.0-dev"
 jobs:
-  - name: "Corrective experiments"
+  - name: "1-prompt single-step gpt5-mini experiments"
     simulator: "carla_basic"
     # Simulator
     scenarios:
-      - 95
-      - 105
+    - 5
+    # - 8
+    - 18
+    - 20
+    - 41
+    - 63
+    - 71
+    - 73
+    - 77
+    - 79
+    - 80
+    - 83
+    - 91
+    - 99
+    - 100
+    - 102
+    - 110
+    - 113
+    - 120
+    - 122
+    - 123
+    - 127
     ground_truth_count: 1
     ground_truth_cache_dir: "cache"
     # Filter
     filter: "undersampled_filter"
     # Generator
-    generator: "gpt5_mini_single_step"
+    generator: "gpt5_mini_single_step_incremental"
     model_instances:
       - "gpt5_mini_0"
     experiment_nature: "adversarial"
-    instruction_generation_count: 1
-    instruction_count_per_generation: 3
+    instruction_generation_count: 1   # how many times to generate instructions, in one iteration
+    instruction_count_per_generation: 1
+    repeat_count: 5   # will cause to loop the pipeline, possibly with context-aware generation after the first iteration
+    stop_repeat_on_success: true

@@ -4,9 +4,10 @@ from untitled.generator.prompt_dispatcher import PromptDispatcher, PromptRequest
 from untitled.generator.model import create_model_client, parse_model_response, ModelClient, ModelClientFactory
 from untitled.generator.experiment_nature import ExperimentNature
 from untitled.generator.task import Task
+from untitled.generator.task_manager import TaskManager
 from untitled.core.base import PROJECT_ROOT, LOG, CONFIG
 from untitled.simulator.simulation_data import SimulationData
-from untitled.generator.instruction import InstructionSet, parse_instructions_from_json
+from untitled.generator.instruction import InstructionResult, InstructionSet, parse_instructions_from_json
 from typing import List, Optional, override
 import asyncio
 
@@ -16,12 +17,12 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
     Single-step VLM instruction generator for generating instructions from a sequence of video frames.
     The VLM receives all frames and their metadata at once, acting as an independent planner.
     The actual model process can be local or remote, and this class interacts with it via OpenAI-compatible API.
-    
-    The task used for instruction generation depends on the experiment nature:
-    - ADVERSARIAL: Uses single_step_adversarial_planner task
-    - CORRECTIVE: Uses single_step_corrective_planner task
     """
-    def __init__(self):
+    def __init__(
+        self,
+        experiment_nature: ExperimentNature = ExperimentNature.ADVERSARIAL,
+        is_incremental: bool = False
+    ):
         super().__init__()
         
         # Check that there is exactly one step configured
@@ -33,10 +34,13 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
         self._clients: list[ModelClient] = []
         self._prompt_dispatcher: PromptDispatcher = None
         
-        # Load tasks for both experiment natures
-        self._adversarial_task: Task = Task("single_step_adversarial_planner.yaml")
-        self._corrective_task: Task = Task("single_step_corrective_planner.yaml")
-        LOG.debug(f"Loaded tasks: {self._adversarial_task}, {self._corrective_task}")
+        # Create task using TaskManager
+        self._task: Task = TaskManager.create_planner_task(
+            experiment_nature=experiment_nature,
+            is_incremental=is_incremental,
+            has_descriptor=False
+        )
+        LOG.debug(f"Loaded task: {self._task}")
 
         # Get API parameters from config
         step: GeneratorStepConfig = CONFIG.generator.steps[0]
@@ -57,17 +61,27 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
         parallel_client_list = [client for client in self._clients if client.is_parallelizable()]
         self._prompt_dispatcher: PromptDispatcher = PromptDispatcher(parallel_client_list)
 
-    def _get_current_task(self) -> Task:
+    def set_task(
+        self,
+        experiment_nature: ExperimentNature = ExperimentNature.ADVERSARIAL,
+        is_incremental: bool = False
+    ) -> None:
         """
-        Get the appropriate task based on current experiment nature.
+        Set the task to use for instruction generation.
         
-        Returns:
-            The task to use for instruction generation
+        Args:
+            experiment_nature: The experiment nature (ADVERSARIAL, CORRECTIVE)
+            is_incremental: Whether to use incremental generation mode
+        
+        Raises:
+            NotImplementedError: If the requested task combination is not yet implemented
         """
-        if self._experiment_nature == ExperimentNature.CORRECTIVE:
-            return self._corrective_task
-        else:
-            return self._adversarial_task
+        self._task = TaskManager.create_planner_task(
+            experiment_nature=experiment_nature,
+            is_incremental=is_incremental,
+            has_descriptor=False
+        )
+        LOG.debug(f"Task set to: {self._task.name}")
 
     @override
     async def init(self):
@@ -106,6 +120,7 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
         data: SimulationData,
         failure_text: Optional[str] = None,
         was_route_completed: Optional[bool] = None,
+        previously_tried_instructions: Optional[List[InstructionResult]] = None,
     ) -> Optional[InstructionSet]:
         """
         Generate instructions from a sequence of video frames using a VLM.
@@ -115,7 +130,7 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
             data: Simulation data containing frames and metadata
             failure_text: Description of failure that occurred (for corrective tasks)
             was_route_completed: Whether route was completed (for corrective tasks)
-            
+            previously_tried_instructions: List of previous instruction results (for context-aware generation)
         Returns:
             Generated instruction set, or None if generation failed
         """
@@ -124,21 +139,31 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
             LOG.error("At least one frame is required to generate instructions!")
             raise ValueError("At least one frame is required to generate instructions.")
 
-        # Get the appropriate task based on experiment nature
-        task = self._get_current_task()
-        LOG.debug(f"Using task: {task.name} (experiment nature: {self._experiment_nature.value})")
+        # Use the configured task
+        LOG.debug(f"Using task: {self._task.name}")
 
         # Collect all image paths
         image_paths = [data.image_dir / frame.image_name for frame in data.frames]
 
+        # Apply max_previous_instructions limit if configured
+        limited_previous_instructions = []
+        if previously_tried_instructions and CONFIG.generator.is_incremental:
+            max_previous = CONFIG.generator.max_previous_instructions
+            if max_previous > 0 and len(previously_tried_instructions) > max_previous:
+                limited_previous_instructions = previously_tried_instructions[-max_previous:]
+                LOG.debug(f"Limited previously tried instructions from {len(previously_tried_instructions)} to {max_previous}")
+            else:
+                limited_previous_instructions = previously_tried_instructions
+
         # Prepare prompt request using task
         future = asyncio.Future()
-        prompt_request = task.prepare_prompt(
+        prompt_request = self._task.prepare_prompt(
             future=future,
             images=image_paths,
             frames=data.frames,
             failure_text=failure_text,
             was_route_completed=was_route_completed,
+            previously_tried_instructions=limited_previous_instructions
         )
         LOG.debug(f"Prepared prompt for planner:\n{prompt_request.user_text}\n")
 
