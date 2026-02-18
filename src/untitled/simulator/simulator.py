@@ -86,7 +86,7 @@ class Simulator:
         self.out_root = CONFIG.carla_env.output_path
         self.time_str = time.strftime("%Y%m%d-%H%M%S")
         self.base_dir = self.out_root / self.ads.agent_name / self.benchmark / str(self.seed) / self.time_str
-        self.base_subdir: Path = ""     # e.g., "groundtruths", "experiments", etc.
+        self.base_job_subdir: Path = ""     # e.g., "groundtruths", "experiments", etc.
 
         # Make sure base directory exists
         self.base_dir.mkdir(parents=True, exist_ok=True)
@@ -143,21 +143,23 @@ class Simulator:
         
         LOG.info("Benchmark installation validated successfully")
     
-    def _calculate_scenario_base_dir(self, base_dir: Path, job_id: int, scenario_id: int) -> Path:
+    def _calculate_scenario_base_dir(self, base_dir: Path, job_id: int, scenario_id: int, has_job_subdir: bool = True) -> Path:
         """
         Calculate the base directory for a given scenario.
         
         Args:
             scenario_id: The scenario ID number
             job_id: The job ID number
+            has_job_subdir: Whether to include the job subdirectory in the path (defaults to True)
         Returns:
             Path to the base directory
         """        
         job_dir = f"job_{job_id:03d}"
+        job_subdir = self.base_job_subdir if has_job_subdir and self.base_job_subdir else ""
         sce_dir = f"sce_{scenario_id:03d}"
-        return base_dir / job_dir / sce_dir
+        return base_dir / job_dir / job_subdir / sce_dir
     
-    def _calculate_run_base_dir(self, base_dir: Path, job_id: int, scenario_id: int, run_id: int) -> Path:
+    def _calculate_run_base_dir(self, base_dir: Path, job_id: int, scenario_id: int, run_id: int, has_job_subdir: bool = True) -> Path:
         """
         Calculate the base directory for a given job, scenario, and run.
         
@@ -166,11 +168,12 @@ class Simulator:
             job_id: The job ID number
             scenario_id: The scenario ID number
             run_id: The run ID number
+            has_job_subdir: Whether to include the job subdirectory in the path (defaults to True)
         Returns:
             Path to the base directory
         """
         run_dir = f"run_{run_id:03d}"
-        return self._calculate_scenario_base_dir(base_dir, job_id, scenario_id) / run_dir
+        return self._calculate_scenario_base_dir(base_dir, job_id, scenario_id, has_job_subdir) / run_dir
 
 # TODO: Group all public methods together
     def set_job_context(self, job_id: int, scenario_id: int):
@@ -366,7 +369,7 @@ class Simulator:
         self.run_counter += 1
 
         # Build directory structure based on job/scenario context
-        run_base_dir = self._calculate_run_base_dir(self.base_dir / self.base_subdir, self.current_job_id, self.current_scenario_id, run_id)
+        run_base_dir = self._calculate_run_base_dir(self.base_dir, self.current_job_id, self.current_scenario_id, run_id)
 
         # Setup paths for this run
         # Directories
@@ -538,7 +541,7 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         # Calculate run base directory if it was not provided
         # run_base_dir is typically of the form: base_dir/base_subdir/job_XXX/sce_XXX/run_XXX
         if run_base_dir is None:
-            run_base_dir = self._calculate_run_base_dir(self.base_dir / self.base_subdir, job_id, scenario_id, run_id)
+            run_base_dir = self._calculate_run_base_dir(self.base_dir, job_id, scenario_id, run_id)
         
         result_file = run_base_dir / LOG_RES_FILE_NAME
         
@@ -565,7 +568,7 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         """
         # Calculate run base directory if it was not provided
         if run_base_dir is None:
-            run_base_dir = self._calculate_run_base_dir(self.base_dir / self.base_subdir, job_id, scenario_id, run_id)
+            run_base_dir = self._calculate_run_base_dir(self.base_dir, job_id, scenario_id, run_id)
 
         # Check if the image directory exists
         image_dir = run_base_dir / IMAGES_DIR_NAME
@@ -616,7 +619,7 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         """
         # Calculate run base directory if it was not provided
         if run_base_dir is None:
-            run_base_dir = self._calculate_run_base_dir(self.base_dir / self.base_subdir, job_id, scenario_id, run_id)
+            run_base_dir = self._calculate_run_base_dir(self.base_dir, job_id, scenario_id, run_id)
 
         # Check if the image directory exists
         image_dir = run_base_dir / IMAGES_DIR_NAME
@@ -672,7 +675,7 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         """
         # Calculate run base directory if it was not provided
         if run_base_dir is None:
-            run_base_dir = self._calculate_run_base_dir(self.base_dir / self.base_subdir, job_id, scenario_id, run_id)
+            run_base_dir = self._calculate_run_base_dir(self.base_dir, job_id, scenario_id, run_id)
         
         # Check if the metadata directory exists
         metadata_dir = run_base_dir / METADATA_DIR_NAME
@@ -720,7 +723,7 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         """
         # Calculate run base directory if it was not provided
         if run_base_dir is None:
-            run_base_dir = self._calculate_run_base_dir(self.base_dir / self.base_subdir, job_id, scenario_id, run_id)
+            run_base_dir = self._calculate_run_base_dir(self.base_dir, job_id, scenario_id, run_id)
         
         # Check if the metadata directory exists
         metadata_dir = run_base_dir / METADATA_DIR_NAME
@@ -768,11 +771,11 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         
         return metadata_list
 
-    def set_base_subdir(self, base_subdir: Path):
+    def set_base_job_subdir(self, base_job_subdir: Path):
         """
-        Set a custom base subdirectory for storing results.
+        Set a custom base subdirectory under the job rootfor storing results.
         """
-        self.base_subdir = base_subdir
+        self.base_job_subdir = base_job_subdir
 
     def get_base_dir(self) -> Path:
         """
@@ -794,7 +797,7 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         Returns:
             Path to the run directory
         """
-        return self._calculate_run_base_dir(self.base_dir / self.base_subdir, self.current_job_id, scenario_id, run_id)
+        return self._calculate_run_base_dir(self.base_dir, self.current_job_id, scenario_id, run_id)
 
 
     def free(self):
