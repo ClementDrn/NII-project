@@ -124,6 +124,26 @@ class TestFakeSimulator:
         
         assert result == "/base/job_001/sce_005/run_000"
     
+    def test_get_run_dir_includes_subdir_by_default(self):
+        """get_run_dir should include subdir by default when set."""
+        fake = FakeSimulator(base_dir="/base")
+        fake.set_job_context(job_id=1, scenario_id=5)
+        fake.set_base_job_subdir("ground_truths")
+        
+        result = fake.get_run_dir(scenario_id=5, run_id=0)
+        
+        assert result == Path("/base/job_001/ground_truths/sce_005/run_000")
+    
+    def test_get_run_dir_excludes_subdir_when_specified(self):
+        """get_run_dir should skip subdir when has_job_subdir=False."""
+        fake = FakeSimulator(base_dir="/base")
+        fake.set_job_context(job_id=1, scenario_id=5)
+        fake.set_base_job_subdir("ground_truths")
+        
+        result = fake.get_run_dir(scenario_id=5, run_id=0, has_job_subdir=False)
+        
+        assert result == Path("/base/job_001/sce_005/run_000")
+    
     def test_free_tracks_calls(self):
         """free should increment call counter."""
         fake = FakeSimulator()

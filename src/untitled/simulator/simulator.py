@@ -220,10 +220,12 @@ class Simulator:
         # Update current route
         self.current_route = route_file
         self.route_id_str = str(scenario_id).zfill(3)
-        self.current_scenario_id = scenario_id
         
-        # Reset run counter for new scenario
-        self.run_counter = 0
+        # Only reset run counter when scenario actually changes
+        if self.current_scenario_id != scenario_id:
+            self.run_counter = 0
+        
+        self.current_scenario_id = scenario_id
         
         LOG.info(f"Set scenario to {scenario_id}: {route_file.name}")
     
@@ -786,18 +788,19 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         """
         return self.base_dir
 
-    def get_run_dir(self, scenario_id: int, run_id: int) -> Path:
+    def get_run_dir(self, scenario_id: int, run_id: int, has_job_subdir: bool = True) -> Path:
         """
         Get the directory for a specific scenario and run.
         
         Args:
             scenario_id: The scenario ID number
             run_id: The run ID number
+            has_job_subdir: Whether to include the job subdirectory (defaults to True)
 
         Returns:
             Path to the run directory
         """
-        return self._calculate_run_base_dir(self.base_dir, self.current_job_id, scenario_id, run_id)
+        return self._calculate_run_base_dir(self.base_dir, self.current_job_id, scenario_id, run_id, has_job_subdir)
 
 
     def free(self):

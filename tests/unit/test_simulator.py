@@ -57,7 +57,38 @@ class TestSimulator:
         
     # --- Test directory hierarchy creation -----------------------------------
 
-    def test_directory_hierarchy_creation(self, fake_simulator_with_fs, temp_base_dir):
+    def test_directory_hierarchy_creation_1_scenario_and_groundtruth(self, fake_simulator_with_fs, temp_base_dir):
+        """
+        Test that the directory hierarchy is created correctly.
+        """
+        simulator = fake_simulator_with_fs
+        
+        # Simulate groundtruths
+        simulator.set_base_job_subdir("gt")
+        simulator.set_job_context(123, 1)
+        simulator.set_scenario(1)
+        simulator.run_scenario()
+        simulator.run_scenario()
+        
+        # Simulate experiments (no subdir)
+        simulator.set_base_job_subdir("")
+        simulator.set_job_context(123, 1)
+        simulator.set_scenario(1)
+        simulator.run_scenario()
+        simulator.run_scenario()
+
+        # Check that the expected directories were created in the output directory
+        output_dir = temp_base_dir / "output"
+        expected_paths = [
+            output_dir / "job_123" / "gt" / "sce_001" / "run_000",
+            output_dir / "job_123" / "gt" / "sce_001" / "run_001",
+            output_dir / "job_123" / "sce_001" / "run_000",
+            output_dir / "job_123" / "sce_001" / "run_001",
+        ]
+        for expected_path in expected_paths:
+            assert expected_path.exists() and expected_path.is_dir(), f"Expected directory {expected_path} to be created"
+
+    def test_directory_hierarchy_creation_2_scenarios_and_groundtruth(self, fake_simulator_with_fs, temp_base_dir):
         """
         Test that the directory hierarchy is created correctly.
         """

@@ -204,6 +204,26 @@ class FakeSimulator:
         """Set the base job subdirectory."""
         self.base_job_subdir = subdir
     
+    def get_run_dir(self, scenario_id: int, run_id: int, has_job_subdir: bool = True) -> Path:
+        """
+        Get the directory for a specific scenario and run.
+        
+        Args:
+            scenario_id: The scenario ID number
+            run_id: The run ID number
+            has_job_subdir: Whether to include the job subdirectory (defaults to True)
+
+        Returns:
+            Path to the run directory
+        """
+        return Path(self._calculate_run_base_dir(
+            self.base_dir,
+            self._job_id,
+            scenario_id,
+            run_id,
+            has_job_subdir,
+        ))
+    
     def _calculate_run_base_dir(
         self,
         base_dir: Path,

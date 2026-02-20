@@ -428,7 +428,8 @@ class Pipeline:
 
                 # Serialize chosen ground truth index for debugging
                 # Make sure directory exists and write JSON data
-                experiment_json_dir: Path = self.simulator.get_run_dir(scenario_id, generation_index)
+                # Use has_job_subdir=False to write to experiment directory, not ground_truths
+                experiment_json_dir: Path = self.simulator.get_run_dir(scenario_id, generation_index, has_job_subdir=False)
                 experiment_json_path: Path = experiment_json_dir / self._experiment_json_filename
                 experiment_json_dir.mkdir(parents=True, exist_ok=True)
                 json_data = {
