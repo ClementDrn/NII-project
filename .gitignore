@@ -13,7 +13,8 @@ hosts.yaml
 *.log
 
 # Unrelevant directories
-data/
+/data/
+/tests/data
 cache/
 tmp/
 

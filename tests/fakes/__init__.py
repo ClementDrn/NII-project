@@ -28,6 +28,10 @@ from tests.fakes.factories import (
     make_simulation_scores,
     make_simulation_meta,
     make_failed_simulation_result,
+    # Job results factories
+    make_res_json,
+    make_experiment_info,
+    make_custom_prompts,
 )
 
 __all__ = [
@@ -41,4 +45,8 @@ __all__ = [
     "make_simulation_scores",
     "make_simulation_meta",
     "make_failed_simulation_result",
+    # Job results factories
+    "make_res_json",
+    "make_experiment_info",
+    "make_custom_prompts",
 ]

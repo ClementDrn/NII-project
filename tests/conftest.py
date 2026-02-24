@@ -13,6 +13,9 @@ from tests.fakes import (
     FakeModelClient,
     ModelType,
     make_simulation_result,
+    make_res_json,
+    make_experiment_info,
+    make_custom_prompts,
 )
 
 
@@ -194,3 +197,55 @@ def sample_failed_result():
             score_composed=37.5,
         ),
     )
+
+
+# =============================================================================
+# JobResults Fixtures
+# =============================================================================
+
+import json
+
+
+@pytest.fixture
+def job_dir(tmp_path: Path) -> Path:
+    """
+    Provide a minimal job directory structure for JobResults testing.
+    
+    Creates:
+        tmp_path/job_001/
+            sce_005/
+                run_000/
+                    res.json (perfect run with prompt)
+                    custom_prompts.json
+                    experiment_info.json
+    
+    Returns the job_001 directory path.
+    """
+    job_path = tmp_path / "job_001"
+    run_dir = job_path / "sce_005" / "run_000"
+    run_dir.mkdir(parents=True)
+    
+    (run_dir / "res.json").write_text(json.dumps(make_res_json()))
+    (run_dir / "custom_prompts.json").write_text(json.dumps(make_custom_prompts()))
+    (run_dir / "experiment_info.json").write_text(json.dumps(make_experiment_info()))
+    
+    return job_path
+
+
+@pytest.fixture
+def cache_dir_with_ground_truth(tmp_path: Path) -> Path:
+    """
+    Provide a cache directory with ground truth runs.
+    
+    Creates:
+        tmp_path/cache/
+            sce_005/
+                run_000/
+                    res.json (perfect ground truth)
+    
+    Returns the cache directory path.
+    """
+    gt_dir = tmp_path / "cache" / "sce_005" / "run_000"
+    gt_dir.mkdir(parents=True)
+    (gt_dir / "res.json").write_text(json.dumps(make_res_json()))
+    return tmp_path / "cache"
