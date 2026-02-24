@@ -58,13 +58,6 @@ git lfs pull
 cd ../../../../..
 ```
 
-Create a virtual environment and install dependencies.
-```sh
-uv venv --python 3.12
-source .venv/bin/activate
-uv pip install -e .   # if you need dev libs: uv pip install -e ".[dev]" 
-```
-
 ### Setup VLM server (optional)
 
 You may want not to rely on API model services but instead want to run your own VLM server. 
@@ -96,7 +89,19 @@ vllm serve yannqi/R-4B \
   --trust-remote-code
 ```
 
-The next step explains how to specify the server's IP in the project configuration.  
+The [Setup Configuration](#setup-configuration) step explains how to specify the server's IP in the project configuration.  
+
+### Install Project Dependencies
+
+Create a virtual environment and install dependencies.
+```sh
+uv venv --python 3.12
+source .venv/bin/activate
+uv pip install -e .   # if you need dev libs: uv pip install -e ".[dev]" 
+```
+
+We just created the project's Python environment containing all necessary dependencies.
+It must be activated before running any of this project's scripts. In order to deactivate the environment, just enter command `deactivate`.
 
 ### Setup Configuration 
 
@@ -110,7 +115,7 @@ If needed, you can also change the properties in [config.yaml](config.yaml).
 ### Launch Prototype
 
 After you have specified what scenarios you want to run in [jobs.yaml](jobs.yaml), you can run the [prototype.py](scripts/prototype.py) script.
-```
+```sh
 source .venv/bin/activate
 python scripts/prototype.py
 ```
