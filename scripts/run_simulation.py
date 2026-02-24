@@ -4,6 +4,7 @@ from typing import List
 from untitled.core.base import LOG
 from untitled.generator.instruction import InjectionWindow, Instruction
 from untitled.simulator.simulator import Simulator
+from untitled.simulator.ads import ADS
 
 
 @dataclass
@@ -53,7 +54,7 @@ jobs: List[SimulationJob] = [
 # --- Main --------------------------------------------------------------------
 def main():
     LOG.info("Initializing simulator...")
-    simulator = Simulator()
+    simulator = Simulator(ADS("simlingo"), True)
     
     for job_index, job in enumerate(jobs):
         LOG.info(f"Running scenario {job.scenario_id} with instruction: '{job.instruction.text}'...")
@@ -64,7 +65,7 @@ def main():
         # Run simulation
         for i in range(job.repeat_count):
             LOG.info(f"Starting run {i+1}/{job.repeat_count} for scenario {job.scenario_id}...")
-        simulator.run_scenario(job.instruction)
+            simulator.run_scenario(job.instruction)
 
 
 if __name__ == "__main__":
