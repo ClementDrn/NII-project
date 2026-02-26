@@ -68,8 +68,27 @@ filters:
     max_cluster_count: 100
 
 generators:
+  # GPT-5.2 based VLM generators
+  - id: "gpt-5.2_single_step"
+    design: "single_step_vlm"
+    instruction_count_per_generation: 3
+    steps:
+      - id: "planning"
+        model_name: "gpt-5.2"
+        max_tokens: 128000
+        thinking_mode: "enabled"
+  - id: "gpt-5.2_single_step_incremental"
+    design: "single_step_vlm"
+    instruction_count_per_generation: 1
+    is_incremental: true
+    max_previous_instructions: 5
+    steps:
+      - id: "planning"
+        model_name: "gpt-5.2"
+        max_tokens: 128000
+        thinking_mode: "enabled"
   # GPT-5-mini based VLM generators
-  - id: "gpt5_mini_single_step"
+  - id: "gpt-5-mini_single_step"
     design: "single_step_vlm"
     instruction_count_per_generation: 3
     steps:
@@ -77,9 +96,9 @@ generators:
         model_name: "gpt-5-mini"
         max_tokens: 128000
         thinking_mode: "enabled"
-  - id: "gpt5_mini_single_step_incremental"
+  - id: "gpt-5-mini_single_step_incremental"
     design: "single_step_vlm"
-    instruction_count_per_generation: 1   # edited
+    instruction_count_per_generation: 1
     is_incremental: true
     max_previous_instructions: 5
     steps:
@@ -87,7 +106,7 @@ generators:
         model_name: "gpt-5-mini"
         max_tokens: 128000
         thinking_mode: "enabled"
-  - id: "gpt5_mini_multi_step"
+  - id: "gpt-5-mini_multi_step"
     design: "multi_step_vlm"
     instruction_count_per_generation: 3
     steps:
@@ -154,8 +173,18 @@ model_instances:
       enable_prefix_caching: false
       dtype: "bfloat16"
   # Remote instances
-  - id: "gpt5_mini_0"
+  - id: "gpt-5_mini_0"
     model_name: "gpt-5-mini"
+    type: "vlm"
+    priority: 1
+    batch_size: 5
+    step_ids:
+      - "description"
+      - "planning"
+    remote_config:
+      host_id: "openai"   # Defined in hosts.yaml
+  - id: "gpt-5.2_0"
+    model_name: "gpt-5.2"
     type: "vlm"
     priority: 1
     batch_size: 5

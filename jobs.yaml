@@ -71,12 +71,12 @@
 # 134
 version: "2.0-dev"
 jobs:
-  - name: "1-prompt single-step gpt5-mini experiments"
+  - name: "3-incremental single-step gpt5.2 experiments"
     simulator: "carla_basic"
     # Simulator
     scenarios:
     - 5
-    # - 8
+    - 8
     - 18
     - 20
     - 41
@@ -102,11 +102,11 @@ jobs:
     # Filter
     filter: "undersampled_filter"
     # Generator
-    generator: "gpt5_mini_single_step_incremental"
+    generator: "gpt-5.2_single_step_incremental"
     model_instances:
-      - "gpt5_mini_0"
+      - "gpt-5.2_0"
     experiment_nature: "adversarial"
     instruction_generation_count: 1   # how many times to generate instructions, in one iteration
     instruction_count_per_generation: 1
-    repeat_count: 5   # will cause to loop the pipeline, possibly with context-aware generation after the first iteration
+    repeat_count: 2   # will cause to loop the pipeline, possibly with context-aware generation after the first iteration
     stop_repeat_on_success: true
