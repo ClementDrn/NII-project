@@ -138,8 +138,21 @@ class ModelClient(ABC):
             **self.api_parameters
         )
         elapsed_time = time.time() - start_time
-        LOG.debug(f"Model request completed in {elapsed_time:.2f} seconds")
+
+        # Collect token count data
+        prompt_tokens = -1
+        completion_tokens = -1
+        total_tokens = -1
+        if hasattr(chat_response, "usage"):
+            usage = chat_response.usage
+            prompt_tokens = getattr(usage, "prompt_tokens", -1)
+            completion_tokens = getattr(usage, "completion_tokens", -1)
+            total_tokens = getattr(usage, "total_tokens", -1)
+
+        # Log tokens and time
+        LOG.debug(f"Model request completed in {elapsed_time:.2f} seconds and used {total_tokens} tokens (prompt: {prompt_tokens}, completion: {completion_tokens}).")
         VLM_LOG.debug(f"Model response: {chat_response}")
+        VLM_LOG.debug(f"Token usage: prompt={prompt_tokens}, completion={completion_tokens}, total={total_tokens}")
 
         # Extract and return the response text
         response_text = chat_response.choices[0].message.content
