@@ -1,5 +1,6 @@
 # Cache
 __pycache__/
+.pytest_cache/
 
 # Secret config files
 .env
@@ -17,6 +18,7 @@ hosts.yaml
 /tests/data
 cache/
 tmp/
+output/
 
 # IDE
 .vscode/
