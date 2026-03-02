@@ -94,7 +94,7 @@ def get_model_config(model_id: str) -> ModelConfig:
             thinking_deactivation_params={"reasoning_effort": "low"},
             thinking_default_params={},
             max_output_tokens_param="max_tokens",  # Specific to Claude Opus API
-            temperature_param="temperature"    # Supported in all reasoning effort modes for Claude Opus
+            temperature_param=""    # Not supported when thinking is enabled
         ),
         # Add more models here as needed
     }
