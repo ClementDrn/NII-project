@@ -1,4 +1,5 @@
 from untitled.core.base import LOG, VLM_LOG
+from untitled.generator.model_config import get_model_config
 
 from abc import ABC, abstractmethod
 from typing import Any, Optional
@@ -152,7 +153,15 @@ class ModelClient(ABC):
         """
         Build LiteLLM completion kwargs with provider-independent API settings.
         """
-        request_api_parameters = self.api_parameters if api_parameters is None else api_parameters
+        request_api_parameters = dict(self.api_parameters if api_parameters is None else api_parameters)
+        request_model_name = request_api_parameters.get("model", "")
+        # Temporary security check 
+        if isinstance(request_model_name, str) and "/" not in request_model_name:
+            try:
+                request_api_parameters["model"] = get_model_config(request_model_name).model_name
+            except ValueError:
+                pass
+
         request_model_name = request_api_parameters.get("model", "")
         request_kwargs = {
             "messages": messages,

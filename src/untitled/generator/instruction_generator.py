@@ -150,14 +150,14 @@ def get_api_parameters_from_config(step_config: GeneratorStepConfig) -> dict:
     api_parameters: dict = None
     try:
         api_parameters = {
-            "model": step_config.model_name,
+            "model": model_config.model_name,
             **params,
             **thinking_mode_params,
         }
     except TypeError as e:
         LOG.warning(f"Error parsing thinking mode parameters for step '{step_config.step_id}': {e}. Using default parameters.")
         api_parameters = {
-            "model": step_config.model_name,
+            "model": model_config.model_name,
             **params,
         }
 
