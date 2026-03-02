@@ -118,6 +118,44 @@ generators:
         model_name: "gpt-5-mini"
         max_tokens: 128000
         thinking_mode: "enabled"
+  # Claude Opus 4.6 based VLM generators
+  - id: "claude-opus-4.6_single_step"
+    design: "single_step_vlm"
+    instruction_count_per_generation: 3
+    steps:
+      - id: "planning"
+        model_name: "claude-opus-4.6"
+        max_tokens: 64000
+        thinking_mode: "enabled"
+  - id: "claude-opus-4.6_single_step_incremental"
+    design: "single_step_vlm"
+    instruction_count_per_generation: 1
+    is_incremental: true
+    max_previous_instructions: 5
+    steps:
+      - id: "planning"
+        model_name: "claude-opus-4.6"
+        max_tokens: 64000
+        thinking_mode: "enabled"
+  # Gemini 3.1 Pro based VLM generators
+  - id: "gemini-3.1-pro_single_step"
+    design: "single_step_vlm"
+    instruction_count_per_generation: 3
+    steps:
+      - id: "planning"
+        model_name: "gemini-3.1-pro-preview"
+        max_tokens: 64000
+        thinking_mode: "enabled"
+  - id: "gemini-3.1-pro_single_step_incremental"
+    design: "single_step_vlm"
+    instruction_count_per_generation: 1
+    is_incremental: true
+    max_previous_instructions: 5
+    steps:
+      - id: "planning"
+        model_name: "gemini-3.1-pro-preview"
+        max_tokens: 64000
+        thinking_mode: "enabled"
   # Local VLM generators
   - id: "local_multi_step"
     design: "multi_step_vlm"
