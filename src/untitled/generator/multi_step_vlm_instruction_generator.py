@@ -264,7 +264,7 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
             return None
 
         # Check if response was redacted (contains "REDACTED")
-        if "REDACTED" in instruction_raw:
+        if self._is_instruction_redacted(instruction_raw):
             LOG.error("Could not generate instructions: planner response was 'REDACTED' by the model (for safety reasons).")
             return None
         
@@ -273,7 +273,8 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
         if instruction_set is None:
             LOG.error("The planner model response could not be parsed. "
                 "You may want to increase the max_tokens setting for the planner model, "
-                "as it might be too low to capture the full json response.")
+                "as it might be too low to capture the full json response. "
+                "The response might also be redacted.")
 
         return instruction_set
 

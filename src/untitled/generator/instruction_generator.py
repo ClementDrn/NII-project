@@ -84,6 +84,25 @@ class InstructionGenerator(ABC):
         """
         pass
 
+    def _is_instruction_redacted(self, instruction_raw: str) -> bool:
+        """
+        Check if the instruction is redacted (e.g., contains placeholders like "REDACTED").
+        
+        Args:
+            instruction_raw: The raw instruction text to check
+        Returns:
+            True if the instruction is redacted, False otherwise
+        """
+        keywords = (
+            "REDACTED",
+            "N/A",
+            "I can’t provide",
+        )
+        for redaction_indicator in keywords:
+            if redaction_indicator in instruction_raw:
+                return True
+        return False
+
 
 def get_api_parameters_from_config(step_config: GeneratorStepConfig) -> dict:
     """
