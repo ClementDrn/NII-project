@@ -107,7 +107,8 @@ class Simulator:
         self.tm_port = 2500
         
         # Current run tracking
-        self.run_counter = 0
+        self.current_run_id = 0
+        self._run_ids: Dict[tuple[int, int, str], int] = {}
         self.current_viz_path = None
         self.current_result_file = None
         self.current_log_file = None
@@ -221,13 +222,24 @@ class Simulator:
         self.current_route = route_file
         self.route_id_str = str(scenario_id).zfill(3)
         
-        # Only reset run counter when scenario actually changes
-        if self.current_scenario_id != scenario_id:
-            self.run_counter = 0
-        
         self.current_scenario_id = scenario_id
         
         LOG.info(f"Set scenario to {scenario_id}: {route_file.name}")
+
+    def _next_run_id(self) -> int:
+        """Get the next run id for the current job/scenario/subdir context."""
+        if self.current_job_id is None or self.current_scenario_id is None:
+            LOG.error("Job and scenario context must be set before getting run id.")
+            raise ValueError("Job and scenario context must be set before getting run id.")
+
+        key = (
+            self.current_job_id,
+            self.current_scenario_id,
+            str(self.base_job_subdir),
+        )
+        run_id = self._run_ids.get(key, 0)
+        self._run_ids[key] = run_id + 1
+        return run_id
     
     def _get_benchmark_python_paths(self, carla_root: Path) -> list[Path]:
         """Get PYTHONPATH entries for benchmark and CARLA.
@@ -366,9 +378,8 @@ class Simulator:
             LOG.error("Job and scenario context must be set before creating run script.")
             raise ValueError("Job and scenario context must be set before creating run script.")
         
-        # Increment run counter
-        run_id = self.run_counter
-        self.run_counter += 1
+        run_id = self._next_run_id()
+        self.current_run_id = run_id
 
         # Build directory structure based on job/scenario context
         run_base_dir = self._calculate_run_base_dir(self.base_dir, self.current_job_id, self.current_scenario_id, run_id)
@@ -509,7 +520,7 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         except subprocess.TimeoutExpired:
             LOG.error(f"Scenario execution timed out after 2 hours")
             self._kill_bench2drive_leaderboard_processes()
-            return self.run_counter - 1
+            return self.current_run_id
         
         if result.returncode != 0:
             LOG.error(f"Scenario execution failed with return code: {result.returncode}")
@@ -521,8 +532,7 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         time.sleep(2)
         self._kill_bench2drive_leaderboard_processes()
         
-        # Return the run_id that was used (run_counter was incremented in _create_run_script)
-        return self.run_counter - 1
+        return self.current_run_id
 
     def get_result(self, job_id: int, scenario_id: int, run_id: int, run_base_dir: Path = None) -> Optional[SimulationResult]:
         """
