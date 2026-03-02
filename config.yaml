@@ -193,6 +193,26 @@ model_instances:
       - "planning"
     remote_config:
       host_id: "openai"   # Defined in hosts.yaml
+  - id: "gemini-3.1-pro-preview_0"
+    model_name: "gemini-3.1-pro-preview"
+    type: "vlm"
+    priority: 1
+    batch_size: 5
+    step_ids:
+      - "description"
+      - "planning"
+    remote_config:
+      host_id: "google"   # Defined in hosts.yaml
+  - id: "claude-opus-4.6_0"
+    model_name: "claude-opus-4.6"
+    type: "vlm"
+    priority: 1
+    batch_size: 5
+    step_ids:
+      - "description"
+      - "planning"
+    remote_config:
+      host_id: "anthropic"   # Defined in hosts.yaml
 
 simulators:
   - id: "carla_basic"

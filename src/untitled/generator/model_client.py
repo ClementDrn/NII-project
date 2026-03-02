@@ -1,16 +1,15 @@
 from untitled.core.base import LOG, VLM_LOG
-from untitled.generator.model_config import ModelConfig, get_model_config
 
 from abc import ABC, abstractmethod
+from typing import Any, Optional
 import base64
 from PIL import Image
-from openai import AsyncOpenAI
+from litellm import acompletion, get_llm_provider
 import io
 import time
-import asyncio
-import os
 from pathlib import Path
 from enum import Enum
+from urllib.parse import urlparse
 
 
 class ModelType(Enum):
@@ -133,21 +132,12 @@ class ModelClient(ABC):
         
         # Send request to model and get response
         start_time = time.time()
-        chat_response = await self.client.chat.completions.create(
-            messages=messages,
-            **self.api_parameters
-        )
+        request_kwargs = self._build_completion_kwargs(messages=messages)
+        chat_response = await acompletion(**request_kwargs)
         elapsed_time = time.time() - start_time
 
         # Collect token count data
-        prompt_tokens = -1
-        completion_tokens = -1
-        total_tokens = -1
-        if hasattr(chat_response, "usage"):
-            usage = chat_response.usage
-            prompt_tokens = getattr(usage, "prompt_tokens", -1)
-            completion_tokens = getattr(usage, "completion_tokens", -1)
-            total_tokens = getattr(usage, "total_tokens", -1)
+        prompt_tokens, completion_tokens, total_tokens = self._extract_token_usage(chat_response)
 
         # Log tokens and time
         LOG.debug(f"Model request completed in {elapsed_time:.2f} seconds and used {total_tokens} tokens (prompt: {prompt_tokens}, completion: {completion_tokens}).")
@@ -155,8 +145,115 @@ class ModelClient(ABC):
         VLM_LOG.debug(f"Token usage: prompt={prompt_tokens}, completion={completion_tokens}, total={total_tokens}")
 
         # Extract and return the response text
-        response_text = chat_response.choices[0].message.content
+        response_text = self._extract_response_text(chat_response)
         return response_text
+
+    def _build_completion_kwargs(self, messages: list[dict], api_parameters: dict | None = None) -> dict:
+        """
+        Build LiteLLM completion kwargs with provider-independent API settings.
+        """
+        request_api_parameters = self.api_parameters if api_parameters is None else api_parameters
+        request_model_name = request_api_parameters.get("model", "")
+        request_kwargs = {
+            "messages": messages,
+            **request_api_parameters,
+        }
+        resolved_api_base = self._resolve_api_base(request_model_name)
+        if resolved_api_base is not None:
+            request_kwargs.setdefault("api_base", resolved_api_base)
+        request_kwargs.setdefault("api_key", self.api_key)
+        return request_kwargs
+
+    def _resolve_api_base(self, model_name: str) -> Optional[str]:
+        """
+        Resolve API base URL from host and model provider for LiteLLM.
+
+        - If host already has a path (e.g. reverse proxy), preserve it as-is.
+        - Otherwise, use LiteLLM provider inference from `model_name`.
+        - OpenAI-compatible providers default to `/v1`.
+        - Provider-native cloud APIs (Gemini/Anthropic) can use LiteLLM defaults.
+        - Other providers use host root.
+        """
+        host_base = self.host.rstrip("/")
+
+        parsed_host = urlparse(host_base)
+        host_has_explicit_path = parsed_host.path not in ("", "/")
+        if host_has_explicit_path:
+            return host_base
+
+        provider = ""
+        if model_name:
+            try:
+                _, provider, _, _ = get_llm_provider(
+                    model=model_name,
+                    api_base=host_base,
+                    api_key=self.api_key,
+                )
+            except Exception:
+                provider = model_name.split("/", 1)[0].lower() if "/" in model_name else ""
+
+        openai_compatible_providers = {"", "openai", "text-completion-openai", "azure", "azure_ai"}
+        if provider in openai_compatible_providers:
+            return f"{host_base}/v1"
+
+        provider_default_base = {"gemini", "anthropic"}
+        if provider in provider_default_base:
+            return None
+
+        return host_base
+
+    def _extract_token_usage(self, chat_response: Any) -> tuple[int, int, int]:
+        """
+        Extract token usage from LiteLLM/OpenAI-like responses.
+        """
+        usage = getattr(chat_response, "usage", None)
+        if usage is None and isinstance(chat_response, dict):
+            usage = chat_response.get("usage")
+
+        if usage is None:
+            return -1, -1, -1
+
+        if isinstance(usage, dict):
+            return (
+                usage.get("prompt_tokens", -1),
+                usage.get("completion_tokens", -1),
+                usage.get("total_tokens", -1),
+            )
+
+        return (
+            getattr(usage, "prompt_tokens", -1),
+            getattr(usage, "completion_tokens", -1),
+            getattr(usage, "total_tokens", -1),
+        )
+
+    def _extract_response_text(self, chat_response: Any) -> str:
+        """
+        Extract response text from LiteLLM/OpenAI-like responses.
+        """
+        choices = getattr(chat_response, "choices", None)
+        if choices is None and isinstance(chat_response, dict):
+            choices = chat_response.get("choices")
+
+        if not choices:
+            return ""
+
+        first_choice = choices[0]
+        message = getattr(first_choice, "message", None)
+        if message is None and isinstance(first_choice, dict):
+            message = first_choice.get("message", {})
+
+        content = getattr(message, "content", None)
+        if content is None and isinstance(message, dict):
+            content = message.get("content")
+
+        if isinstance(content, list):
+            text_parts = []
+            for content_item in content:
+                if isinstance(content_item, dict) and content_item.get("type") == "text":
+                    text_parts.append(content_item.get("text", ""))
+            return "\n".join(part for part in text_parts if part)
+
+        return content or ""
 
 
     @abstractmethod
@@ -194,12 +291,12 @@ class ModelClient(ABC):
         if self.state != ModelClient.State.STARTED:
             LOG.warning("Model client state is not STARTED while opening connection.")
 
-        # Set OpenAI's API key and API base to use vLLM's API server
-        openai_api_base = self.host + "/v1"
-        self.client = AsyncOpenAI(
-            api_key=self.api_key,
-            base_url=openai_api_base,
-        )
+        # Store active connection context for LiteLLM request execution
+        active_model_name = self.api_parameters.get("model", "")
+        self.client = {
+            "api_base": self._resolve_api_base(active_model_name),
+            "api_key": self.api_key,
+        }
 
         # Test connection
         success = await self.test_connection()
@@ -219,7 +316,7 @@ class ModelClient(ABC):
         if self.state != ModelClient.State.CONNECTED:
             LOG.warning("Model client state is not CONNECTED while closing connection.")
 
-        # Currently no explicit close method in AsyncOpenAI
+        # LiteLLM uses stateless request calls, so there is no persistent transport to close
         if self.client:
             del self.client
             self.client = None
@@ -238,24 +335,32 @@ class ModelClient(ABC):
         try:
             LOG.info("Testing model connection...")
 
-            # Use either max_tokens or max_completion_tokens depending on model
+            # Use provider-specific output-token parameter when available
             max_tokens_param_name: str = (
                 "max_tokens" if "max_tokens" in self.api_parameters else
-                "max_completion_tokens" if "max_completion_tokens" in self.api_parameters else ""
+                "max_completion_tokens" if "max_completion_tokens" in self.api_parameters else
+                "max_output_tokens" if "max_output_tokens" in self.api_parameters else ""
             )
             if max_tokens_param_name == "":
                 LOG.warning("No max tokens parameter found in API parameters. Defaulting to 'max_tokens'.")
                 max_tokens_param_name = "max_tokens"
 
             LOG.debug(f"Using max tokens parameter name: {max_tokens_param_name}")
-            response = await self.client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant."},
-                    {"role": "user", "content": "Hello"}
-                ],
-                model=self.api_parameters.get("model", "default"),
-                # Either max_tokens or max_completion_tokens depending on model
-                **{max_tokens_param_name: 5},
+            connection_test_params = dict(self.api_parameters)
+            connection_test_params.pop("max_tokens", None)
+            connection_test_params.pop("max_completion_tokens", None)
+            connection_test_params.pop("max_output_tokens", None)
+            connection_test_params[max_tokens_param_name] = 5
+            connection_test_params.setdefault("model", self.api_parameters.get("model", "default"))
+
+            response = await acompletion(
+                **self._build_completion_kwargs(
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant."},
+                        {"role": "user", "content": "Hello"}
+                    ],
+                    api_parameters=connection_test_params,
+                )
             )
             if response and response.choices:
                 LOG.info("Model connection test successful")

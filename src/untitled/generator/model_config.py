@@ -34,7 +34,7 @@ def get_model_config(model_id: str) -> ModelConfig:
     """
     models = {
         "r4b": ModelConfig(
-            model_name="yannqi/R-4B",   # HuggingFace model name
+            model_name="yannqi/r-4b",   # HuggingFace model name
             served_name="r4b",          # Should match model_name in config.yaml
             max_model_len=32768,        # Max for model instance context_window in config.yaml
             thinking_activation_params={
@@ -48,7 +48,7 @@ def get_model_config(model_id: str) -> ModelConfig:
             }
         ),
         "qwen3-4b-thinking": ModelConfig(
-            model_name="Qwen/Qwen3-4B-Thinking-2507",
+            model_name="Qwen/qwen3-4b-thinking-2507",
             served_name="qwen3-4b-thinking",
             max_model_len=262144,
             reasoning_parser="deepseek_r1",
@@ -57,7 +57,7 @@ def get_model_config(model_id: str) -> ModelConfig:
             thinking_default_params={}
         ),
         "gpt-5-mini": ModelConfig(
-            model_name="openai/GPT-5-Mini",
+            model_name="openai/gpt-5-mini",
             served_name="gpt-5-mini",     # FIXME: Not actually used for the API calls, right now it's the config.yaml's model_name that matters
             max_model_len=400000,
             thinking_activation_params={"reasoning_effort": "high"},
@@ -67,7 +67,7 @@ def get_model_config(model_id: str) -> ModelConfig:
             temperature_param=""    # Unsupported
         ),
         "gpt-5.2": ModelConfig(
-            model_name="openai/GPT-5-Mini",
+            model_name="openai/gpt-5.2",
             served_name="gpt-5.2",
             max_model_len=400000,
             thinking_activation_params={"reasoning_effort": "medium"},
@@ -75,6 +75,26 @@ def get_model_config(model_id: str) -> ModelConfig:
             thinking_default_params={},
             max_output_tokens_param="max_completion_tokens",  # Specific to OpenAI GPT-5 API
             temperature_param=""    # Unsupported (temperature is only supported when reasoning effort is "none")
+        ),
+        "gemini-3.1-pro-preview": ModelConfig(
+            model_name="gemini/gemini-3.1-pro-preview",
+            served_name="gemini-3.1-pro-preview",
+            max_model_len=1000000,
+            thinking_activation_params={"reasoning_effort": "high"},
+            thinking_deactivation_params={"reasoning_effort": "low"},
+            thinking_default_params={},
+            max_output_tokens_param="max_output_tokens",  # Specific to Gemini 3.1 Pro API
+            temperature_param="temperature"    # Supported in all reasoning effort modes for Gemini
+        ),
+        "claude-opus-4.6": ModelConfig(
+            model_name="anthropic/claude-opus-4-6",
+            served_name="claude-opus-4.6",
+            max_model_len=1000000,
+            thinking_activation_params={"reasoning_effort": "high"},
+            thinking_deactivation_params={"reasoning_effort": "low"},
+            thinking_default_params={},
+            max_output_tokens_param="max_tokens",  # Specific to Claude Opus API
+            temperature_param="temperature"    # Supported in all reasoning effort modes for Claude Opus
         ),
         # Add more models here as needed
     }

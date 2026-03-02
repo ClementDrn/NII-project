@@ -7,7 +7,7 @@ name = "untitled"
 version = "0.1.0"
 dependencies = [
     "colorlog",
-    "openai",
+    "litellm",
     "pillow",
     "pydantic",
     "pydantic-settings",
