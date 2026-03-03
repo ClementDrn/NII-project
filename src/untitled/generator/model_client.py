@@ -8,6 +8,8 @@ from PIL import Image
 from litellm import acompletion, get_llm_provider
 import io
 import time
+import random
+import asyncio
 from pathlib import Path
 from enum import Enum
 from urllib.parse import urlparse
@@ -58,6 +60,11 @@ class ModelClient(ABC):
         STARTED = 1
         CONNECTED = 2
 
+    _RETRY_MAX_ATTEMPTS = 4
+    _RETRY_INITIAL_DELAY_SECONDS = 5.0
+    _RETRY_MAX_DELAY_SECONDS = 60.0
+    _RETRY_JITTER_SECONDS = 1.0
+
     def __init__(self, model_type: ModelType, priority: int, batch_size: int, host: str, api_key: str, api_parameters: dict = {}):
         """
         Initialize model client.
@@ -100,12 +107,12 @@ class ModelClient(ABC):
             Response text from model
         """
         # Append system text to messages
-        messages = [
+        messages: list[dict[str, Any]] = [
             {"role": "system", "content": system_text},
         ]
 
         # Append user images and text to messages
-        user_content = []
+        user_content: list[dict[str, Any]] = []
         if user_image_paths is not None:
             # Check if model supports images
             if self.model_type == ModelType.LLM:
@@ -134,7 +141,7 @@ class ModelClient(ABC):
         # Send request to model and get response
         start_time = time.time()
         request_kwargs = self._build_completion_kwargs(messages=messages)
-        chat_response = await acompletion(**request_kwargs)
+        chat_response = await self._acompletion_with_retries(request_kwargs)
         elapsed_time = time.time() - start_time
 
         # Collect token count data
@@ -148,6 +155,59 @@ class ModelClient(ABC):
         # Extract and return the response text
         response_text = self._extract_response_text(chat_response)
         return response_text
+
+    def _is_retryable_model_error(self, error: Exception) -> bool:
+        """
+        Return True for transient model/provider failures that should be retried.
+
+        Handles common overload and timeout variants returned by LiteLLM providers
+        (e.g. Gemini UNAVAILABLE spikes, Anthropic overloaded/timeout errors).
+        """
+        error_text = f"{type(error).__name__}: {error}".lower()
+        retry_indicators = (
+            "overloaded",
+            "overloaded_error",
+            "serviceunavailable",
+            "unavailable",
+            "currently experiencing high demand",
+            "timeout",
+            "timed out",
+            "connection timed out",
+        )
+        return any(indicator in error_text for indicator in retry_indicators)
+
+    def _retry_wait_seconds(self, attempt_index: int) -> float:
+        """
+        Exponential backoff with bounded jitter.
+        """
+        delay = min(
+            self._RETRY_MAX_DELAY_SECONDS,
+            self._RETRY_INITIAL_DELAY_SECONDS * (2 ** attempt_index),
+        )
+        return delay + random.uniform(0.0, self._RETRY_JITTER_SECONDS)
+
+    async def _acompletion_with_retries(self, request_kwargs: dict) -> Any:
+        """
+        Execute LiteLLM completion with retries on transient overload/timeout errors.
+        """
+        for attempt_index in range(self._RETRY_MAX_ATTEMPTS + 1):
+            try:
+                return await acompletion(**request_kwargs)
+            except Exception as error:
+                is_retryable = self._is_retryable_model_error(error)
+                has_more_attempts = attempt_index < self._RETRY_MAX_ATTEMPTS
+                if not is_retryable or not has_more_attempts:
+                    raise
+
+                wait_seconds = self._retry_wait_seconds(attempt_index)
+                LOG.warning(
+                    "Transient model error on attempt %d/%d (%s). Waiting %.1fs before retry.",
+                    attempt_index + 1,
+                    self._RETRY_MAX_ATTEMPTS + 1,
+                    error,
+                    wait_seconds,
+                )
+                await asyncio.sleep(wait_seconds)
 
     def _build_completion_kwargs(self, messages: list[dict], api_parameters: dict | None = None) -> dict:
         """
@@ -362,8 +422,8 @@ class ModelClient(ABC):
             connection_test_params[max_tokens_param_name] = 5
             connection_test_params.setdefault("model", self.api_parameters.get("model", "default"))
 
-            response = await acompletion(
-                **self._build_completion_kwargs(
+            response = await self._acompletion_with_retries(
+                self._build_completion_kwargs(
                     messages=[
                         {"role": "system", "content": "You are a helpful assistant."},
                         {"role": "user", "content": "Hello"}
