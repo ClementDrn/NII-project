@@ -60,7 +60,7 @@ class ModelClient(ABC):
         STARTED = 1
         CONNECTED = 2
 
-    _RETRY_MAX_ATTEMPTS = 4
+    _RETRY_MAX_ATTEMPTS = 10    # up to 1.5 hours of retries
     _RETRY_INITIAL_DELAY_SECONDS = 5.0
     _RETRY_MAX_DELAY_SECONDS = 60.0
     _RETRY_JITTER_SECONDS = 1.0
