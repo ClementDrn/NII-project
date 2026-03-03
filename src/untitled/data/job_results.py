@@ -253,11 +253,11 @@ class JobResults:
             for exp in scenario.experiments:
                 total_experiments += 1
                 classification = scenario.classify_run(exp)
-                if classification == 'adversarial':
+                if classification == ExperimentResult.ADVERSARIAL:
                     adversarial += 1
-                elif classification == 'corrective':
+                elif classification == ExperimentResult.CORRECTIVE:
                     corrective += 1
-                elif classification == 'unchanged':
+                elif classification == ExperimentResult.UNCHANGED:
                     unchanged += 1
         
         return {
