@@ -65,7 +65,7 @@ filters:
   - id: "undersampled_filter"
     max_frames_per_minute: 60
     clustering_threshold: 0.997
-    max_cluster_count: 100
+    max_cluster_count: 50
 
 generators:
   # GPT-5.2 based VLM generators
