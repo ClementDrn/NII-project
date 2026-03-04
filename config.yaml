@@ -211,7 +211,7 @@ model_instances:
       enable_prefix_caching: false
       dtype: "bfloat16"
   # Remote instances
-  - id: "gpt-5_mini_0"
+  - id: "gpt-5-mini_0"
     model_name: "gpt-5-mini"
     type: "vlm"
     priority: 1
@@ -235,7 +235,7 @@ model_instances:
     model_name: "gemini-3.1-pro-preview"
     type: "vlm"
     priority: 1
-    batch_size: 5
+    batch_size: 1
     step_ids:
       - "description"
       - "planning"
@@ -245,7 +245,7 @@ model_instances:
     model_name: "claude-opus-4.6"
     type: "vlm"
     priority: 1
-    batch_size: 5
+    batch_size: 1
     step_ids:
       - "description"
       - "planning"
