@@ -141,7 +141,7 @@ class ModelClient(ABC):
         # Send request to model and get response
         start_time = time.time()
         request_kwargs = self._build_completion_kwargs(messages=messages)
-        chat_response = await self._acompletion_with_retries(request_kwargs)
+        chat_response = await self._acompletion_with_retries(request_kwargs, timeout=1800)  # timeout = 30 minutes
         elapsed_time = time.time() - start_time
 
         # Collect token count data
@@ -186,13 +186,13 @@ class ModelClient(ABC):
         )
         return delay + random.uniform(0.0, self._RETRY_JITTER_SECONDS)
 
-    async def _acompletion_with_retries(self, request_kwargs: dict) -> Any:
+    async def _acompletion_with_retries(self, request_kwargs: dict, timeout: float = 1800) -> Any:
         """
         Execute LiteLLM completion with retries on transient overload/timeout errors.
         """
         for attempt_index in range(self._RETRY_MAX_ATTEMPTS + 1):
             try:
-                return await acompletion(**request_kwargs)
+                return await acompletion(**request_kwargs, timeout=timeout)
             except Exception as error:
                 is_retryable = self._is_retryable_model_error(error)
                 has_more_attempts = attempt_index < self._RETRY_MAX_ATTEMPTS
@@ -429,7 +429,8 @@ class ModelClient(ABC):
                         {"role": "user", "content": "Hello"}
                     ],
                     api_parameters=connection_test_params,
-                )
+                ),
+                timeout=60,
             )
             if response and response.choices:
                 LOG.info("Model connection test successful")
