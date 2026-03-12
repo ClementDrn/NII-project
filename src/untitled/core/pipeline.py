@@ -612,16 +612,16 @@ class Pipeline:
         Returns:
             Tuple of (successful_count, failed_count)
         """
-        # Simulator is required
-        if self.simulator is None:
-            LOG.error("Simulator not initialized. Cannot run job.")
-            return (0, 1) 
-
         # Configure settings for this job (sets CONFIG.generator, CONFIG.filter, CONFIG.simulator)
         configure_settings_for_job(CONFIG, job)
         
         # Initialize components for this job context
         await self._init_job_components(job)
+
+        # Simulator is required for all execution stages
+        if self.simulator is None:
+            LOG.error("Simulator not initialized. Cannot run job.")
+            return (0, 1)
         
         # Copy settings to simulator's output directory for record-keeping (once)
         # NOTE: Instead of having a "once" flag, we could copy each job by one in their respective job directory, this is less straigthforward though.
