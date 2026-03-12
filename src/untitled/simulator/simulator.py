@@ -615,7 +615,7 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         
         return image_path
 
-    def get_image_logs(self, job_id: int, scenario_id: int, run_id: int, run_base_dir: Path = None, frames_per_minute: int = 0) -> List[Path]:
+    def get_image_logs(self, job_id: int, scenario_id: int, run_id: int, run_base_dir: Optional[Path] = None, frames_per_minute: int = 0) -> List[Path]:
         """
         Retrieve all image paths from the simulation logs for a specific run.
         
@@ -719,7 +719,7 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
 
         return metadata_path
 
-    def get_metadata_logs(self, job_id: int, scenario_id: int, run_id: int, run_base_dir: Path = None, frames_per_minute: int = 0) -> List[SimulationMetadata]:
+    def get_metadata_logs(self, job_id: int, scenario_id: int, run_id: int, run_base_dir: Optional[Path] = None, frames_per_minute: int = 0) -> List[SimulationMetadata]:
         """
         Retrieve all metadata from the simulation logs for a specific run.
         

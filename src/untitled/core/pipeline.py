@@ -33,10 +33,10 @@ class Pipeline:
         """Initialize pipeline components."""
         # TODO: Use underscore prefix for private attributes
         # Components
-        self.simulator: Simulator = None
-        self.filter_embedder: Embedder = None
-        self.generator: InstructionGenerator = None
-        self.job_handler: JobHandler = None
+        self.simulator: Optional[Simulator] = None
+        self.filter_embedder: Optional[Embedder] = None
+        self.generator: Optional[InstructionGenerator] = None
+        self.job_handler: Optional[JobHandler] = None
 
         # Constants
         self._ground_truth_dir_name: str = "ground_truths"
@@ -70,14 +70,15 @@ class Pipeline:
         self.simulator = Simulator()
 
         # Initialize instruction generator based on config
-        if CONFIG.generator.design == "single_step_vlm":
-            self.generator = SingleStepVLMInstructionGenerator(job.experiment_nature, CONFIG.generator.is_incremental)
-            await self.generator.init()
-        elif CONFIG.generator.design == "multi_step_vlm":
-            self.generator = MultiStepVLMInstructionGenerator(job.experiment_nature, CONFIG.generator.is_incremental)
-            await self.generator.init()
-        else:
-            raise ValueError(f"Unknown generator design: {CONFIG.generator.design}")
+        if CONFIG.generator is not None and CONFIG.generator.design is not None:
+            if CONFIG.generator.design == "single_step_vlm":
+                self.generator = SingleStepVLMInstructionGenerator(job.experiment_nature, CONFIG.generator.is_incremental)
+                await self.generator.init()
+            elif CONFIG.generator.design == "multi_step_vlm":
+                self.generator = MultiStepVLMInstructionGenerator(job.experiment_nature, CONFIG.generator.is_incremental)
+                await self.generator.init()
+            else:
+                raise ValueError(f"Unknown generator design: {CONFIG.generator.design}")
 
         # Initialize filter embedder
         self.filter_embedder = DINOEmbedder()
@@ -119,6 +120,14 @@ class Pipeline:
         Returns:
             Tuple of (successful_count, failed_count)
         """
+        # None check
+        if self.simulator is None:
+            LOG.error("Simulator not initialized")
+            return (0, 1)
+        if self.job_handler is None:
+            LOG.error("JobHandler not initialized")
+            return (0, 1)
+
         # Get cache directory if ground truth is cached
         cache_dir = self.job_handler.get_ground_truth_cache_dir(job.id, scenario_id, run_id)
         
@@ -155,6 +164,20 @@ class Pipeline:
         Returns:
             Filtered SimulationData with clustered frames
         """
+        # None check
+        if self.simulator is None:
+            LOG.error("Simulator not initialized")
+            raise RuntimeError("Simulator not initialized")
+        if self.filter_embedder is None:
+            LOG.error("Filter embedder not initialized")
+            raise RuntimeError("Filter embedder not initialized")
+        if CONFIG.filter is None:
+            LOG.error("Filter settings not configured")
+            raise RuntimeError("Filter settings not configured")
+        if self.job_handler is None:
+            LOG.error("JobHandler not initialized")
+            raise RuntimeError("JobHandler not initialized")
+
         # Select ground truth based on run_id, cycling through available ground truths
         ground_truth_index = run_id % job.ground_truth_count
         cache_dir = self.job_handler.get_ground_truth_cache_dir(job.id, scenario_id, ground_truth_index)
@@ -224,6 +247,10 @@ class Pipeline:
         Returns:
             Tuple of (success, InstructionSet or None)
         """
+        if self.generator is None:
+            LOG.error("Instruction generator not initialized. Cannot generate instruction for experiment.")
+            return (False, None)
+
         try:
             LOG.info(f"  Generating instruction set {generation_index} ({generation_index + 1} / {job.instruction_generation_count})")
             
@@ -249,7 +276,10 @@ class Pipeline:
             LOG.debug(f"    Generated instruction set with {len(instruction_set.instructions)} test case(s)")
             for i in range(1, len(instruction_set.instructions) + 1):
                 instruction = instruction_set.get_instruction_by_rank(i)
-                LOG.debug(f"    - Instruction {i}: Window=[{instruction.injection_window.start_timestamp:.2f}s, {instruction.injection_window.end_timestamp:.2f}s], Text='{instruction.text}'")
+                if instruction is not None:
+                    LOG.debug(f"    - Instruction {i}: Window=[{instruction.injection_window.start_timestamp:.2f}s, {instruction.injection_window.end_timestamp:.2f}s], Text='{instruction.text}'")
+                else:
+                    LOG.debug(f"    - Instruction {i}: None")
 
             return (True, instruction_set)
             
@@ -270,6 +300,11 @@ class Pipeline:
         Returns:
             Tuple of (successful_count, failed_count)
         """
+        # Simulator is required
+        if self.simulator is None:
+            LOG.error("Simulator not initialized. Cannot run experiment.")
+            return (0, 1)
+
         try:
             experiment_index = run_id - job.ground_truth_count
             LOG.info(f"  Experiment run {run_id} ({experiment_index + 1} / {job.instruction_count_per_generation * job.instruction_generation_count})")
@@ -335,6 +370,11 @@ class Pipeline:
         Returns:
             Tuple of (successful_count, failed_count)
         """
+        # Simulator is required
+        if self.simulator is None:
+            LOG.error("Simulator not initialized. Cannot run scenario ground truths.")
+            return (0, 1)
+
         LOG.info("-" * 80)
         LOG.info(f"Job {job.id} | Scenario {scenario_id} | Ground Truth Stage")
         LOG.info("-" * 80)
@@ -381,6 +421,11 @@ class Pipeline:
         Returns:
             Dictionary mapping experiment_index to InstructionSet or None
         """
+        # Simulator is required
+        if self.simulator is None:
+            LOG.error("Simulator not initialized. Cannot generate scenario instructions.")
+            return {i: None for i in range(job.instruction_generation_count)}
+
         LOG.info("-" * 80)
         LOG.info(f"Job {job.id} | Scenario {scenario_id} | VLM Instruction Generation Stage")
         LOG.info("-" * 80)
@@ -458,6 +503,11 @@ class Pipeline:
         Returns:
             Tuple of (successful_count, failed_count)
         """
+        # Simulator is required
+        if self.simulator is None:
+            LOG.error("Simulator not initialized. Cannot run scenario experiments.")
+            return (0, 1)
+
         LOG.info("-" * 80)
         LOG.info(f"Job {job.id} | Scenario {scenario_id} | Experiment Execution Stage")
         LOG.info("-" * 80)
@@ -562,6 +612,11 @@ class Pipeline:
         Returns:
             Tuple of (successful_count, failed_count)
         """
+        # Simulator is required
+        if self.simulator is None:
+            LOG.error("Simulator not initialized. Cannot run job.")
+            return (0, 1) 
+
         # Configure settings for this job (sets CONFIG.generator, CONFIG.filter, CONFIG.simulator)
         configure_settings_for_job(CONFIG, job)
         
@@ -594,7 +649,8 @@ class Pipeline:
         job_failed = 0
         
         # Set experiment nature on generator
-        self.generator.set_experiment_nature(job.experiment_nature)
+        if self.generator is not None:
+            self.generator.set_experiment_nature(job.experiment_nature)
         
         # Stage 1: CARLA - Run all ground truths for all scenarios
         LOG.info("")
@@ -603,7 +659,7 @@ class Pipeline:
         LOG.info("=" * 80)
 
         # Set base subdir for ground truth runs to keep them organized and separate from experiments
-        self.simulator.set_base_job_subdir(self._ground_truth_dir_name)
+        self.simulator.set_base_job_subdir(Path(self._ground_truth_dir_name))
         
         # TODO: Add parallelized VLM instruction generation during ground truth runs
         for scenario_id in job.scenarios:
@@ -640,9 +696,10 @@ class Pipeline:
             LOG.info("=" * 80)
             
             # Enable generator's full speed mode as the simulator is idle now (async)
-            enable_full_speed_mode_task = asyncio.create_task(self.generator.enable_full_speed_mode())
-            await enable_full_speed_mode_task
-            
+            if self.generator is not None:
+                enable_full_speed_mode_task = asyncio.create_task(self.generator.enable_full_speed_mode())
+                await enable_full_speed_mode_task
+
             # Generate instructions for all scenarios
             # Each generation will cluster frames from a different ground truth run (modulo ground_truth_count)
             all_instructions = {}  # Map: scenario_id -> {experiment_index -> Instruction}
@@ -660,10 +717,11 @@ class Pipeline:
                 all_instructions[scenario_id] = scenario_instructions
             
             # Disable full speed mode once all instructions are generated
-            await self.generator.disable_full_speed_mode()
+            if self.generator is not None:
+                await self.generator.disable_full_speed_mode()
 
             # Unset base subdir as we are done with running accessing ground truths
-            self.simulator.set_base_job_subdir("")
+            self.simulator.set_base_job_subdir(Path(""))
             
             # Stage 3: CARLA - Run all experiments with generated instructions
             LOG.info("")
