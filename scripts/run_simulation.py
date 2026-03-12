@@ -1,5 +1,8 @@
 from dataclasses import dataclass
 from typing import List
+import argparse
+import json
+from pathlib import Path
 
 from untitled.core.base import LOG
 from untitled.generator.instruction import InjectionWindow, Instruction
@@ -12,6 +15,98 @@ class SimulationJob:
     scenario_id: int
     instruction: Instruction
     repeat_count: int = 1
+
+
+def _non_negative_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be >= 0")
+    return parsed
+
+
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("must be >= 1")
+    return parsed
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Run simulation with either hardcoded jobs or a single instruction JSON file"
+    )
+    parser.add_argument(
+        "--scenario_id",
+        type=_non_negative_int,
+        default=None,
+        help="Scenario ID to run (required with --instruction_filepath)",
+    )
+    parser.add_argument(
+        "--instruction_filepath",
+        type=Path,
+        default=None,
+        help="Path to instruction JSON (custom_prompts.json format)",
+    )
+    parser.add_argument(
+        "--repeat_count",
+        type=_positive_int,
+        default=1,
+        help="Number of repeated runs for provided CLI instruction mode",
+    )
+    args = parser.parse_args()
+
+    # If one CLI override is provided, require both scenario_id and instruction file.
+    if (args.scenario_id is None) != (args.instruction_filepath is None):
+        parser.error("--scenario_id and --instruction_filepath must be provided together")
+
+    # Validate instruction file path if provided.
+    if args.instruction_filepath is not None:
+        if not args.instruction_filepath.exists():
+            parser.error(f"--instruction_filepath does not exist: {args.instruction_filepath}")
+        if not args.instruction_filepath.is_file():
+            parser.error(f"--instruction_filepath must be a file: {args.instruction_filepath}")
+
+    return args
+
+
+def _load_instruction_from_file(instruction_filepath: Path) -> Instruction:
+    with open(instruction_filepath, "r", encoding="utf-8") as f:
+        payload = json.load(f)
+
+    if isinstance(payload, list):
+        if not payload:
+            raise ValueError(f"Instruction file is empty: {instruction_filepath}")
+        item = payload[0]
+        if len(payload) > 1:
+            LOG.warning(
+                f"Instruction file contains {len(payload)} entries; only the first one will be used."
+            )
+    elif isinstance(payload, dict):
+        item = payload
+    else:
+        raise ValueError("Instruction file must contain a JSON object or a non-empty JSON array")
+
+    if not isinstance(item, dict):
+        raise ValueError("Instruction item must be a JSON object")
+
+    text = str(item.get("text", "")).strip()
+    if not text:
+        raise ValueError("Instruction JSON must contain non-empty 'text'")
+
+    start_timestamp = float(item.get("injection_time", 0.0))
+    injection_duration = max(0.0, float(item.get("injection_duration", 0.0)))
+    end_timestamp = start_timestamp + injection_duration
+
+    return Instruction(
+        rank=int(item.get("rank", 1)),
+        injection_window=InjectionWindow(
+            start_timestamp=start_timestamp,
+            end_timestamp=end_timestamp,
+        ),
+        text=text,
+        target_module_logic=str(item.get("target_module_logic", "")),
+        reasoning=str(item.get("reasoning", "")),
+    )
 
 # --- Define simulation jobs with instructions --------------------------------
 
@@ -53,10 +148,27 @@ jobs: List[SimulationJob] = [
 
 # --- Main --------------------------------------------------------------------
 def main():
+    args = _parse_args()
+
+    # Build runtime jobs from CLI input when provided.
+    runtime_jobs: List[SimulationJob] = []
+    if args.scenario_id is not None and args.instruction_filepath is not None:
+        instruction = _load_instruction_from_file(args.instruction_filepath)
+        runtime_jobs = [
+            SimulationJob(
+                scenario_id=args.scenario_id,
+                instruction=instruction,
+                repeat_count=args.repeat_count,
+            )
+        ]
+    else:
+        # No CLI override, use hardcoded jobs.
+        runtime_jobs = jobs
+
     LOG.info("Initializing simulator...")
     simulator = Simulator(ADS("simlingo"), True)
     
-    for job_index, job in enumerate(jobs):
+    for job_index, job in enumerate(runtime_jobs):
         LOG.info(f"Running scenario {job.scenario_id} with instruction: '{job.instruction.text}'...")
         # Set job and scenario context
         simulator.set_job_context(job_index, job.scenario_id)       # TODO: Remove scenario_id from this method
@@ -67,6 +179,7 @@ def main():
             LOG.info(f"Starting run {i+1}/{job.repeat_count} for scenario {job.scenario_id}...")
             simulator.run_scenario(job.instruction)
 
+    return 0
 
 if __name__ == "__main__":
-    main()
+    SystemExit(main())
