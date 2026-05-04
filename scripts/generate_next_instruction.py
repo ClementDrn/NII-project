@@ -433,7 +433,7 @@ async def _generate(args: argparse.Namespace) -> list[dict]:
     # Ensure model resources are opened/closed cleanly around the request.
     await generator.init()
     try:
-        instruction_set = await generator.generate_instructions_from_images(
+        instruction_set = await generator.generate_instructions(
             data=gt_simulation_data,
             failure_text=gt_result.failure_text if gt_result else None,
             was_route_completed=gt_result.was_route_completed if gt_result else None,

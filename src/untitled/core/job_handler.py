@@ -29,6 +29,7 @@ class Job:
         instruction_count_per_generation: Number of instructions to use per generation call
         repeat_count: Number of times to repeat execution loop
         stop_repeat_on_success: If True, stop repeating when a scenario achieves success
+        repeat_for_uniform_instruction_category_distribution: If True, repeat so that all instruction categories are uniformly covered
         results: Dictionary storing simulation results keyed by (scenario_id, run_id)
     """
     id: int
@@ -45,6 +46,7 @@ class Job:
     instruction_count_per_generation: int = 1
     repeat_count: int = 1
     stop_repeat_on_success: bool = False
+    repeat_for_uniform_instruction_category_distribution: bool = False
     results: Dict[tuple, Any] = field(default_factory=dict)
 
 
@@ -163,6 +165,7 @@ class JobHandler:
                     instruction_count_per_generation=job_data.get('instruction_count_per_generation', 1),
                     repeat_count=job_data.get('repeat_count', 1),
                     stop_repeat_on_success=job_data.get('stop_repeat_on_success', False),
+                    repeat_for_uniform_instruction_category_distribution=job_data.get('repeat_for_uniform_instruction_category_distribution', False),
                 )
                 
                 self.jobs.append(job)
@@ -229,7 +232,7 @@ class JobHandler:
         
         if not job:
             LOG.warning(f"Job {job_id} not found")
-            return ""
+            return Path("")
         
         # If no cache directory is specified, return None
         if not job.ground_truth_cache_dir:

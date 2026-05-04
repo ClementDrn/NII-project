@@ -2,14 +2,28 @@ from untitled.core.base import LOG
 from untitled.core.pipeline import Pipeline
 
 import asyncio
+import argparse
 import signal
 import sys
 
 
+def parse_cmdargs() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run the simulation pipeline")
+    parser.add_argument(
+        "--jobs-filepath",
+        default="jobs.yaml",
+        help="Path to jobs configuration file (default: jobs.yaml)",
+    )
+    return parser.parse_args()
+
+
 ### MAIN FUNCTION #############################################################
 async def main():
+    # Parse command-line arguments
+    cmdargs = parse_cmdargs()
+
     # Instantiate pipeline
-    pipeline = Pipeline()
+    pipeline = Pipeline(jobs_filepath=cmdargs.jobs_filepath)
 
     # Define interruption signal handler
     # It does not exit immediately on first SIGINT to allow graceful shutdown

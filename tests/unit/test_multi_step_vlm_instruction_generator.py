@@ -351,7 +351,7 @@ async def test_generate_instruction_multi_frame(mock_config, mock_get_model_conf
     # Create generator
     generator = MultiStepVLMInstructionGenerator()
 
-    instruction_set = await generator.generate_instructions_from_images(mock_simulation_data_multi_frame)    # Verify the final instruction set
+    instruction_set = await generator.generate_instructions(mock_simulation_data_multi_frame)    # Verify the final instruction set
     assert instruction_set == expected_instruction_set
     assert len(instruction_set.instructions) == 1
     assert instruction_set.instructions[0].text == "Run the red light and turn left immediately"
@@ -481,7 +481,7 @@ async def test_generate_instruction_single_frame(mock_config, mock_get_model_con
     # Create generator and generate instruction
     generator = MultiStepVLMInstructionGenerator()
 
-    instruction_set = await generator.generate_instructions_from_images(single_frame_data)
+    instruction_set = await generator.generate_instructions(single_frame_data)
     
     # Verify the final instruction set
     assert instruction_set == expected_instruction_set
@@ -535,7 +535,7 @@ async def test_generate_instruction_no_frames_raises_error(mock_config, mock_get
     
     # Verify that ValueError is raised
     with pytest.raises(ValueError, match="At least one frame is required"):
-        await generator.generate_instructions_from_images(empty_data)
+        await generator.generate_instructions(empty_data)
 
 @pytest.mark.asyncio
 @patch("untitled.generator.multi_step_vlm_instruction_generator.Task")

@@ -1,6 +1,6 @@
 from untitled.simulator.simulation_data import SimulationData
 from untitled.core.settings import GeneratorStepConfig, get_model_instances_config_by_step_id
-from untitled.generator.instruction import InstructionSet, InstructionResult
+from untitled.generator.instruction import InstructionSet, InstructionResult, InstructionCategory
 from untitled.generator.model_config import ModelConfig, get_model_config
 from untitled.generator.experiment_nature import ExperimentNature
 from untitled.core.base import LOG
@@ -50,12 +50,14 @@ class InstructionGenerator(ABC):
         return self._experiment_nature
 
     @abstractmethod
-    async def generate_instructions_from_images(
+    async def generate_instructions(
         self, 
         data: SimulationData,
         failure_text: Optional[str] = None,
         was_route_completed: Optional[bool] = None,
         previously_tried_instructions: Optional[List[InstructionResult]] = None,
+        instruction_category: InstructionCategory = InstructionCategory.NONE,
+        timestamp: Optional[float] = None,
     ) -> InstructionSet:
         """
         Generate instructions from simulation data (async to support VLM calls).
@@ -65,6 +67,8 @@ class InstructionGenerator(ABC):
             failure_text: Description of failure that occurred (for corrective tasks)
             was_route_completed: Whether route was completed (for corrective tasks)
             previously_tried_instructions: List of previous instruction results
+            instruction_category: Optional category to guide instruction generation
+            timestamp: Optional timestamp to force a specific injection time
         Returns:
             Generated instruction set
         """
@@ -103,6 +107,14 @@ class InstructionGenerator(ABC):
                 return True
         return False
 
+    def get_supported_instruction_categories(self) -> List[InstructionCategory]:
+        """
+        Get the list of instruction categories supported by this generator.
+        
+        Returns:
+            List of supported instruction categories
+        """
+        return []   # Can be overridden by subclasses to return actual supported categories
 
 def get_api_parameters_from_config(step_config: GeneratorStepConfig) -> dict:
     """
@@ -147,7 +159,7 @@ def get_api_parameters_from_config(step_config: GeneratorStepConfig) -> dict:
         LOG.warning(f"Unknown thinking_mode '{step_config.thinking_mode}' in step config. Using default thinking parameters.")
 
     # Combine thinking parameters with other API parameters
-    api_parameters: dict = None
+    api_parameters: dict
     try:
         api_parameters = {
             "model": model_config.model_name,
@@ -155,7 +167,7 @@ def get_api_parameters_from_config(step_config: GeneratorStepConfig) -> dict:
             **thinking_mode_params,
         }
     except TypeError as e:
-        LOG.warning(f"Error parsing thinking mode parameters for step '{step_config.step_id}': {e}. Using default parameters.")
+        LOG.warning(f"Error parsing thinking mode parameters for step '{step_config.id}': {e}. Using default parameters.")
         api_parameters = {
             "model": model_config.model_name,
             **params,

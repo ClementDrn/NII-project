@@ -171,6 +171,10 @@ generators:
         temperature: 0.7
         max_tokens: 81920
         thinking_mode: "enabled"
+  # Baseline rule-based generator
+  - id: "rule_based"
+    design: "rule_based"
+    dataset: "LaMPilot-Bench"
 
 model_instances:
   # Local instances

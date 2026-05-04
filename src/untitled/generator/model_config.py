@@ -32,6 +32,7 @@ def get_model_config(model_id: str) -> ModelConfig:
     Raises:
         ValueError: If model is not supported
     """
+    # TODO: Set dict as a module-level global constant
     models = {
         "r4b": ModelConfig(
             model_name="yannqi/r-4b",   # HuggingFace model name

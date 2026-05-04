@@ -11,6 +11,7 @@ PROJECT_NAME = "untitled"
 PROJECT_ROOT = Path(__file__).resolve().parents[3]  # this file is at src/untitled/core/base.py, so go up 3 levels
 VENDOR_VLM_DIR = PROJECT_ROOT / "vendor" / "vlm"
 VENDOR_CARLA_DIR = PROJECT_ROOT / "vendor" / "ads" / "carla"
+VENDOR_LAMPILOT_DIR = PROJECT_ROOT / "vendor" / "data" / "LaMPilot" / "DbLv1"
 
 # Logs directory
 LOG_DIR = PROJECT_ROOT / "logs"
