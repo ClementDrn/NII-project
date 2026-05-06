@@ -10,6 +10,7 @@ class ModelConfig:
     model_name: str     # TODO: Should be optional, rename to huggingface_name
     served_name: str
     max_model_len: int = 8192
+    max_prompt_len: int = -1     # -1 means no limit (other than max_model_len)
     reasoning_parser: str = ""
     thinking_activation_params: dict = None     # None means unsupported (will raise warning if thinking is enabled)
     thinking_deactivation_params: dict = None
