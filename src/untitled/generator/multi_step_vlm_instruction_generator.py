@@ -147,7 +147,7 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
         self._planner_clients = []
 
     @override
-    async def generate_instructions_from_images(
+    async def generate_instructions(
         self, 
         data: SimulationData,
         failure_text: Optional[str] = None,

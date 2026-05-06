@@ -122,6 +122,7 @@ class GeneratorConfig(BaseSettings):
 
     id: str
     design: str = "single_step_vlm"
+    dataset: str = ""
     instruction_count_per_generation: int = 3
     is_incremental: bool = False
     max_previous_instructions: int = 5

@@ -12,12 +12,13 @@ from untitled.simulator.simulation_data import SimulationData
 from untitled.simulator.simulation_result import SimulationResult
 from untitled.generator.single_step_vlm_instruction_generator import SingleStepVLMInstructionGenerator
 from untitled.generator.multi_step_vlm_instruction_generator import MultiStepVLMInstructionGenerator
+from untitled.generator.rule_based_instruction_generator import RuleBasedInstructionGenerator
 from untitled.simulator.simulation_data import SimulationFrameData
-from untitled.generator.instruction import Instruction, InstructionResult, InstructionSet
+from untitled.generator.instruction import Instruction, InstructionCategory, InstructionResult, InstructionSet
 from untitled.filter.filter import cluster_frames
 from untitled.filter.embedder import DINOEmbedder, Embedder
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, cast
 import time
 
 
@@ -29,7 +30,7 @@ class Pipeline:
     with both ground truth (baseline) and experiment (VLM-instructed) runs.
     """
 
-    def __init__(self):
+    def __init__(self, jobs_filepath: Optional[Path] = None):
         """Initialize pipeline components."""
         # TODO: Use underscore prefix for private attributes
         # Components
@@ -40,9 +41,15 @@ class Pipeline:
 
         # Constants
         self._ground_truth_dir_name: str = "ground_truths"
-        self._jobs_filepath: Path = PROJECT_ROOT / "jobs.yaml"
+        default_jobs_filepath = PROJECT_ROOT / "jobs.yaml"
+        self._jobs_filepath: Path = (
+            Path(jobs_filepath) if jobs_filepath is not None else default_jobs_filepath
+        )
+        if not self._jobs_filepath.is_absolute():
+            self._jobs_filepath = PROJECT_ROOT / self._jobs_filepath
         self._experiment_json_filename: str = "experiment_info.json"
         self._config_copied: bool = False
+        self._supported_instruction_categories: List[InstructionCategory] = []
 
     async def init(self):
         """
@@ -70,18 +77,104 @@ class Pipeline:
         self.simulator = Simulator()
 
         # Initialize instruction generator based on config
-        if CONFIG.generator is not None and CONFIG.generator.design is not None:
-            if CONFIG.generator.design == "single_step_vlm":
-                self.generator = SingleStepVLMInstructionGenerator(job.experiment_nature, CONFIG.generator.is_incremental)
-                await self.generator.init()
-            elif CONFIG.generator.design == "multi_step_vlm":
-                self.generator = MultiStepVLMInstructionGenerator(job.experiment_nature, CONFIG.generator.is_incremental)
-                await self.generator.init()
-            else:
-                raise ValueError(f"Unknown generator design: {CONFIG.generator.design}")
+        if CONFIG.generator is None:
+            raise ValueError("No generator configured for job")
 
-        # Initialize filter embedder
-        self.filter_embedder = DINOEmbedder()
+        if CONFIG.generator.design == "single_step_vlm":
+            self.generator = SingleStepVLMInstructionGenerator(job.experiment_nature, CONFIG.generator.is_incremental)
+            await self.generator.init()
+        elif CONFIG.generator.design == "multi_step_vlm":
+            self.generator = MultiStepVLMInstructionGenerator(job.experiment_nature, CONFIG.generator.is_incremental)
+            await self.generator.init()
+        elif CONFIG.generator.design == "rule_based":
+            self.generator = RuleBasedInstructionGenerator(CONFIG.generator.dataset)
+            await self.generator.init()
+        else:
+            raise ValueError(f"Unknown generator design: {CONFIG.generator.design}")
+
+        # Initialize filter embedder only when filtering is enabled.
+        if CONFIG.filter is not None:
+            # WARN: Hardcoded is fine since we support only one filter type.
+            self.filter_embedder = DINOEmbedder()
+
+        # Cache supported categories to support category-cycling baseline generation.
+        self._supported_instruction_categories = self.generator.get_supported_instruction_categories()
+
+    def _is_rule_based_job(self) -> bool:
+        return CONFIG.generator is not None and CONFIG.generator.design == "rule_based"
+
+    def _ground_truth_result_key(self, scenario_id: int, run_id: int) -> tuple:
+        """Build result key for ground-truth runs."""
+        return (scenario_id, "gt", run_id)
+
+    def _experiment_result_key(self, scenario_id: int, run_id: int) -> tuple:
+        """Build result key for experiment runs."""
+        return (scenario_id, "exp", run_id)
+
+    def _get_experiment_run_id(self, job: Job, repeat_index: int, generation_index: int, instruction_index: int) -> int:
+        """Compute stable experiment run id across repeats and generations (independent from ground truth IDs)."""
+        per_repeat_run_count = job.instruction_generation_count * job.instruction_count_per_generation
+        return (
+            repeat_index * per_repeat_run_count
+            + generation_index * job.instruction_count_per_generation
+            + instruction_index
+        )
+
+    def _get_effective_repeat_count(self, job: Job) -> int:
+        """Compute repeat count with baseline-specific uniform-category expansion."""
+        repeat_count = max(1, job.repeat_count)
+        if (
+            self._is_rule_based_job()
+            and job.repeat_for_uniform_instruction_category_distribution
+            and self._supported_instruction_categories
+        ):
+            repeat_count = max(repeat_count, len(self._supported_instruction_categories))
+        return repeat_count
+
+    def _create_simulation_data_from_logs(
+        self,
+        job: Job,
+        scenario_id: int,
+        ground_truth_index: int,
+        frames_per_minute: int,
+    ) -> SimulationData:
+        """
+        Load simulation data from a ground truth run without frame clustering.
+        """
+        if self.job_handler is None:
+            LOG.error("JobHandler not initialized. Cannot create simulation data from logs.")
+            raise RuntimeError("JobHandler not initialized")
+        if self.simulator is None:
+            LOG.error("Simulator not initialized. Cannot create simulation data from logs.")
+            raise RuntimeError("Simulator not initialized")
+    
+        cache_dir = self.job_handler.get_ground_truth_cache_dir(job.id, scenario_id, ground_truth_index)
+        if cache_dir is not None:
+            image_path_list = self.simulator.get_image_logs(job.id, scenario_id, ground_truth_index, cache_dir, frames_per_minute)
+            metadata_list = self.simulator.get_metadata_logs(job.id, scenario_id, ground_truth_index, cache_dir, frames_per_minute)
+        else:
+            image_path_list = self.simulator.get_image_logs(job.id, scenario_id, ground_truth_index, frames_per_minute=frames_per_minute)
+            metadata_list = self.simulator.get_metadata_logs(job.id, scenario_id, ground_truth_index, frames_per_minute=frames_per_minute)
+
+        if not image_path_list:
+            raise RuntimeError("Images not found in simulation logs")
+        if not metadata_list:
+            raise RuntimeError("Metadata not found in simulation logs")
+        if len(image_path_list) != len(metadata_list):
+            raise RuntimeError("Mismatch between images and metadata counts")
+
+        return SimulationData(
+            frame_count=len(image_path_list),
+            image_dir=image_path_list[0].parent,
+            frames=[
+                SimulationFrameData(
+                    image_name=img_path.name,
+                    metadata=metadata_list[i],
+                    timestamp=metadata_list[i].step * (1 / SIMULATION_FPS),
+                )
+                for i, img_path in enumerate(image_path_list)
+            ],
+        )
 
     async def _cleanup_job_components(self):
         """
@@ -90,15 +183,16 @@ class Pipeline:
         # Free simulator
         if self.simulator:
             self.simulator.free()
-            self.simulator = None
+            self.simulator = cast(Simulator, None)
 
         # Free generator
         if self.generator:
             await self.generator.free()
-            self.generator = None
+            self.generator = cast(InstructionGenerator, None)
 
         # Filter embedder doesn't need explicit cleanup
-        self.filter_embedder = None
+        self.filter_embedder = cast(Embedder, None)
+        self._supported_instruction_categories = []
 
     async def stop(self):
         """
@@ -137,7 +231,7 @@ class Pipeline:
             # Still collect the result from cache
             result = self.simulator.get_result(job.id, scenario_id, run_id, cache_dir)
             if result:
-                job.results[(scenario_id, run_id)] = result
+                job.results[self._ground_truth_result_key(scenario_id, run_id)] = result
             return (1, 0)
         try:
             LOG.info(f"  Ground truth run {run_id} ({run_id + 1} / {job.ground_truth_count})")
@@ -146,7 +240,7 @@ class Pipeline:
             # Collect the result using the actual run_id from the simulator
             result = self.simulator.get_result(job.id, scenario_id, actual_run_id)
             if result:
-                job.results[(scenario_id, run_id)] = result
+                job.results[self._ground_truth_result_key(scenario_id, run_id)] = result
             return (1, 0)
         except Exception as e:
             LOG.error(f"    Ground truth run {run_id} failed: {e}")
@@ -180,34 +274,11 @@ class Pipeline:
 
         # Select ground truth based on run_id, cycling through available ground truths
         ground_truth_index = run_id % job.ground_truth_count
-        cache_dir = self.job_handler.get_ground_truth_cache_dir(job.id, scenario_id, ground_truth_index)
-        
-        # Get image and metadata from previously collected ground truth
-        fpm = CONFIG.filter.max_frames_per_minute     # undersampling
-        LOG.debug(f"    Fetching images and metadata from ground truth run {ground_truth_index}...")
-        image_path_list = self.simulator.get_image_logs(job.id, scenario_id, ground_truth_index, cache_dir, fpm)
-        metadata_list = self.simulator.get_metadata_logs(job.id, scenario_id, ground_truth_index, cache_dir, fpm)
-        
-        if not image_path_list:
-            LOG.error(f"    Failed to get images from simulation logs")
-            raise RuntimeError("Images not found in simulation logs")
-        
-        if not metadata_list:
-            LOG.error(f"    Failed to get metadata from simulation logs")
-            raise RuntimeError("Metadata not found in simulation logs")
+        fpm = CONFIG.filter.max_frames_per_minute if CONFIG.filter is not None else 0
+        simulation_data = self._create_simulation_data_from_logs(job, scenario_id, ground_truth_index, fpm)
 
-        # Number of images and metadata entries must match
-        if len(image_path_list) != len(metadata_list):
-            LOG.error(f"    Mismatch between number of images ({len(image_path_list)}) and metadata entries ({len(metadata_list)})")
-            raise RuntimeError("Mismatch between images and metadata counts")
-        
-        # Create initial SimulationData
-        simulation_data = SimulationData(
-            frame_count=len(image_path_list),
-            image_dir=image_path_list[0].parent,
-            frames=[SimulationFrameData(image_name=img_path.name, metadata=metadata_list[i], timestamp=metadata_list[i].step * (1 / SIMULATION_FPS))
-                    for i, img_path in enumerate(image_path_list)]
-        )
+        if CONFIG.filter is None:
+            return simulation_data
 
         # Cluster similar frames to reduce redundancy
         threshold = CONFIG.filter.clustering_threshold
@@ -231,7 +302,9 @@ class Pipeline:
         generation_index: int, 
         simulation_data: SimulationData,
         ground_truth_result: Optional[SimulationResult] = None,
-        previously_tried_instructions: Optional[List[InstructionResult]] = None
+        previously_tried_instructions: Optional[List[InstructionResult]] = None,
+        instruction_category: InstructionCategory = InstructionCategory.NONE,
+        forced_timestamp: Optional[float] = None,
     ) -> Tuple[bool, Optional[InstructionSet]]:
         """
         Generate VLM instruction for a single experiment (async, queues the prompt).
@@ -263,11 +336,13 @@ class Pipeline:
                 LOG.debug(f"    Ground truth: route_completed={was_route_completed}, failure_text={failure_text[:100] if failure_text else 'None'}...")
             
             LOG.debug(f"    Generating instructions from images...")
-            instruction_set: InstructionSet = await self.generator.generate_instructions_from_images(
+            instruction_set: InstructionSet = await self.generator.generate_instructions(
                 simulation_data,
                 failure_text=failure_text,
                 was_route_completed=was_route_completed,
-                previously_tried_instructions=previously_tried_instructions
+                previously_tried_instructions=previously_tried_instructions,
+                instruction_category=instruction_category,
+                timestamp=forced_timestamp,
             )
             if not instruction_set:
                 LOG.error(f"    Failed to generate instruction from VLM")
@@ -306,7 +381,7 @@ class Pipeline:
             return (0, 1)
 
         try:
-            experiment_index = run_id - job.ground_truth_count
+            experiment_index = run_id
             LOG.info(f"  Experiment run {run_id} ({experiment_index + 1} / {job.instruction_count_per_generation * job.instruction_generation_count})")
             
             if instruction is None:
@@ -321,7 +396,7 @@ class Pipeline:
             # Collect the result using the actual run_id from the simulator
             result = self.simulator.get_result(job.id, scenario_id, actual_run_id)
             if result:
-                job.results[(scenario_id, run_id)] = result
+                job.results[self._experiment_result_key(scenario_id, run_id)] = result
             return (1, 0)
             
         except Exception as e:
@@ -405,7 +480,8 @@ class Pipeline:
         self, 
         job: Job, 
         scenario_id: int,
-        previously_tried_instructions: Optional[List[InstructionResult]] = None
+        previously_tried_instructions: Optional[List[InstructionResult]] = None,
+        repeat_index: int = 0,
     ) -> Dict[int, Optional[InstructionSet]]:
         """
         Generate VLM instructions for all experiments in a scenario (Stage 2: VLM only).
@@ -457,15 +533,43 @@ class Pipeline:
                     simulation_data_cache[ground_truth_index] = simulation_data
                 
                 # Get ground truth result for this generation (for corrective tasks)
-                ground_truth_result: Optional[SimulationResult] = job.results.get((scenario_id, ground_truth_index))
+                ground_truth_result: Optional[SimulationResult] = job.results.get(
+                    self._ground_truth_result_key(scenario_id, ground_truth_index)
+                )
                 if ground_truth_result is None and job.experiment_nature == ExperimentNature.CORRECTIVE:
                     LOG.warning(f"No ground truth result found for scenario {scenario_id} run {ground_truth_index}, corrective task may lack failure context")
                 
                 # Pass previously tried instructions for incremental generation (limiting is done in generator)
+                requested_category = InstructionCategory.NONE
+                if (
+                    self._is_rule_based_job()
+                    and job.repeat_for_uniform_instruction_category_distribution
+                    and self._supported_instruction_categories
+                ):
+                    category_index = (repeat_index * job.instruction_generation_count + generation_index) % len(self._supported_instruction_categories)
+                    requested_category = self._supported_instruction_categories[category_index]
+
                 success, instruction_set = await self._generate_instruction_for_experiment(
                     job, scenario_id, generation_index, simulation_data, ground_truth_result,
-                    previously_tried_instructions=previously_tried_instructions
+                    previously_tried_instructions=previously_tried_instructions,
+                    instruction_category=requested_category,
                 )
+
+                # Fallback for forced categories that have no valid window in this scenario.
+                if (not success or instruction_set is None or len(instruction_set.instructions) == 0) and requested_category != InstructionCategory.NONE:
+                    LOG.warning(
+                        f"Scenario {scenario_id} generation {generation_index}: no valid instruction for category {requested_category.name}, retrying without forced category"
+                    )
+                    success, instruction_set = await self._generate_instruction_for_experiment(
+                        job,
+                        scenario_id,
+                        generation_index,
+                        simulation_data,
+                        ground_truth_result,
+                        previously_tried_instructions=previously_tried_instructions,
+                        instruction_category=InstructionCategory.NONE,
+                    )
+
                 if success:
                     instructions[generation_index] = instruction_set
                 else:
@@ -474,12 +578,15 @@ class Pipeline:
                 # Serialize chosen ground truth index for debugging
                 # Make sure directory exists and write JSON data
                 # Use has_job_subdir=False to write to experiment directory, not ground_truths
-                experiment_json_dir: Path = self.simulator.get_run_dir(scenario_id, generation_index, has_job_subdir=False)
+                debug_run_id = self._get_experiment_run_id(job, repeat_index, generation_index, 0)
+                experiment_json_dir: Path = self.simulator.get_run_dir(scenario_id, debug_run_id, has_job_subdir=False)
                 experiment_json_path: Path = experiment_json_dir / self._experiment_json_filename
                 experiment_json_dir.mkdir(parents=True, exist_ok=True)
                 json_data = {
                     "ground_truth_index": ground_truth_index,
-                    "generation_index": generation_index
+                    "generation_index": generation_index,
+                    "repeat_index": repeat_index,
+                    "requested_category": requested_category.name,
                 }
                 with open(experiment_json_path, "w") as f:
                     json.dump(json_data, f)
@@ -491,7 +598,7 @@ class Pipeline:
         
         return instructions
 
-    def _run_scenario_experiments(self, job: Job, scenario_id: int, instructions: Dict[int, Optional[InstructionSet]]) -> Tuple[int, int]:
+    def _run_scenario_experiments(self, job: Job, scenario_id: int, instructions: Dict[int, Optional[InstructionSet]], repeat_index: int) -> Tuple[int, int]:
         """
         Run all experiment runs for a single scenario with pre-generated instructions (Stage 3: CARLA again).
         
@@ -537,15 +644,15 @@ class Pipeline:
                     continue
                 
                 # Determine number of runs and their IDs
-                base_run_id = job.ground_truth_count + generation_index * instruction_count_per_generation
                 total_run_count = instruction_count_per_generation
                 if total_run_count > len(instruction_set.instructions):
                     LOG.warning(f"  Requested {total_run_count} instructions for instruction generation {generation_index}, but only {len(instruction_set.instructions)} available. Reducing to available count.")
                     total_run_count = len(instruction_set.instructions)
 
                 # Run the specified number of instructions for this experiment
-                for run_id in range(base_run_id, base_run_id + total_run_count):
-                    instruction = instruction_set.instructions[run_id - base_run_id]
+                for instruction_index in range(total_run_count):
+                    run_id = self._get_experiment_run_id(job, repeat_index, generation_index, instruction_index)
+                    instruction = instruction_set.instructions[instruction_index]
                     exp_success, exp_failed = self._run_experiment(job, scenario_id, run_id, instruction)
                     successful += exp_success
                     failed += exp_failed
@@ -562,7 +669,8 @@ class Pipeline:
         job: Job,
         scenario_id: int,
         instructions: Dict[int, Optional[InstructionSet]],
-        tried_instructions: List[InstructionResult]
+        tried_instructions: List[InstructionResult],
+        repeat_index: int,
     ) -> None:
         """
         Collect experiment results into InstructionResult objects for incremental generation.
@@ -582,14 +690,16 @@ class Pipeline:
             
             # Get ground truth result for comparison
             ground_truth_index = generation_index % job.ground_truth_count
-            ground_truth_result = job.results.get((scenario_id, ground_truth_index))
+            ground_truth_result = job.results.get(
+                self._ground_truth_result_key(scenario_id, ground_truth_index)
+            )
             
             # Collect results for each instruction in the set
             instruction_count = min(job.instruction_count_per_generation, len(instruction_set.instructions))
             for i in range(instruction_count):
                 instruction = instruction_set.instructions[i]
-                run_id = job.ground_truth_count + generation_index * job.instruction_count_per_generation + i
-                exp_result = job.results.get((scenario_id, run_id))
+                run_id = self._get_experiment_run_id(job, repeat_index, generation_index, i)
+                exp_result = job.results.get(self._experiment_result_key(scenario_id, run_id))
                 
                 if exp_result:
                     was_successful = self._evaluate_instruction_success(job, exp_result, ground_truth_result)
@@ -669,7 +779,7 @@ class Pipeline:
 
         # TODO: Add async VLM instruction generation during ground truth runs
         # Initialize tracking for repeat loop
-        repeat_count = job.repeat_count
+        repeat_count = self._get_effective_repeat_count(job)
         stop_on_success = job.stop_repeat_on_success
         
         # Track previously tried instructions per scenario (for incremental generation across repeats)
@@ -712,7 +822,8 @@ class Pipeline:
                 LOG.debug(f"Generating instructions for scenario {scenario_id}...")
                 scenario_instructions = await self._generate_scenario_instructions(
                     job, scenario_id, 
-                    previously_tried_instructions=scenario_tried_instructions[scenario_id]
+                    previously_tried_instructions=scenario_tried_instructions[scenario_id],
+                    repeat_index=repeat_index,
                 )
                 all_instructions[scenario_id] = scenario_instructions
             
@@ -736,14 +847,15 @@ class Pipeline:
                 if scenario_id not in all_instructions:
                     continue
                     
-                exp_success, exp_failed = self._run_scenario_experiments(job, scenario_id, all_instructions[scenario_id])
+                exp_success, exp_failed = self._run_scenario_experiments(job, scenario_id, all_instructions[scenario_id], repeat_index)
                 job_successful += exp_success
                 job_failed += exp_failed
                 
                 # Collect instruction results from this repeat for incremental generation in next repeat
                 self._collect_instruction_results(
                     job, scenario_id, all_instructions[scenario_id],
-                    scenario_tried_instructions[scenario_id]
+                    scenario_tried_instructions[scenario_id],
+                    repeat_index,
                 )
                 
                 # Check if this scenario achieved success in this repeat
@@ -803,7 +915,9 @@ class Pipeline:
             gt_penalty_scores = []
             gt_infractions_total = 0
             for run_id in range(job.ground_truth_count):
-                gt_result: Optional[SimulationResult] = job.results.get((scenario_id, run_id))
+                gt_result: Optional[SimulationResult] = job.results.get(
+                    self._ground_truth_result_key(scenario_id, run_id)
+                )
                 if gt_result:
                     gt_penalty_scores.append(gt_result.scores.score_penalty)
                     gt_infractions_total += gt_result.infractions.total_count
@@ -815,10 +929,17 @@ class Pipeline:
                 avg_gt_penalty = None
                 LOG.info(f"  Ground Truth: No results available")
             
-            # Get experiment results and compare
-            for generation_index in range(job.instruction_generation_count * job.instruction_count_per_generation):
-                run_id = job.ground_truth_count + generation_index
-                exp_result: Optional[SimulationResult] = job.results.get((scenario_id, run_id))
+            # Get experiment results and compare (all repeats)
+            scenario_experiment_run_ids = sorted(
+                run_id
+                for key in job.results.keys()
+                if len(key) == 3 and key[0] == scenario_id and key[1] == "exp"
+                for run_id in [key[2]]
+            )
+            for run_id in scenario_experiment_run_ids:
+                exp_result: Optional[SimulationResult] = job.results.get(
+                    self._experiment_result_key(scenario_id, run_id)
+                )
                 
                 if exp_result:
                     total_experiments += 1

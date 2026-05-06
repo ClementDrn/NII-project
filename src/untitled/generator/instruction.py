@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import List, Optional
+from enum import Enum
 import json
 
 from untitled.core.base import LOG
@@ -18,6 +19,47 @@ class InstructionTaxonomy:
     grammar_polarity: str
     tone: str
 
+
+class InstructionCategory(Enum):
+    """
+    Represents the category of an instruction, encoded as a bitmask.
+    """
+    NONE = 0
+    # Speed change
+    SPEED_CHANGE = 1 << 3
+    INCREASE_RELATIVE_SPEED = SPEED_CHANGE | 1
+    DECREASE_RELATIVE_SPEED = SPEED_CHANGE | 2
+    INCREASE_ABSOLUTE_SPEED = SPEED_CHANGE | 3
+    DECREASE_ABSOLUTE_SPEED = SPEED_CHANGE | 4
+    # Distance change
+    DISTANCE_CHANGE = 1 << 4
+    INCREASE_RELATIVE_DISTANCE = DISTANCE_CHANGE | 1
+    DECREASE_RELATIVE_DISTANCE = DISTANCE_CHANGE | 2
+    INCREASE_ABSOLUTE_DISTANCE = DISTANCE_CHANGE | 3
+    DECREASE_ABSOLUTE_DISTANCE = DISTANCE_CHANGE | 4
+    # Overtake
+    OVERTAKE = 1 << 5
+    OVERTAKE_LEFT  = OVERTAKE | 1
+    OVERTAKE_RIGHT = OVERTAKE | 2
+    # Turn
+    TURN = 1 << 6
+    TURN_LEFT   = TURN | 1
+    TURN_RIGHT  = TURN | 2
+    GO_STRAIGHT = TURN | 3
+    # Lane change
+    LANE_CHANGE = 1 << 7
+    LANE_CHANGE_LEFT  = LANE_CHANGE | 1
+    LANE_CHANGE_RIGHT = LANE_CHANGE | 2
+    # Pull over
+    PULL_OVER = 1 << 8
+
+    def is_part_of(self, other) -> bool:
+        """
+        Check if this category is part of the specified category (based on bitmask).
+        """
+        return (self.value & other.value) == other.value
+
+
 @dataclass
 class InjectionWindow:
     """
@@ -32,11 +74,12 @@ class Instruction:
     Represents a single adversarial test case generated for a scenario.
     Based on the Adversarial Time Planner output format.
     """
-    rank: int                           # Priority rank of this test case (1 = highest priority)
-    injection_window: InjectionWindow   # Time window for instruction injection
-    text: str                           # The command text (adversarial or corrective)
-    target_module_logic: str            # Description of targeted ADS module/logic
-    reasoning: str                      # Explanation of why this window is critical
+    rank: int                               # Priority rank of this test case (1 = highest priority)
+    injection_window: InjectionWindow       # Time window for instruction injection
+    text: str                               # The command text (adversarial or corrective)
+    target_module_logic: str                # Description of targeted ADS module/logic
+    reasoning: str                          # Explanation of why this window is critical
+    category: InstructionCategory = InstructionCategory.NONE    # Optional category
 
 @dataclass
 class InstructionResult:

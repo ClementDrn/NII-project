@@ -206,7 +206,7 @@ async def test_generate_instruction_single_frame(mock_config, mock_get_model_con
     # Create generator and generate instruction
     generator = SingleStepVLMInstructionGenerator()
 
-    instruction_set = await generator.generate_instructions_from_images(mock_simulation_data_single_frame)
+    instruction_set = await generator.generate_instructions(mock_simulation_data_single_frame)
 
     # Verify the instruction set was returned
     assert instruction_set == expected_instruction_set
@@ -347,7 +347,7 @@ async def test_generate_instruction_multiple_frames_uses_first_frame(mock_config
     generator = SingleStepVLMInstructionGenerator()
 
     # Should use first frame without raising an error
-    instruction_set = await generator.generate_instructions_from_images(multi_frame_data)
+    instruction_set = await generator.generate_instructions(multi_frame_data)
 
     # Verify it returns a valid instruction set
     assert instruction_set is not None
@@ -450,7 +450,7 @@ async def test_generate_instruction_no_think_tags(mock_config, mock_get_model_co
     # Create generator and generate instruction
     generator = SingleStepVLMInstructionGenerator()
     
-    instruction_set = await generator.generate_instructions_from_images(mock_simulation_data_single_frame)
+    instruction_set = await generator.generate_instructions(mock_simulation_data_single_frame)
     
     # Verify the instruction set was returned
     assert instruction_set == expected_instruction_set

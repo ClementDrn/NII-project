@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Optional
 import json
 
 from untitled.core.base import LOG
@@ -364,3 +364,61 @@ def load_metadata(metadata_path: Path) -> SimulationMetadata:
             acceleration=data.get('acceleration', []),
             scene=scene_metadata
         )   
+
+def get_front_car(metadata: SimulationMetadata) -> Optional[dict]:
+    """
+    Get the closest car in front of the ego vehicle from the scene metadata.
+    """
+    cars = [obj for obj in metadata.scene if obj.get('class') == 'car']
+    if not cars:
+        return None
+    
+    # Filter by same lane/road/direction
+    car_candidates = []
+    for car in cars:
+        try:
+            if bool(car.get('same_road_as_ego')) and bool(car.get('same_direction_as_ego')) and int(car.get('lane_relative_to_ego', 0)) == 0:
+                car_candidates.append(car)
+        except (ValueError, TypeError):
+            LOG.warning(f"Car object with id {car.get('id')} has invalid metadata fields. Skipping for front car detection.")
+            continue
+
+    if not car_candidates:
+        return None
+
+    # Assuming the position's x-coordinate indicates the distance in front of the ego vehicle
+    # Get closest car among candidates
+    front_car = min(car_candidates, key=lambda car: car.get('position', [float('inf')])[0])
+    
+    return front_car
+
+def get_ego_info(metadata: SimulationMetadata) -> Optional[dict]:
+    """
+    Get the ego vehicle info from the scene metadata.
+    """
+    for obj in metadata.scene:
+        if obj.get('class') == 'ego_info':
+            return obj
+    return None
+
+def get_left_lane_types(metadata: SimulationMetadata) -> List[str]:
+    """
+    Get the types of the lanes to the left of the ego vehicle from the scene metadata.
+    """
+    ego_info = get_ego_info(metadata)
+    if ego_info is not None:
+        left_lanes = ego_info.get('left_lanes', [])
+        if left_lanes:
+            return [lane.get('type', None) for lane in left_lanes]
+    return []
+
+def get_right_lane_types(metadata: SimulationMetadata) -> List[str]:
+    """
+    Get the types of the lanes to the right of the ego vehicle from the scene metadata.
+    """
+    ego_info = get_ego_info(metadata)
+    if ego_info is not None:
+        right_lanes = ego_info.get('right_lanes', [])
+        if right_lanes:
+            return [lane.get('type', None) for lane in right_lanes]
+    return []
