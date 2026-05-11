@@ -139,7 +139,17 @@ class RuleBasedInstructionGenerator(InstructionGenerator):
             category = random.choice(categories)
         # Otherwise, find matching categories and select one
         else:
-            matching_categories = [c for c in categories if c.category.is_part_of(instruction_category)]
+            base_categories = {
+                InstructionCategory.SPEED_CHANGE,
+                InstructionCategory.DISTANCE_CHANGE,
+                InstructionCategory.OVERTAKE,
+                InstructionCategory.TURN,
+                InstructionCategory.LANE_CHANGE,
+            }
+            if instruction_category in base_categories:
+                matching_categories = [c for c in categories if c.category.is_part_of(instruction_category)]
+            else:
+                matching_categories = [c for c in categories if c.category == instruction_category]
             # If no matching categories found, return empty instruction set
             if not matching_categories:
                 LOG.error(f"No matching instruction categories found for specified category: {instruction_category}")

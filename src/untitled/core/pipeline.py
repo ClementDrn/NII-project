@@ -262,23 +262,27 @@ class Pipeline:
         if self.simulator is None:
             LOG.error("Simulator not initialized")
             raise RuntimeError("Simulator not initialized")
+        if CONFIG.filter is None:
+            # No filtering requested: return unclustered simulation data.
+            ground_truth_index = run_id % job.ground_truth_count
+            simulation_data = self._create_simulation_data_from_logs(
+                job,
+                scenario_id,
+                ground_truth_index,
+                frames_per_minute=0,
+            )
+            return simulation_data
         if self.filter_embedder is None:
             LOG.error("Filter embedder not initialized")
             raise RuntimeError("Filter embedder not initialized")
-        if CONFIG.filter is None:
-            LOG.error("Filter settings not configured")
-            raise RuntimeError("Filter settings not configured")
         if self.job_handler is None:
             LOG.error("JobHandler not initialized")
             raise RuntimeError("JobHandler not initialized")
 
         # Select ground truth based on run_id, cycling through available ground truths
         ground_truth_index = run_id % job.ground_truth_count
-        fpm = CONFIG.filter.max_frames_per_minute if CONFIG.filter is not None else 0
+        fpm = CONFIG.filter.max_frames_per_minute
         simulation_data = self._create_simulation_data_from_logs(job, scenario_id, ground_truth_index, fpm)
-
-        if CONFIG.filter is None:
-            return simulation_data
 
         # Cluster similar frames to reduce redundancy
         threshold = CONFIG.filter.clustering_threshold
@@ -390,7 +394,7 @@ class Pipeline:
             
             # Run scenario with instruction
             LOG.debug(f"    Running scenario with instruction...")
-            actual_run_id = self.simulator.run_scenario(instruction)
+            actual_run_id = self.simulator.run_scenario(instruction, run_id=run_id)
             
             LOG.info(f"    Experiment run {run_id} completed")
             # Collect the result using the actual run_id from the simulator
@@ -557,18 +561,25 @@ class Pipeline:
 
                 # Fallback for forced categories that have no valid window in this scenario.
                 if (not success or instruction_set is None or len(instruction_set.instructions) == 0) and requested_category != InstructionCategory.NONE:
-                    LOG.warning(
-                        f"Scenario {scenario_id} generation {generation_index}: no valid instruction for category {requested_category.name}, retrying without forced category"
-                    )
-                    success, instruction_set = await self._generate_instruction_for_experiment(
-                        job,
-                        scenario_id,
-                        generation_index,
-                        simulation_data,
-                        ground_truth_result,
-                        previously_tried_instructions=previously_tried_instructions,
-                        instruction_category=InstructionCategory.NONE,
-                    )
+                    if self._is_rule_based_job() and job.repeat_for_uniform_instruction_category_distribution:
+                        LOG.warning(
+                            f"Scenario {scenario_id} generation {generation_index}: no valid instruction for category {requested_category.name}, skipping"
+                        )
+                        success = False
+                        instruction_set = None
+                    else:
+                        LOG.warning(
+                            f"Scenario {scenario_id} generation {generation_index}: no valid instruction for category {requested_category.name}, retrying without forced category"
+                        )
+                        success, instruction_set = await self._generate_instruction_for_experiment(
+                            job,
+                            scenario_id,
+                            generation_index,
+                            simulation_data,
+                            ground_truth_result,
+                            previously_tried_instructions=previously_tried_instructions,
+                            instruction_category=InstructionCategory.NONE,
+                        )
 
                 if success:
                     instructions[generation_index] = instruction_set
@@ -582,11 +593,19 @@ class Pipeline:
                 experiment_json_dir: Path = self.simulator.get_run_dir(scenario_id, debug_run_id, has_job_subdir=False)
                 experiment_json_path: Path = experiment_json_dir / self._experiment_json_filename
                 experiment_json_dir.mkdir(parents=True, exist_ok=True)
+                actual_category = None
+                actual_instruction_text = None
+                if instruction_set is not None and instruction_set.instructions:
+                    actual_category = instruction_set.instructions[0].category.name
+                    actual_instruction_text = instruction_set.instructions[0].text
                 json_data = {
                     "ground_truth_index": ground_truth_index,
                     "generation_index": generation_index,
                     "repeat_index": repeat_index,
                     "requested_category": requested_category.name,
+                    "actual_category": actual_category,
+                    "actual_instruction": actual_instruction_text,
+                    "generation_success": bool(success and instruction_set and instruction_set.instructions),
                 }
                 with open(experiment_json_path, "w") as f:
                     json.dump(json_data, f)

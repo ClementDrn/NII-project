@@ -110,7 +110,7 @@ class FakeSimulator:
         # Track run IDs per (job_id, scenario_id, subdir) for auto-incrementing
         self._run_ids: Dict[Tuple[int, int, str], int] = {}
     
-    def run_scenario(self, instruction: Optional[Instruction] = None) -> int:
+    def run_scenario(self, instruction: Optional[Instruction] = None, run_id: Optional[int] = None) -> int:
         """
         Fake running a scenario. Returns run_id and tracks the call.
         
@@ -126,12 +126,18 @@ class FakeSimulator:
             The run_id for this scenario execution.
         """
         # Determine run_id
-        if self.preset_run_id is not None:
+        if run_id is not None:
+            run_id = run_id
+        elif self.preset_run_id is not None:
             run_id = self.preset_run_id
         else:
             key = (self._job_id, self._scenario_id, self.base_job_subdir)
             run_id = self._run_ids.get(key, 0)
             self._run_ids[key] = run_id + 1
+
+        if run_id is not None:
+            key = (self._job_id, self._scenario_id, self.base_job_subdir)
+            self._run_ids[key] = max(self._run_ids.get(key, 0), run_id + 1)
         
         self.run_scenario_calls.append({
             "instruction": instruction,

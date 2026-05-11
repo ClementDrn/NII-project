@@ -121,6 +121,30 @@ def jobs_yaml_with_experiment_nature(temp_dir):
     return jobs_file
 
 
+@pytest.fixture
+def jobs_yaml_with_repeat_flags(temp_dir):
+    """Create a jobs.yaml file with repeat-related flags specified."""
+    jobs_file = temp_dir / "jobs_repeat_flags.yaml"
+    jobs_data = {
+        "version": "2.0-dev",
+        "jobs": [
+            {
+                "name": "Repeat Flags Job",
+                "simulator": "carla_basic",
+                "scenarios": [0],
+                "repeat_count": 3,
+                "stop_repeat_on_success": True,
+                "repeat_for_uniform_instruction_category_distribution": True,
+            }
+        ]
+    }
+
+    with open(jobs_file, "w") as f:
+        yaml.dump(jobs_data, f)
+
+    return jobs_file
+
+
 class TestJob:
     """Test suite for Job dataclass."""
     
@@ -231,6 +255,41 @@ class TestJobHandler:
         # Check default nature (should be adversarial)
         assert jobs[2].name == "Default Nature Job"
         assert jobs[2].experiment_nature == ExperimentNature.ADVERSARIAL
+
+    def test_load_jobs_with_repeat_flags(self, jobs_yaml_with_repeat_flags):
+        """Test loading jobs with repeat-related flags set."""
+        handler = JobHandler(str(jobs_yaml_with_repeat_flags))
+        jobs = handler.get_jobs()
+
+        assert len(jobs) == 1
+        job = jobs[0]
+        assert job.repeat_count == 3
+        assert job.stop_repeat_on_success is True
+        assert job.repeat_for_uniform_instruction_category_distribution is True
+
+    def test_load_jobs_repeat_flags_defaults(self, temp_dir):
+        """Test that repeat-related flags default correctly when omitted."""
+        jobs_file = temp_dir / "jobs_repeat_defaults.yaml"
+        jobs_data = {
+            "version": "2.0-dev",
+            "jobs": [
+                {
+                    "name": "Default Repeat Flags Job",
+                    "simulator": "carla_basic",
+                    "scenarios": [0],
+                }
+            ]
+        }
+
+        with open(jobs_file, "w") as f:
+            yaml.dump(jobs_data, f)
+
+        handler = JobHandler(str(jobs_file))
+        job = handler.get_jobs()[0]
+
+        assert job.repeat_count == 1
+        assert job.stop_repeat_on_success is False
+        assert job.repeat_for_uniform_instruction_category_distribution is False
     
     def test_load_jobs_with_invalid_experiment_nature(self, temp_dir):
         """Test loading jobs with invalid experiment_nature raises ValueError."""

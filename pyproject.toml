@@ -28,6 +28,7 @@ dev = [
     "pytest",
     "pytest-asyncio",
     "pytest-cov",
+    "lark"
 ]
 
 [tool.pytest.ini_options]

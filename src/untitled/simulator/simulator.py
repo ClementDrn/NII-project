@@ -363,7 +363,8 @@ class Simulator:
     
     def _create_run_script(
         self,
-        instruction: Optional[Instruction] = None
+        instruction: Optional[Instruction] = None,
+        run_id: Optional[int] = None,
     ) -> str:
         """
         Create a bash script to run the CARLA scenario.
@@ -378,7 +379,16 @@ class Simulator:
             LOG.error("Job and scenario context must be set before creating run script.")
             raise ValueError("Job and scenario context must be set before creating run script.")
         
-        run_id = self._next_run_id()
+        if run_id is None:
+            run_id = self._next_run_id()
+        else:
+            key = (
+                self.current_job_id,
+                self.current_scenario_id,
+                str(self.base_job_subdir),
+            )
+            next_run_id = run_id + 1
+            self._run_ids[key] = max(self._run_ids.get(key, 0), next_run_id)
         self.current_run_id = run_id
 
         # Build directory structure based on job/scenario context
@@ -470,7 +480,8 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
     
     def run_scenario(
         self,
-        instruction: Optional[Instruction] = None
+        instruction: Optional[Instruction] = None,
+        run_id: Optional[int] = None,
     ) -> int:
         """
         Run a CARLA scenario with the SimLingo agent.
@@ -490,7 +501,7 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         # NOTE: The evaluator is started by SimLingo right now. In the future, we may want to start CARLA and the evaluator ourselves in order to choose what agent to use.
         
         # Create and run the scenario script
-        job_file = self._create_run_script(instruction)
+        job_file = self._create_run_script(instruction, run_id=run_id)
 
         # Skip, if simulations were globally disabled
         if SKIP_SIMULATION:

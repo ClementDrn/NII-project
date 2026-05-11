@@ -232,7 +232,7 @@ class JobHandler:
         
         if not job:
             LOG.warning(f"Job {job_id} not found")
-            return Path("")
+            return None
         
         # If no cache directory is specified, return None
         if not job.ground_truth_cache_dir:
