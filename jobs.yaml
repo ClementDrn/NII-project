@@ -38,75 +38,47 @@
 #     instruction_generation_count: 1
 #     instruction_count_per_generation: 3
 ---
-# Cached scenarios:
-# 5
-# 8
-# 18
-# 20
-# 32
-# 41
-# 43
-# 54
-# 63
-# 66
-# 71
-# 73
-# 77
-# 79
-# 80
-# 83
-# 91
-# 95
-# 99
-# 100
-# 102
-# 105
-# 110
-# 113
-# 116
-# 120
-# 122
-# 123
-# 127
-# 134
 version: "2.0-dev"
 jobs:
-  - name: "3-incremental single-step gpt5.2 experiments"
+  - name: "3-prompt single-step gpt-5-mini experiments"
     simulator: "carla_basic"
     # Simulator
     scenarios:
-    - 5
-    - 8
-    - 18
-    - 20
-    - 41
-    - 63
-    - 71
-    - 73
-    - 77
-    - 79
-    - 80
-    - 83
-    - 91
-    - 99
-    - 100
-    - 102
-    - 110
-    - 113
-    - 120
-    - 122
-    - 123
-    - 127
+      - 0
+      - 5
+      - 8
+      - 18
+      - 20
+      - 24
+      - 36
+      - 37
+      - 40
+      - 41
+      - 44
+      - 56
+      - 63
+      - 71
+      - 73
+      - 77
+      - 79
+      - 80
+      - 100
+      - 113
+      - 120
+      - 122
+      - 133
+      - 184
+      - 193
     ground_truth_count: 1
     ground_truth_cache_dir: "cache"
     # Filter
     filter: "undersampled_filter"
     # Generator
-    generator: "gpt-5.2_single_step_incremental"
+    generator: "gpt-5-mini_single_step"
     model_instances:
-      - "gpt-5.2_0"
+      - "gpt-5-mini_0"
     experiment_nature: "adversarial"
     instruction_generation_count: 1   # how many times to generate instructions, in one iteration
-    instruction_count_per_generation: 1
-    repeat_count: 2   # will cause to loop the pipeline, possibly with context-aware generation after the first iteration
-    stop_repeat_on_success: true
+    instruction_count_per_generation: 3
+    repeat_count: 1   # will cause to loop the pipeline, possibly with context-aware generation after the first iteration
+    stop_repeat_on_success: false
