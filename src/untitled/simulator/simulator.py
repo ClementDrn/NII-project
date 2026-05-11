@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import List, Optional, Dict, Any
 from itertools import chain
 
-from untitled.core.base import LOG, PROJECT_ROOT, CONFIG, SIMULATION_FPS
+from untitled.core.base import LOG, PROJECT_ROOT, CONFIG, SIMULATION_FPS, SKIP_SIMULATION
 from untitled.simulator.ads import ADS
 from untitled.simulator.simulation_data import SimulationMetadata, load_metadata
 from untitled.simulator.simulation_result import SimulationResult
@@ -491,6 +491,11 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         
         # Create and run the scenario script
         job_file = self._create_run_script(instruction)
+
+        # Skip, if simulations were globally disabled
+        if SKIP_SIMULATION:
+            LOG.warning("SKIP_SIMULATION is set; skipping scenario execution.")
+            return self.current_run_id
         
         if instruction:
             LOG.info(f"Running scenario with instruction at t={instruction.injection_window.start_timestamp}s: '{instruction.text}'")

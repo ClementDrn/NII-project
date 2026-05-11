@@ -19,12 +19,14 @@ def init_logging(name: str, logs_dir: Path, console_level = logging.INFO) -> log
 
     # Log File handler
     file_handler = logging.FileHandler(logs_dir / f"{name}.log", encoding='utf-8')
+    file_handler.name = "file"
     file_handler.setLevel(logging.DEBUG)
     file_formatter = logging.Formatter('[%(asctime)s][%(name)s][%(levelname)s] %(message)s')
     file_handler.setFormatter(file_formatter)
 
     # Log Console handler with colors
     console_handler = colorlog.StreamHandler()
+    console_handler.name = "console"
     console_handler.setLevel(console_level)
     console_formatter = colorlog.ColoredFormatter(
         '%(log_color)s%(levelname)s%(reset)s - %(message)s',
@@ -46,3 +48,18 @@ def init_logging(name: str, logs_dir: Path, console_level = logging.INFO) -> log
     logger.debug("--- New session started ----------------------------------------------------")
 
     return logger
+
+
+def set_console_log_level(logger: logging.Logger, level: int) -> None:
+    """
+    Update the console handler log level for an existing logger.
+    """
+    for handler in logger.handlers:
+        if getattr(handler, "name", None) == "console":
+            handler.setLevel(level)
+            return
+
+    for handler in logger.handlers:
+        if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
+            handler.setLevel(level)
+            return
