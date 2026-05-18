@@ -65,6 +65,14 @@ def print_results(job_dir: Path, ground_truth_cache_dir: Path) -> None:
                   f"collisions={exp.collisions_count}{marker}")
             if exp.prompt_text:
                 print(f"       prompt: \"{exp.prompt_text[:60]}{'...' if len(exp.prompt_text) > 60 else ''}\"")
+        
+        # Summary of scenario
+        scenario_summary = scenario.get_summary()
+        print(f"  Scenario summary: {scenario_summary['adversarial']} adversarial, "
+              f"{scenario_summary['corrective']} corrective, "
+              f"{scenario_summary['unchanged']} unchanged out of "
+              f"{scenario_summary['total_experiments']} experiments")
+
     
     # Summary
     summary = results.get_summary()

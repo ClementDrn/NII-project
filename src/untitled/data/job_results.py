@@ -61,6 +61,30 @@ class ScenarioResults:
         else:
             return ExperimentResult.UNCHANGED
 
+    def get_summary(self) -> Dict[str, int]:
+        """
+        Get summary counts of adversarial/corrective/unchanged runs.
+        """
+        # Summary object
+        summary = {
+            "total_experiments": len(self.experiments),
+            "adversarial": 0,
+            "corrective": 0,
+            "unchanged": 0
+        }
+
+        # Increment counts based on classification of each experiment
+        for exp in self.experiments:
+            classification = self.classify_run(exp)
+            if classification == ExperimentResult.ADVERSARIAL:
+                summary["adversarial"] += 1
+            elif classification == ExperimentResult.CORRECTIVE:
+                summary["corrective"] += 1
+            elif classification == ExperimentResult.UNCHANGED:
+                summary["unchanged"] += 1
+
+        return summary
+
 
 class JobResults:
     """Parser for job results from saved simulation data."""
@@ -250,15 +274,11 @@ class JobResults:
         total_experiments = 0
         
         for scenario in self.scenarios.values():
-            for exp in scenario.experiments:
-                total_experiments += 1
-                classification = scenario.classify_run(exp)
-                if classification == ExperimentResult.ADVERSARIAL:
-                    adversarial += 1
-                elif classification == ExperimentResult.CORRECTIVE:
-                    corrective += 1
-                elif classification == ExperimentResult.UNCHANGED:
-                    unchanged += 1
+            summary = scenario.get_summary()
+            adversarial += summary["adversarial"]
+            corrective += summary["corrective"]
+            unchanged += summary["unchanged"]
+            total_experiments += summary["total_experiments"]
         
         return {
             'total_experiments': total_experiments,
