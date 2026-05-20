@@ -351,6 +351,45 @@ class Pipeline:
             if not instruction_set:
                 LOG.error(f"    Failed to generate instruction from VLM")
                 raise RuntimeError("VLM instruction generation failed")
+
+            if self._is_rule_based_job() and job.instruction_count_per_generation > 1:
+                desired_count = job.instruction_count_per_generation
+                collected_instructions: List[Instruction] = []
+                for index in range(desired_count):
+                    if index == 0:
+                        candidate_set = instruction_set
+                    else:
+                        candidate_set = await self.generator.generate_instructions(
+                            simulation_data,
+                            failure_text=failure_text,
+                            was_route_completed=was_route_completed,
+                            previously_tried_instructions=previously_tried_instructions,
+                            instruction_category=instruction_category,
+                            timestamp=forced_timestamp,
+                        )
+
+                    if candidate_set is None or not candidate_set.instructions:
+                        break
+
+                    candidate = candidate_set.instructions[0]
+                    collected_instructions.append(Instruction(
+                        rank=len(collected_instructions) + 1,
+                        text=candidate.text,
+                        injection_window=candidate.injection_window,
+                        target_module_logic=candidate.target_module_logic,
+                        reasoning=candidate.reasoning,
+                        category=candidate.category,
+                    ))
+
+                if collected_instructions:
+                    if len(collected_instructions) < desired_count:
+                        LOG.warning(
+                            "    Generated only %d/%d instruction(s) for category %s",
+                            len(collected_instructions),
+                            desired_count,
+                            instruction_category.name,
+                        )
+                    instruction_set = InstructionSet(instructions=collected_instructions)
             
             LOG.debug(f"    Generated instruction set with {len(instruction_set.instructions)} test case(s)")
             for i in range(1, len(instruction_set.instructions) + 1):
@@ -550,7 +589,7 @@ class Pipeline:
                     and job.repeat_for_uniform_instruction_category_distribution
                     and self._supported_instruction_categories
                 ):
-                    category_index = (repeat_index * job.instruction_generation_count + generation_index) % len(self._supported_instruction_categories)
+                    category_index = repeat_index % len(self._supported_instruction_categories)
                     requested_category = self._supported_instruction_categories[category_index]
 
                 success, instruction_set = await self._generate_instruction_for_experiment(

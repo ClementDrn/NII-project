@@ -71,7 +71,7 @@ async def test_rule_based_uniform_distribution_without_carla(tmp_path, monkeypat
         simulator="carla_basic",
         scenarios=[0],
         ground_truth_count=1,
-        instruction_generation_count=2,
+        instruction_generation_count=2,     # k
         instruction_count_per_generation=1,
         repeat_for_uniform_instruction_category_distribution=True,
     )
@@ -110,8 +110,8 @@ async def test_rule_based_uniform_distribution_without_carla(tmp_path, monkeypat
 
     expected_sequence = []
     for repeat_index in range(repeat_count):
-        for generation_index in range(job.instruction_generation_count):
-            category_index = (repeat_index * job.instruction_generation_count + generation_index) % len(supported_categories)
+        category_index = repeat_index % len(supported_categories)
+        for _ in range(job.instruction_generation_count):
             expected_sequence.append(supported_categories[category_index])
     assert category_sequence == expected_sequence
 
@@ -177,3 +177,182 @@ async def test_rule_based_uniform_distribution_skips_invalid_category(tmp_path, 
     )
     assert instructions[0] is not None
     assert instructions[0].instructions[0].category == supported_categories[1]
+
+@pytest.mark.asyncio
+async def test_rule_based_uniform_distribution_multiple_scenarios(tmp_path, monkeypatch):
+    random.seed(7)
+
+    generator = RuleBasedInstructionGenerator(dataset="lampilot-bench")
+
+    pipeline = Pipeline()
+    pipeline.generator = generator
+    pipeline.simulator = MagicMock()
+    pipeline.simulator.get_run_dir.side_effect = lambda *args, **kwargs: tmp_path
+
+    generator_config = GeneratorConfig(id="rule_based", design="rule_based", dataset="lampilot-bench")
+    monkeypatch.setattr(CONFIG, "generator", generator_config)
+
+    supported_categories = generator.get_supported_instruction_categories()
+    pipeline._supported_instruction_categories = supported_categories
+
+    job = Job(
+        id=0,
+        name="Uniform Distribution",
+        simulator="carla_basic",
+        scenarios=[0, 1, 2],
+        ground_truth_count=1,
+        instruction_generation_count=1,     # k
+        instruction_count_per_generation=1,
+        repeat_for_uniform_instruction_category_distribution=True,
+    )
+
+    simulation_data = create_simulation_data(tmp_path)
+
+    async def fake_cluster_frames_for_run(*args, **kwargs):
+        return simulation_data
+
+    def fake_get_rule_for_category(category: InstructionCategory):
+        return AlwaysValidRule(category)
+
+    monkeypatch.setattr(pipeline, "_cluster_frames_for_run", fake_cluster_frames_for_run)
+    monkeypatch.setattr(rule_based_module, "get_rule_for_category", fake_get_rule_for_category)
+
+    categories = []
+    for scenario_id in job.scenarios:
+        instructions = await pipeline._generate_scenario_instructions(
+            job=job,
+            scenario_id=scenario_id,
+            previously_tried_instructions=[],
+            repeat_index=0,
+        )
+        assert instructions[0] is not None
+        assert instructions[0].instructions[0].category == supported_categories[0]
+
+        # Save the category for later verification
+        categories.append(instructions[0].instructions[0].category)
+
+    # All categories should be the same
+    assert all(category == categories[0] for category in categories)
+
+
+@pytest.mark.asyncio
+async def test_rule_based_uniform_distribution_changes_per_repeat_and_scenario(tmp_path, monkeypatch):
+    random.seed(7)
+
+    generator = RuleBasedInstructionGenerator(dataset="lampilot-bench")
+
+    pipeline = Pipeline()
+    pipeline.generator = generator
+    pipeline.simulator = MagicMock()
+    pipeline.simulator.get_run_dir.side_effect = lambda *args, **kwargs: tmp_path
+
+    generator_config = GeneratorConfig(id="rule_based", design="rule_based", dataset="lampilot-bench")
+    monkeypatch.setattr(CONFIG, "generator", generator_config)
+
+    supported_categories = generator.get_supported_instruction_categories()
+    pipeline._supported_instruction_categories = supported_categories
+
+    job = Job(
+        id=0,
+        name="Uniform Distribution",
+        simulator="carla_basic",
+        scenarios=[0, 1],
+        ground_truth_count=1,
+        instruction_generation_count=2,     # k
+        instruction_count_per_generation=1,
+        repeat_for_uniform_instruction_category_distribution=True,
+    )
+
+    simulation_data = create_simulation_data(tmp_path)
+
+    async def fake_cluster_frames_for_run(*args, **kwargs):
+        return simulation_data
+
+    def fake_get_rule_for_category(category: InstructionCategory):
+        return AlwaysValidRule(category)
+
+    monkeypatch.setattr(pipeline, "_cluster_frames_for_run", fake_cluster_frames_for_run)
+    monkeypatch.setattr(rule_based_module, "get_rule_for_category", fake_get_rule_for_category)
+
+    category_by_repeat = {}
+    for repeat_index in range(2):
+        for scenario_id in job.scenarios:
+            instructions = await pipeline._generate_scenario_instructions(
+                job=job,
+                scenario_id=scenario_id,
+                previously_tried_instructions=[],
+                repeat_index=repeat_index,
+            )
+            assert instructions[0] is not None
+            assert instructions[1] is not None
+            category = instructions[0].instructions[0].category
+            assert instructions[1].instructions[0].category == category
+            category_by_repeat.setdefault(repeat_index, []).append(category)
+
+    # Same category across scenarios within a repeat
+    for categories in category_by_repeat.values():
+        assert all(category == categories[0] for category in categories)
+
+    # Different categories across repeats when multiple categories exist
+    if len(supported_categories) > 1:
+        assert category_by_repeat[0][0] != category_by_repeat[1][0]
+
+@pytest.mark.asyncio
+async def test_rule_based_uniform_distribution_multiple_scenarios_and_k2(tmp_path, monkeypatch):
+    random.seed(7)
+
+    generator = RuleBasedInstructionGenerator(dataset="lampilot-bench")
+
+    pipeline = Pipeline()
+    pipeline.generator = generator
+    pipeline.simulator = MagicMock()
+    pipeline.simulator.get_run_dir.side_effect = lambda *args, **kwargs: tmp_path
+
+    generator_config = GeneratorConfig(id="rule_based", design="rule_based", dataset="lampilot-bench")
+    monkeypatch.setattr(CONFIG, "generator", generator_config)
+
+    supported_categories = generator.get_supported_instruction_categories()
+    pipeline._supported_instruction_categories = supported_categories
+
+    job = Job(
+        id=0,
+        name="Uniform Distribution",
+        simulator="carla_basic",
+        scenarios=[0, 1, 2],
+        ground_truth_count=1,
+        instruction_generation_count=2,     # k
+        instruction_count_per_generation=1,
+        repeat_for_uniform_instruction_category_distribution=True,
+    )
+
+    simulation_data = create_simulation_data(tmp_path)
+
+    async def fake_cluster_frames_for_run(*args, **kwargs):
+        return simulation_data
+
+    def fake_get_rule_for_category(category: InstructionCategory):
+        return AlwaysValidRule(category)
+
+    monkeypatch.setattr(pipeline, "_cluster_frames_for_run", fake_cluster_frames_for_run)
+    monkeypatch.setattr(rule_based_module, "get_rule_for_category", fake_get_rule_for_category)
+
+    categories = []
+    for scenario_id in job.scenarios:
+        instructions = await pipeline._generate_scenario_instructions(
+            job=job,
+            scenario_id=scenario_id,
+            previously_tried_instructions=[],
+            repeat_index=0,
+        )
+        assert instructions[0] is not None
+        assert instructions[1] is not None
+        assert len(instructions[0].instructions) == 1
+        assert len(instructions[1].instructions) == 1
+        assert instructions[0].instructions[0].category == supported_categories[0]
+        assert instructions[1].instructions[0].category == supported_categories[0]
+
+        # Save the categories for later verification
+        categories.append(instructions[0].instructions[0].category)
+
+    # All categories in position 0 should be the same
+    assert all(category == categories[0] for category in categories)
