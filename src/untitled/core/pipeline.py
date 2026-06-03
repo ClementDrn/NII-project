@@ -697,7 +697,7 @@ class Pipeline:
                 # Get instruction set for this experiment
                 instruction_set = instructions.get(generation_index)
                 if instruction_set is None:
-                    LOG.error(f"  No instruction set available for instruction generation {generation_index}, skipping run")
+                    LOG.warning(f"  No instruction set available for instruction generation {generation_index}, skipping run")
                     failed += 1
                     continue
                 

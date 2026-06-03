@@ -226,7 +226,7 @@ class RuleBasedInstructionGenerator(InstructionGenerator):
             # Find all frames that validate the rule's conditions
             possible_frames = [frame for frame in data.frames if rule.is_valid_for_this_frame(frame, category.variable)]
             if not possible_frames:
-                LOG.error(f"No valid frames found for the selected instruction category {category}. No instructions will be generated.")
+                LOG.warning(f"No valid frames found for the selected instruction category {category}. No instructions will be generated.")
                 return InstructionSet(instructions=[])
             
             # Choose a random valid frame
