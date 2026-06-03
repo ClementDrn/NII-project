@@ -1,4 +1,4 @@
-from untitled.generator.rule_based_instruction_generator import InstructionCategory
+from untitled.generator.instruction import InstructionCategory
 from untitled.simulator.simulation_data import SimulationFrameData, get_front_car, get_ego_info, get_left_lane_types, get_right_lane_types
 
 from dataclasses import dataclass

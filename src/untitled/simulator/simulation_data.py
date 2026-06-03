@@ -197,6 +197,14 @@ def _clean_ego_info_metadata(obj: dict) -> dict:
     """
     Clean and extract relevant ego vehicle info metadata fields.
     """
+    def _fix_lane_type_field(lane: dict) -> dict:
+        # In ego_info, there are typos in some fields: "type:" instead of "type"
+        if not isinstance(lane, dict):
+            return lane
+        if "type" not in lane and "type:" in lane:
+            lane = {"type": lane.get("type:"), **{k: v for k, v in lane.items() if k != "type:"}}
+        return lane
+
     allowed_fields = [
         "class",
         "traffic_light_state",
@@ -237,7 +245,15 @@ def _clean_ego_info_metadata(obj: dict) -> dict:
         "bike_lane_left",
         "bike_lane_right",
     ]
-    return {k: v for k, v in obj.items() if k in allowed_fields}
+    cleaned = {k: v for k, v in obj.items() if k in allowed_fields}
+    
+    if "left_lanes" in cleaned and isinstance(cleaned["left_lanes"], list):
+        cleaned["left_lanes"] = [_fix_lane_type_field(lane) for lane in cleaned["left_lanes"]]
+    if "right_lanes" in cleaned and isinstance(cleaned["right_lanes"], list):
+        cleaned["right_lanes"] = [_fix_lane_type_field(lane) for lane in cleaned["right_lanes"]]
+    cleaned["ego_lane"] = _fix_lane_type_field(cleaned.get("ego_lane", {}))
+
+    return cleaned
 
 def _clean_scene_metadata(scene_objects: list) -> dict:
     """
@@ -267,10 +283,10 @@ def _clean_scene_metadata(scene_objects: list) -> dict:
         # Ego car
         if class_name == "ego_car":
             ego_car = _clean_vehicle_metadata(obj)
-            # ego_car's fields will be merged to ego_info when available
+            # Merge into ego_info when possible; ego_info is the only kept entry.
             if ego_info is not None:
-                # Merge fields
                 ego_info.update(ego_car)
+                ego_info["class"] = "ego_info"
                 object_metadata = ego_info
         # Other moving vehicles
         elif class_name == "car":
@@ -296,18 +312,19 @@ def _clean_scene_metadata(scene_objects: list) -> dict:
         # Ego vehicle info
         elif class_name == "ego_info":
             ego_info = _clean_ego_info_metadata(obj)
-            # ego_car's fields will be merged to ego_info when available 
+            # ego_car's fields will be merged to ego_info when available
             if ego_car is not None:
-                # Merge fields
                 ego_info.update(ego_car)
-                object_metadata = ego_info
+            ego_info["class"] = "ego_info"
+            object_metadata = ego_info
         # Unknown classes
         else:
             LOG.warning(f"Unknown scene object class '{class_name}' in metadata. Ignoring.")
         
         # Add cleaned metadata if available
         if object_metadata is not None:
-            objects_per_class[class_name].append(object_metadata)
+            target_class = "ego_info" if class_name == "ego_car" else class_name
+            objects_per_class[target_class].append(object_metadata)
 
     # 2. Remove static objects that are behind the ego vehicle
     # NOTE: Even if static_trafficwarning was renamed to static_traffic_warning, it is still the prior in objects_per_class
