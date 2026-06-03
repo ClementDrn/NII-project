@@ -38,21 +38,21 @@ _RULES_BY_CATEGORY: Dict[InstructionCategory, Rule] = {
         injection_duration=3.0,
         target_module_logic="Affects speed control module.",
         reasoning="Decreasing speed by X is realistic as we are not stopped.",
-        is_valid_for_this_frame=lambda frame, var: frame.metadata.speed > 0
+        is_valid_for_this_frame=lambda frame, var: (speed := frame.metadata.speed) is not None and speed > 0
     ),
     InstructionCategory.INCREASE_ABSOLUTE_SPEED: Rule(
         category=InstructionCategory.INCREASE_ABSOLUTE_SPEED,
         injection_duration=3.0,
         target_module_logic="Affects speed control module.",
         reasoning="Increasing speed to X is realistic as we are currently below that speed.",
-        is_valid_for_this_frame=lambda frame, var: frame.metadata.speed < var
+        is_valid_for_this_frame=lambda frame, var: (speed := frame.metadata.speed) is not None and speed < var
     ),
     InstructionCategory.DECREASE_ABSOLUTE_SPEED: Rule(
         category=InstructionCategory.DECREASE_ABSOLUTE_SPEED,
         injection_duration=3.0,
         target_module_logic="Affects speed control module.",
         reasoning="Decreasing speed to X is realistic as we are currently above that speed and not stopped.",
-        is_valid_for_this_frame=lambda frame, var: frame.metadata.speed > var
+        is_valid_for_this_frame=lambda frame, var: (speed := frame.metadata.speed) is not None and speed > var
     ),
     # Distance change
     InstructionCategory.INCREASE_RELATIVE_DISTANCE: Rule(
@@ -60,28 +60,40 @@ _RULES_BY_CATEGORY: Dict[InstructionCategory, Rule] = {
         injection_duration=3.0,
         target_module_logic="Affects distance control module.",
         reasoning="Increasing distance by X is realistic if there is a front car within 100 meters.",
-        is_valid_for_this_frame=lambda frame, var: (car := get_front_car(frame.metadata)) is not None and car.get('distance', float('inf')) < 100
+        is_valid_for_this_frame=lambda frame, var: (
+            (car := get_front_car(frame.metadata)) is not None and 
+            (distance := car.get('distance', float('inf'))) is not None and distance < 100
+        )
     ),
     InstructionCategory.DECREASE_RELATIVE_DISTANCE: Rule(
         category=InstructionCategory.DECREASE_RELATIVE_DISTANCE,
         injection_duration=3.0,
         target_module_logic="Affects distance control module.",
         reasoning="Decreasing distance by X is realistic if there is a front car within 100 meters.",
-        is_valid_for_this_frame=lambda frame, var: (car := get_front_car(frame.metadata)) is not None and car.get('distance', float('inf')) < 100
+        is_valid_for_this_frame=lambda frame, var: (
+            (car := get_front_car(frame.metadata)) is not None and
+            (distance := car.get('distance', float('inf'))) is not None and distance < 100
+        )
     ),
     InstructionCategory.INCREASE_ABSOLUTE_DISTANCE: Rule(
         category=InstructionCategory.INCREASE_ABSOLUTE_DISTANCE,
         injection_duration=3.0,
         target_module_logic="Affects distance control module.",
         reasoning="Increasing distance to X is realistic if there is a front car within that distance.",
-        is_valid_for_this_frame=lambda frame, var: (car := get_front_car(frame.metadata)) is not None and car.get('distance', float('inf')) < var
+        is_valid_for_this_frame=lambda frame, var: (
+            (car := get_front_car(frame.metadata)) is not None and
+            (distance := car.get('distance', float('inf'))) is not None and distance < var
+        )
     ),
     InstructionCategory.DECREASE_ABSOLUTE_DISTANCE: Rule(
         category=InstructionCategory.DECREASE_ABSOLUTE_DISTANCE,
         injection_duration=3.0,
         target_module_logic="Affects distance control module.",
         reasoning="Decreasing distance to X is realistic if there is a front car currently farther than that distance.",
-        is_valid_for_this_frame=lambda frame, var: (car := get_front_car(frame.metadata)) is not None and car.get('distance', float('inf')) > var
+        is_valid_for_this_frame=lambda frame, var: (
+            (car := get_front_car(frame.metadata)) is not None and
+            (distance := car.get('distance', float('inf'))) is not None and distance > var
+        )
     ),
     # Overtake
     InstructionCategory.OVERTAKE_LEFT: Rule(
@@ -89,14 +101,20 @@ _RULES_BY_CATEGORY: Dict[InstructionCategory, Rule] = {
         injection_duration=3.0,
         target_module_logic="Affects lane change and overtaking logic.",
         reasoning="Overtaking left is realistic if there is a front car within 100 meters.",
-        is_valid_for_this_frame=lambda frame, var: (car := get_front_car(frame.metadata)) is not None and car.get('distance', float('inf')) < 100
+        is_valid_for_this_frame=lambda frame, var: (
+            (car := get_front_car(frame.metadata)) is not None and
+            (distance := car.get('distance', float('inf'))) is not None and distance < 100
+        )
     ),
     InstructionCategory.OVERTAKE_RIGHT: Rule(
         category=InstructionCategory.OVERTAKE_RIGHT,
         injection_duration=3.0,
         target_module_logic="Affects lane change and overtaking logic.",
         reasoning="Overtaking right is realistic if there is a front car within 100 meters.",
-        is_valid_for_this_frame=lambda frame, var: (car := get_front_car(frame.metadata)) is not None and car.get('distance', float('inf')) < 100
+        is_valid_for_this_frame=lambda frame, var: (
+            (car := get_front_car(frame.metadata)) is not None and
+            (distance := car.get('distance', float('inf'))) is not None and distance < 100
+        )
     ),
     # Turn
     InstructionCategory.TURN_LEFT: Rule(
@@ -104,21 +122,30 @@ _RULES_BY_CATEGORY: Dict[InstructionCategory, Rule] = {
         injection_duration=3.0,
         target_module_logic="Affects steering control module.",
         reasoning="Turning left is realistic if there is a junction within 10 meters.",
-        is_valid_for_this_frame=lambda frame, var: (info := get_ego_info(frame.metadata)) is not None and info.get('distance_to_junction', float('inf')) < 10
+        is_valid_for_this_frame=lambda frame, var: (
+            (info := get_ego_info(frame.metadata)) is not None and
+            (distance := info.get('distance_to_junction', float('inf'))) is not None and distance < 10
+        )
     ),
     InstructionCategory.TURN_RIGHT: Rule(
         category=InstructionCategory.TURN_RIGHT,
         injection_duration=3.0,
         target_module_logic="Affects steering control module.",
         reasoning="Turning right is realistic if there is a junction within 10 meters.",
-        is_valid_for_this_frame=lambda frame, var: (info := get_ego_info(frame.metadata)) is not None and info.get('distance_to_junction', float('inf')) < 10
+        is_valid_for_this_frame=lambda frame, var: (
+            (info := get_ego_info(frame.metadata)) is not None and
+            (distance := info.get('distance_to_junction', float('inf'))) is not None and distance < 10
+        )
     ),
     InstructionCategory.GO_STRAIGHT: Rule(
         category=InstructionCategory.GO_STRAIGHT,
         injection_duration=3.0,
         target_module_logic="Affects steering control module.",
         reasoning="Going straight is realistic if there is a junction within 10 meters.",
-        is_valid_for_this_frame=lambda frame, var: (info := get_ego_info(frame.metadata)) is not None and info.get('distance_to_junction', float('inf')) < 10
+        is_valid_for_this_frame=lambda frame, var: (
+            (info := get_ego_info(frame.metadata)) is not None and
+            (distance := info.get('distance_to_junction', float('inf'))) is not None and distance < 10
+        )
     ),
     # Change lane
     InstructionCategory.LANE_CHANGE_LEFT: Rule(
@@ -126,14 +153,20 @@ _RULES_BY_CATEGORY: Dict[InstructionCategory, Rule] = {
         injection_duration=3.0,
         target_module_logic="Affects lane change logic.",
         reasoning="Changing lane to the left is realistic if there is a lane on the left.",
-        is_valid_for_this_frame=lambda frame, var: "Driving" in get_left_lane_types(frame.metadata)
+        is_valid_for_this_frame=lambda frame, var: (
+            (lanes := get_left_lane_types(frame.metadata)) is not None and
+            "Driving" in lanes
+        )
     ),
     InstructionCategory.LANE_CHANGE_RIGHT: Rule(
         category=InstructionCategory.LANE_CHANGE_RIGHT,
         injection_duration=3.0,
         target_module_logic="Affects lane change logic.",
         reasoning="Changing lane to the right is realistic if there is a lane on the right.",
-        is_valid_for_this_frame=lambda frame, var: "Driving" in get_right_lane_types(frame.metadata)
+        is_valid_for_this_frame=lambda frame, var: (
+            (lanes := get_right_lane_types(frame.metadata)) is not None and
+            "Driving" in lanes
+        )
     ),
     # Pull over
     InstructionCategory.PULL_OVER: Rule(
@@ -141,7 +174,10 @@ _RULES_BY_CATEGORY: Dict[InstructionCategory, Rule] = {
         injection_duration=3.0,
         target_module_logic="Affects lane change and stopping logic.",
         reasoning="Pulling over is realistic if there is a shoulder or parking lane on the right.",
-        is_valid_for_this_frame=lambda frame, var: (lanes := get_right_lane_types(frame.metadata), []) and any(lane in lanes for lane in ["Shoulder", "Parking"])
+        is_valid_for_this_frame=lambda frame, var: (
+            (lanes := get_right_lane_types(frame.metadata)) is not None and
+            any(lane in lanes for lane in ["Shoulder", "Parking"])
+        )
     ),
 }
 
