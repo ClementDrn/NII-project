@@ -348,7 +348,7 @@ class Pipeline:
                 instruction_category=instruction_category,
                 timestamp=forced_timestamp,
             )
-            if not instruction_set:
+            if not instruction_set or not instruction_set.instructions:
                 LOG.error(f"    Failed to generate instruction from VLM")
                 raise RuntimeError("VLM instruction generation failed")
 

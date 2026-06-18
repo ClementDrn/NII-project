@@ -7,7 +7,7 @@ from untitled.generator.task import Task
 from untitled.generator.task_manager import TaskManager
 from untitled.core.base import PROJECT_ROOT, LOG, CONFIG
 from untitled.simulator.simulation_data import SimulationData
-from untitled.generator.instruction import InstructionResult, InstructionSet, parse_instructions_from_json
+from untitled.generator.instruction import InstructionCategory, InstructionResult, InstructionSet, parse_instructions_from_json
 from typing import List, Optional, override
 import asyncio
 
@@ -121,7 +121,9 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
         failure_text: Optional[str] = None,
         was_route_completed: Optional[bool] = None,
         previously_tried_instructions: Optional[List[InstructionResult]] = None,
-    ) -> Optional[InstructionSet]:
+        instruction_category: InstructionCategory = InstructionCategory.NONE,
+        timestamp: Optional[float] = None,
+    ) -> InstructionSet:
         """
         Generate instructions from a sequence of video frames using a VLM.
         All frames and their metadata are sent together in a single request.
@@ -132,8 +134,13 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
             was_route_completed: Whether route was completed (for corrective tasks)
             previously_tried_instructions: List of previous instruction results (for context-aware generation)
         Returns:
-            Generated instruction set, or None if generation failed
+            Generated instruction set, which may be empty if generation failed or was redacted
         """
+        # Check that CONFIG.generator is defined
+        if CONFIG.generator is None:
+            LOG.error("CONFIG.generator is not defined! Please define generator settings in the configuration file.")
+            raise ValueError("CONFIG.generator is not defined! Please define generator settings in the configuration file.")
+
         # Check frame count validity
         if data.frame_count < 1:
             LOG.error("At least one frame is required to generate instructions!")
@@ -178,12 +185,12 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
         LOG.debug(f"Planner Response:\n{instruction_raw}\n")
         
         if instruction_raw is None:
-            return None
+            return InstructionSet(instructions=[])
         
         # Check if response was redacted (contains "REDACTED")
         if self._is_instruction_redacted(instruction_raw):
             LOG.error("Could not generate instructions: planner response was 'REDACTED' by the model (for safety reasons).")
-            return None
+            return InstructionSet(instructions=[])
         
         # Parse instruction set from JSON
         instruction_set = parse_instructions_from_json(instruction_raw)
@@ -192,6 +199,7 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
                 "You may want to increase the max_tokens setting for the planner model, "
                 "as it might be too low to capture the full json response. "
                 "The response might also be redacted.")
+            instruction_set = InstructionSet(instructions=[])
 
         return instruction_set
 

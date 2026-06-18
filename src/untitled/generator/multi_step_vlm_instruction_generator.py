@@ -6,7 +6,7 @@ from untitled.generator.model import create_model_client, parse_model_response, 
 from untitled.generator.experiment_nature import ExperimentNature
 from untitled.generator.task import Task
 from untitled.generator.task_manager import TaskManager
-from untitled.generator.instruction import InstructionResult, InstructionSet, parse_instructions_from_json
+from untitled.generator.instruction import InstructionCategory, InstructionResult, InstructionSet, parse_instructions_from_json
 from untitled.core.base import VLM_LOG, PROJECT_ROOT, LOG, CONFIG
 from untitled.simulator.simulation_data import SimulationData
 from typing import List, Optional, override
@@ -153,7 +153,9 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
         failure_text: Optional[str] = None,
         was_route_completed: Optional[bool] = None,
         previously_tried_instructions: Optional[List[InstructionResult]] = None,
-    ) -> Optional[InstructionSet]:
+        instruction_category: InstructionCategory = InstructionCategory.NONE,
+        timestamp: Optional[float] = None,
+    ) -> InstructionSet:
         """
         Generate instruction from images and metadata using LLM/VLM models.
         There are two steps:
@@ -164,10 +166,15 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
             data: Simulation data containing frames and metadata
             failure_text: Description of failure that occurred (for corrective tasks)
             was_route_completed: Whether route was completed (for corrective tasks)
-            
+            previously_tried_instructions: List of previous instruction results (for incremental generation)
         Returns:
-            Generated instruction set, or None if generation failed
+            Generated instruction set, which may be empty if generation failed or was redacted
         """
+        # Check that CONFIG.generator is defined
+        if CONFIG.generator is None:
+            LOG.error("CONFIG.generator is not defined! Please define generator settings in the configuration file.")
+            raise ValueError("CONFIG.generator is not defined! Please define generator settings in the configuration file.")
+
         # Check frame count validity
         if data.frame_count < 1:
             LOG.error("At least one frame is required to generate instructions!")
@@ -261,12 +268,12 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
         VLM_LOG.debug(f"- Planner Response:\n{instruction_raw}\n")
         
         if instruction_raw is None:
-            return None
+            return InstructionSet(instructions=[])
 
         # Check if response was redacted (contains "REDACTED")
         if self._is_instruction_redacted(instruction_raw):
             LOG.error("Could not generate instructions: planner response was 'REDACTED' by the model (for safety reasons).")
-            return None
+            return InstructionSet(instructions=[])
         
         # Parse instruction set from JSON
         instruction_set = parse_instructions_from_json(instruction_raw)
@@ -275,6 +282,7 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
                 "You may want to increase the max_tokens setting for the planner model, "
                 "as it might be too low to capture the full json response. "
                 "The response might also be redacted.")
+            instruction_set = InstructionSet(instructions=[])
 
         return instruction_set
 
