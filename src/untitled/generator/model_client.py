@@ -2,17 +2,47 @@ from untitled.core.base import LOG, VLM_LOG
 from untitled.generator.model_config import get_model_config
 
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from dataclasses import dataclass, field
+from typing import Any
 import base64
+import asyncio
+import json
 from PIL import Image
-from litellm import acompletion, get_llm_provider
+from litellm import acompletion
 import io
 import time
 import random
-import asyncio
+import tempfile
+import uuid
 from pathlib import Path
 from enum import Enum
-from urllib.parse import urlparse
+from urllib.request import Request, urlopen
+
+
+class BatchStatus(Enum):
+    """Normalized batch status values used by the client API."""
+
+    UNKNOWN = "unknown"
+    VALIDATING = "validating"
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    EXPIRED = "expired"
+
+
+@dataclass
+class BatchResult:
+    """Normalized batch response returned by send/retrieve operations."""
+
+    batch_id: str | None = None
+    status: BatchStatus = BatchStatus.UNKNOWN
+    request_file_id: str | None = None
+    result_file_id: str | None = None
+    result_file_path: Path | None = None
+    raw: dict[str, Any] = field(default_factory=dict)
+    error: str | None = None
 
 
 class ModelType(Enum):
@@ -211,65 +241,25 @@ class ModelClient(ABC):
 
     def _build_completion_kwargs(self, messages: list[dict], api_parameters: dict | None = None) -> dict:
         """
-        Build LiteLLM completion kwargs with provider-independent API settings.
+        Build LiteLLM completion kwargs for the proxy endpoint.
         """
         request_api_parameters = dict(self.api_parameters if api_parameters is None else api_parameters)
+        # Normalize short model IDs to the canonical model name, but keep routing decisions out of the client.
         request_model_name = request_api_parameters.get("model", "")
-        # Temporary security check 
         if isinstance(request_model_name, str) and "/" not in request_model_name:
             try:
                 request_api_parameters["model"] = get_model_config(request_model_name).model_name
             except ValueError:
                 pass
 
-        request_model_name = request_api_parameters.get("model", "")
+        request_api_parameters.setdefault("model", request_api_parameters.get("model", "default"))
         request_kwargs = {
             "messages": messages,
             **request_api_parameters,
         }
-        resolved_api_base = self._resolve_api_base(request_model_name)
-        if resolved_api_base is not None:
-            request_kwargs.setdefault("api_base", resolved_api_base)
+        request_kwargs.setdefault("api_base", self.host.rstrip("/"))
         request_kwargs.setdefault("api_key", self.api_key)
         return request_kwargs
-
-    def _resolve_api_base(self, model_name: str) -> Optional[str]:
-        """
-        Resolve API base URL from host and model provider for LiteLLM.
-
-        - If host already has a path (e.g. reverse proxy), preserve it as-is.
-        - Otherwise, use LiteLLM provider inference from `model_name`.
-        - OpenAI-compatible providers default to `/v1`.
-        - Provider-native cloud APIs (Gemini/Anthropic) can use LiteLLM defaults.
-        - Other providers use host root.
-        """
-        host_base = self.host.rstrip("/")
-
-        parsed_host = urlparse(host_base)
-        host_has_explicit_path = parsed_host.path not in ("", "/")
-        if host_has_explicit_path:
-            return host_base
-
-        provider = ""
-        if model_name:
-            try:
-                _, provider, _, _ = get_llm_provider(
-                    model=model_name,
-                    api_base=host_base,
-                    api_key=self.api_key,
-                )
-            except Exception:
-                provider = model_name.split("/", 1)[0].lower() if "/" in model_name else ""
-
-        openai_compatible_providers = {"", "openai", "text-completion-openai", "azure", "azure_ai"}
-        if provider in openai_compatible_providers:
-            return f"{host_base}/v1"
-
-        provider_default_base = {"gemini", "anthropic"}
-        if provider in provider_default_base:
-            return None
-
-        return host_base
 
     def _extract_token_usage(self, chat_response: Any) -> tuple[int, int, int]:
         """
@@ -324,6 +314,176 @@ class ModelClient(ABC):
 
         return content or ""
 
+    def _request_url(self, path: str) -> str:
+        """Build an absolute request URL from the current API base."""
+        return f"{self.host.rstrip('/')}/{path.lstrip('/')}"
+
+    def _blocking_json_request(self, method: str, path: str, payload: dict[str, Any] | None = None, headers: dict[str, str] | None = None) -> dict[str, Any]:
+        """Execute a blocking JSON request against the configured API base."""
+        request_headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}",
+        }
+        if headers:
+            request_headers.update(headers)
+
+        body = None if payload is None else json.dumps(payload).encode("utf-8")
+        request = Request(self._request_url(path), data=body, headers=request_headers, method=method)
+        with urlopen(request, timeout=1800) as response:
+            response_bytes = response.read()
+        if not response_bytes:
+            return {}
+        return json.loads(response_bytes.decode("utf-8"))
+
+    def _blocking_file_upload(self, path: Path) -> dict[str, Any]:
+        """Upload a JSONL file using the OpenAI-compatible file API."""
+        boundary = f"----untitled-{uuid.uuid4().hex}"
+        body = bytearray()
+
+        def append_text(text: str) -> None:
+            body.extend(text.encode("utf-8"))
+
+        append_text(f"--{boundary}\r\n")
+        append_text('Content-Disposition: form-data; name="purpose"\r\n\r\n')
+        append_text("batch\r\n")
+
+        append_text(f"--{boundary}\r\n")
+        append_text(
+            f'Content-Disposition: form-data; name="file"; filename="{path.name}"\r\n'
+        )
+        append_text("Content-Type: application/jsonl\r\n\r\n")
+        body.extend(path.read_bytes())
+        append_text("\r\n")
+        append_text(f"--{boundary}--\r\n")
+
+        request = Request(
+            self._request_url("/files"),
+            data=bytes(body),
+            headers={
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+                "Authorization": f"Bearer {self.api_key}",
+            },
+            method="POST",
+        )
+
+        with urlopen(request, timeout=1800) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    def _normalize_batch_status(self, value: Any) -> BatchStatus:
+        """Convert provider-specific status strings into a shared enum."""
+        status_value = str(value or "").strip().lower()
+        for status in BatchStatus:
+            if status.value == status_value:
+                return status
+        return BatchStatus.UNKNOWN
+
+    def _normalize_batch_response(self, batch_response: Any) -> BatchResult:
+        """Normalize a batch response into a stable shape for callers."""
+        if isinstance(batch_response, dict):
+            raw = dict(batch_response)
+        else:
+            raw = {
+                "id": getattr(batch_response, "id", None),
+                "status": getattr(batch_response, "status", None),
+                "input_file_id": getattr(batch_response, "input_file_id", None),
+                "output_file_id": getattr(batch_response, "output_file_id", None),
+                "error_file_id": getattr(batch_response, "error_file_id", None),
+                "error": getattr(batch_response, "error", None),
+            }
+
+        error_value = raw.get("error")
+        if isinstance(error_value, dict):
+            error_value = error_value.get("message") or error_value.get("code") or str(error_value)
+
+        return BatchResult(
+            batch_id=raw.get("id"),
+            status=self._normalize_batch_status(raw.get("status")),
+            request_file_id=raw.get("input_file_id"),
+            result_file_id=raw.get("output_file_id"),
+            raw=raw,
+            error=error_value if isinstance(error_value, str) else None,
+        )
+
+    def create_batch_file(self, batch_requests: list[dict[str, Any]], output_dir: Path | None = None) -> Path:
+        """
+        Create an OpenAI-compatible JSONL batch file from request records.
+        
+        Args:
+        TODO:
+        """
+        if output_dir is None:
+            output_dir = Path(tempfile.gettempdir())
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        batch_file = output_dir / f"untitled_batch_{uuid.uuid4().hex}.jsonl"
+        with batch_file.open("w", encoding="utf-8") as handle:
+            for request in batch_requests:
+                handle.write(json.dumps(request, ensure_ascii=False))
+                handle.write("\n")
+
+        return batch_file
+
+    async def send_batch(self, jsonl_file: Path | str, completion_window: str = "24h") -> BatchResult:
+        """Submit a JSONL batch file to the LiteLLM proxy or upstream API."""
+        batch_path = Path(jsonl_file)
+        upload_response = await asyncio.to_thread(self._blocking_file_upload, batch_path)
+
+        batch_request = {
+            "input_file_id": upload_response.get("id"),
+            "endpoint": "/v1/chat/completions",
+            "completion_window": completion_window,
+            "metadata": {
+                "model": self.api_parameters.get("model", ""),
+                "source_file": batch_path.name,
+            },
+        }
+        batch_response = await asyncio.to_thread(
+            self._blocking_json_request,
+            "POST",
+            "/batches",
+            batch_request,
+        )
+        return self._normalize_batch_response(batch_response)
+
+    async def retrieve_batch(self, batch_id: str) -> BatchResult:
+        """Fetch batch status and, when complete, download and parse the result file."""
+        # Get batch response
+        batch_response = await asyncio.to_thread(self._blocking_json_request, "GET", f"/batches/{batch_id}")
+        normalized = self._normalize_batch_response(batch_response)
+
+        return normalized
+
+    async def download_result(self, result_file_id: str, destination: Path | None = None) -> Path:
+        """Download a batch result file from the API."""
+        if destination is None:
+            destination = Path(tempfile.gettempdir()) / f"untitled_batch_result_{result_file_id}.jsonl"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+
+        request = Request(
+            self._request_url(f"/files/{result_file_id}/content"),
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+            },
+            method="GET",
+        )
+
+        def _download() -> Path:
+            # Stream the response to disk in chunks to avoid a memory error.
+            with urlopen(request, timeout=1800) as response, destination.open("wb") as out_file:
+                shutil.copyfileobj(response, out_file)
+            return destination
+
+        return await asyncio.to_thread(_download)
+
+    @staticmethod
+    def iter_batch_results(self, file_path: Path) -> Iterator[dict[str, Any]]:
+        """Lazily yield parsed JSON records from a batch result file."""
+        with file_path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                yield json.loads(line)
 
     @abstractmethod
     async def start(self):
@@ -361,9 +521,8 @@ class ModelClient(ABC):
             LOG.warning("Model client state is not STARTED while opening connection.")
 
         # Store active connection context for LiteLLM request execution
-        active_model_name = self.api_parameters.get("model", "")
         self.client = {
-            "api_base": self._resolve_api_base(active_model_name),
+            "api_base": self.host.rstrip("/"),
             "api_key": self.api_key,
         }
 

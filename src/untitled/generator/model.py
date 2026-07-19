@@ -21,9 +21,10 @@ Usage:
 """
 
 # Re-export all classes and functions for backward compatibility
-from logging import config
-from untitled.core.settings import ModelInstanceConfig, get_host_config_by_id
+from untitled.core.settings import ModelInstanceConfig
 from untitled.generator.model_client import (
+    BatchResult,
+    BatchStatus,
     ModelClient,
     ModelType,
     encode_image_to_base64,
@@ -35,6 +36,7 @@ from untitled.generator.model_config import (
     ModelConfig,
     get_model_config,
 )
+from untitled.generator.models_proxy import get_model_proxy_manager
 from untitled.generator.prompt_dispatcher import PromptRequest
 from untitled.generator.local_model import LocalModel
 from untitled.generator.remote_model import RemoteModel, RemoteVLM
@@ -50,7 +52,7 @@ class ModelClientFactory:
     _model_processes = {}     # Map: instance_id -> ModelProcess
 
     @classmethod
-    def create(cls, instance_config: ModelInstanceConfig, api_parameters: dict = {}) -> ModelClient:
+    def create(cls, instance_config: ModelInstanceConfig, api_parameters: dict = {}) -> ModelClient | None:
         """
         Factory method to create appropriate model client based on host.
         
@@ -61,7 +63,8 @@ class ModelClientFactory:
             ModelClient instance (LocalModel or RemoteModel)
         """
         # Check if host is localhost
-        is_local = instance_config.local_config is not None
+        local_config = instance_config.local_config
+        is_local = local_config is not None
         if not is_local and instance_config.remote_config is None:
             LOG.error("ModelInstanceConfig must have either local_config or remote_config defined.")
             return None
@@ -73,47 +76,43 @@ class ModelClientFactory:
         model_type = ModelType.VLM if instance_config.type == "vlm" else ModelType.LLM
 
         # Check that context_window does not exceed model max_model_len
-        if is_local and instance_config.local_config.context_window > model_config.max_model_len:
-            LOG.warning(f"Context window {instance_config.local_config.context_window} exceeds {instance_config.model_name} model's max length {model_config.max_model_len}.")
+        if is_local and local_config is not None and local_config.context_window > model_config.max_model_len:
+            LOG.warning(f"Context window {local_config.context_window} exceeds {instance_config.model_name} model's max length {model_config.max_model_len}.")
 
         # Get priority and batch size
         priority = instance_config.priority
         batch_size = instance_config.batch_size
 
+        # Every client now talks to the shared LiteLLM proxy so the request surface is uniform.
+        proxy_api_base = get_model_proxy_manager().get_proxy_api_base()
+        proxy_api_key = "EMPTY"
+
         # Create the model client depending on if it runs locally or remotely
         new_client = None
         if is_local:
-            # Set host and api_key for local model
-            host = f"http://localhost:{instance_config.local_config.port}"
-            api_key = "EMPTY"
-            
             # Create the local process if needed
             model_process = None
+            local_host = f"http://localhost:{local_config.port}"
             if instance_config.id not in cls._model_processes:
                 # New process
                 LOG.info(f"Starting new local model process for instance: {instance_config.id}")
-                model_process = ModelProcess(host, model_config, instance_config.local_config)
+                model_process = ModelProcess(local_host, model_config, local_config)
                 cls._model_processes[instance_config.id] = model_process
             else:
                 LOG.info(f"Reusing existing local model process for instance: {instance_config.id}")
                 model_process = cls._model_processes[instance_config.id]
 
             # Create LocalModel client
-            new_client = LocalModel(model_type, model_process, priority, batch_size, host, api_key, api_parameters)
+            new_client = LocalModel(model_type, model_process, priority, batch_size, proxy_api_base, proxy_api_key, api_parameters)
         else:
-            # Fetch host
-            host_settings = get_host_config_by_id(CONFIG, instance_config.remote_config.host_id)
-            host = host_settings.host
-            api_key = host_settings.api_key
-
             # Create RemoteModel client
-            LOG.info(f"Creating remote model client for host: {host_settings.host}")
-            new_client = RemoteModel(model_type, priority, batch_size, host, api_key, api_parameters)
+            LOG.info(f"Creating remote model client for proxy endpoint: {proxy_api_base}")
+            new_client = RemoteModel(model_type, priority, batch_size, proxy_api_base, proxy_api_key, api_parameters)
         return new_client
 
 
 # Export create_model_client as a convenience function
-def create_model_client(instance_config: ModelInstanceConfig, api_parameters: dict = {}) -> ModelClient:
+def create_model_client(instance_config: ModelInstanceConfig, api_parameters: dict = {}) -> ModelClient | None:
     """
     Convenience function to create a model client.
     See ModelClientFactory.create() for details.
@@ -123,7 +122,7 @@ def create_model_client(instance_config: ModelInstanceConfig, api_parameters: di
 
 # Alias for backward compatibility
 # WARN: Deprecated TODO: Remove for release
-def create_vlm_client(instance_config: ModelInstanceConfig, api_parameters: dict = {}) -> ModelClient:
+def create_vlm_client(instance_config: ModelInstanceConfig, api_parameters: dict = {}) -> ModelClient | None:
     """
     Convenience function to create a VLM client.
     Deprecated: Use create_model_client() instead.
@@ -134,6 +133,8 @@ def create_vlm_client(instance_config: ModelInstanceConfig, api_parameters: dict
 __all__ = [
     "ModelClient",
     "ModelType",
+    "BatchStatus",
+    "BatchResult",
     "LocalModel",
     "RemoteModel",
     "ModelClientFactory",

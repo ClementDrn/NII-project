@@ -104,6 +104,8 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
         """
         Initialize model resources.
         """
+        await super().init()
+
         # Open connections for parallelizable descriptor clients
         for client in self._descriptor_clients:
             if client.is_parallelizable():
@@ -145,6 +147,8 @@ class MultiStepVLMInstructionGenerator(InstructionGenerator):
             if client.get_state() == ModelClient.State.STARTED:
                 await client.stop()
         self._planner_clients = []
+
+        await super().free()
 
     @override
     async def generate_instructions(

@@ -88,6 +88,8 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
         """
         Initialize model resources.
         """
+        await super().init()
+
         # Open connections for parallelizable model clients
         for client in self._clients:
             if client.is_parallelizable():
@@ -113,6 +115,8 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
             if client.get_state() == ModelClient.State.STARTED:
                 await client.stop()
         self._clients = []
+
+        await super().free()
 
     @override
     async def generate_instructions(
