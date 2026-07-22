@@ -142,10 +142,13 @@ async def test_prompt_passes_api_parameters(dummy_client):
 async def test_open_connection_initialises_async_openai(dummy_client):
     dummy_client.test_connection = AsyncMock(return_value=True)
 
-    await dummy_client.open_connection()
+    async_openai_instance = MagicMock()
+    with patch("untitled.generator.model_client.AsyncOpenAI", return_value=async_openai_instance) as mock_async_openai:
+        await dummy_client.open_connection()
 
+    mock_async_openai.assert_called_once_with(api_key="token", base_url="http://localhost:8000/v1")
     dummy_client.test_connection.assert_awaited_once()
-    assert dummy_client.client == {"api_base": "http://localhost:8000", "api_key": "token"}
+    assert dummy_client.client is async_openai_instance
     assert dummy_client.state == ModelClient.State.CONNECTED
 
 

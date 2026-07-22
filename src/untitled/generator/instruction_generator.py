@@ -2,9 +2,8 @@ from untitled.simulator.simulation_data import SimulationData
 from untitled.core.settings import GeneratorStepConfig, get_model_instances_config_by_step_id
 from untitled.generator.instruction import InstructionSet, InstructionResult, InstructionCategory
 from untitled.generator.model_config import ModelConfig, get_model_config
-from untitled.generator.models_proxy import get_model_proxy_manager
 from untitled.generator.experiment_nature import ExperimentNature
-from untitled.core.base import LOG, CONFIG
+from untitled.core.base import LOG
 
 from abc import ABC, abstractmethod
 from typing import List, Optional
@@ -19,13 +18,13 @@ class InstructionGenerator(ABC):
         """
         Initialize resources (async to support VLM clients).
         """
-        await get_model_proxy_manager().start(CONFIG)
+        pass
 
     async def free(self):
         """
         Free resources (async to support VLM clients).
         """
-        await get_model_proxy_manager().stop()
+        pass
 
     def set_experiment_nature(self, nature: ExperimentNature) -> None:
         """

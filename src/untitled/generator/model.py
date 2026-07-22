@@ -21,9 +21,9 @@ Usage:
 """
 
 # Re-export all classes and functions for backward compatibility
-from untitled.core.settings import ModelInstanceConfig
+from untitled.core.settings import ModelInstanceConfig, get_host_config_by_id
 from untitled.generator.model_client import (
-    BatchResult,
+    BatchResponse,
     BatchStatus,
     ModelClient,
     ModelType,
@@ -64,8 +64,10 @@ class ModelClientFactory:
         """
         # Check if host is localhost
         local_config = instance_config.local_config
+        remote_config = instance_config.remote_config
         is_local = local_config is not None
-        if not is_local and instance_config.remote_config is None:
+        is_remote = remote_config is not None
+        if is_local == is_remote:
             LOG.error("ModelInstanceConfig must have either local_config or remote_config defined.")
             return None
 
@@ -75,39 +77,44 @@ class ModelClientFactory:
         # Determine model type from instance config
         model_type = ModelType.VLM if instance_config.type == "vlm" else ModelType.LLM
 
-        # Check that context_window does not exceed model max_model_len
-        if is_local and local_config is not None and local_config.context_window > model_config.max_model_len:
-            LOG.warning(f"Context window {local_config.context_window} exceeds {instance_config.model_name} model's max length {model_config.max_model_len}.")
-
         # Get priority and batch size
         priority = instance_config.priority
         batch_size = instance_config.batch_size
 
-        # Every client now talks to the shared LiteLLM proxy so the request surface is uniform.
-        proxy_api_base = get_model_proxy_manager().get_proxy_api_base()
-        proxy_api_key = "EMPTY"
-
         # Create the model client depending on if it runs locally or remotely
         new_client = None
         if is_local:
+            # Check that context_window does not exceed model max_model_len
+            if local_config is not None and local_config.context_window > model_config.max_model_len:
+                LOG.warning(f"Context window {local_config.context_window} exceeds {instance_config.model_name} model's max length {model_config.max_model_len}.")
+
+            # Set host and api_key for local model
+            host = f"http://localhost:{local_config.port}"
+            api_key = "EMPTY"
+
             # Create the local process if needed
             model_process = None
-            local_host = f"http://localhost:{local_config.port}"
             if instance_config.id not in cls._model_processes:
                 # New process
                 LOG.info(f"Starting new local model process for instance: {instance_config.id}")
-                model_process = ModelProcess(local_host, model_config, local_config)
+                model_process = ModelProcess(host, model_config, local_config)
                 cls._model_processes[instance_config.id] = model_process
             else:
                 LOG.info(f"Reusing existing local model process for instance: {instance_config.id}")
                 model_process = cls._model_processes[instance_config.id]
 
             # Create LocalModel client
-            new_client = LocalModel(model_type, model_process, priority, batch_size, proxy_api_base, proxy_api_key, api_parameters)
+            new_client = LocalModel(model_type, model_process, priority, batch_size, host, api_key, api_parameters)
         else:
+            # Fetch host
+            host_settings = get_host_config_by_id(CONFIG, instance_config.remote_config.host_id) # type: ignore
+            host = host_settings.host
+            api_key = host_settings.api_key
+
             # Create RemoteModel client
-            LOG.info(f"Creating remote model client for proxy endpoint: {proxy_api_base}")
-            new_client = RemoteModel(model_type, priority, batch_size, proxy_api_base, proxy_api_key, api_parameters)
+            LOG.info(f"Creating remote model client for host: {host_settings.host}")
+            new_client = RemoteModel(model_type, priority, batch_size, host, api_key, api_parameters)
+
         return new_client
 
 
@@ -134,7 +141,7 @@ __all__ = [
     "ModelClient",
     "ModelType",
     "BatchStatus",
-    "BatchResult",
+    "BatchResponse",
     "LocalModel",
     "RemoteModel",
     "ModelClientFactory",
