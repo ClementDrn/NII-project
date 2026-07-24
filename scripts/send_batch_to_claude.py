@@ -1,6 +1,10 @@
 from untitled.core.base import LOG, CONFIG
-from untitled.generator.model_client import ModelClient, BatchResult, BatchStatus 
-import time
+from untitled.core.settings import GeneratorStepConfig, get_generator_config_by_id, get_model_instance_config_by_id
+from untitled.generator.instruction_generator import get_api_parameters_from_config
+from untitled.generator.batch import Batch, BatchStatus, BatchRequest, BatchRequestResult
+from untitled.generator.model import create_model_client
+
+import asyncio
 
 
 # CHANGE GENERATOR AND MODEL INSTANCE IDS HERE, SHOULD REFER TO IDS IN config.yaml
@@ -10,7 +14,7 @@ MODEL_INSTANCE_ID = "claude-opus-4.6_0"
 
 async def main() -> int:
     # --- Setup VLM ---
-    print("Setting up VLM interface...")
+    LOG.debug("Setting up VLM interface...")
     # Fetch settings from config based on above constants
     generator_config = get_generator_config_by_id(CONFIG, GENERATOR_ID)
     model_config = get_model_instance_config_by_id(CONFIG, MODEL_INSTANCE_ID)
@@ -21,44 +25,60 @@ async def main() -> int:
         if step.id == "planning":
             planning_step_config = step
             break
-    if planning_step_config is None:
+    else:
         LOG.error("Step 'planning' could not be found in generator...")
         return 1
 
-    # Enable model instance with   
+    # Enable model instance
+    LOG.debug("Enabling model instance...")
     api_params = get_api_parameters_from_config(planning_step_config)
     vlm = create_model_client(model_config, api_params)
-    await vlm.start()
-    print("Setup is done.")
+    if vlm is None:
+        LOG.error("Failed to create model client.")
+        return 1
+
+    # Open connection
+    LOG.debug("Opening connection to VLM...")
+    await vlm.open_connection()
 
     # --- Create and send batch object ---
     # Create object
-    print("Creating and sending batch object...")
-    batch_file = vlm.create_batch_file([
-        { "id": "id0", "system_text": "Repeat three times the following:", "user_text": "Hello", "user_images": None },
-        { "id": "id1", "system_text": "Repeat three times the following:", "user_text": "Bye", "user_images": None },
-    ])
-    print("Created batch file.")
+    LOG.debug("Creating and sending batch object...")
+    batch: Batch = await vlm.batch(
+        requests=[
+            BatchRequest(request_id="id0", system_text="Repeat three times the following:", user_text="Hello", user_images=None),
+            BatchRequest(request_id="id1", system_text="Repeat three times the following:", user_text="Bye", user_images=None),
+        ]
+    )
+
     # Send the batch
-    batch_response = vlm.send_batch(batch_file)
-    print("Batch was sent.")
+    batch_status: BatchStatus = await batch.send()
+    LOG.debug("Batch was sent.")
 
     # --- Retrieve batch results ---
     # Wait for batch completion
-    print("Waiting for batch completion...")
-    while batch_response.status not in (BatchStatus.COMPLETED, BatchStatus.FAILED, BatchStatus.CANCELLED, BatchStatus.EXPIRED):
-        batch_response = vlm.retrieve_batch(batch_response.batch_id)
-        time.sleep(15)
+    LOG.debug("Waiting for batch completion...")
+    while batch_status not in (BatchStatus.COMPLETED, BatchStatus.FAILED, BatchStatus.CANCELLED, BatchStatus.EXPIRED):   
+        batch_status = await batch.check_status()
+        # Avoid blocking the event loop while polling the batch state.
+        await asyncio.sleep(15)
 
-    print(f"Batch finished with status: {batch_response.status}")
+    LOG.debug(f"Batch finished with status: {batch_status}")
 
-    if batch_response.status == BatchStatus.COMPLETED:
-        # Download result file
-        result_file = vlm.download_result(batch_response.batch_id)
+    if batch_status == BatchStatus.COMPLETED:
+        # Download and read results
+        result: BatchRequestResult
+        async for result in batch.download_results():
+            LOG.info(f"Result for request {result.request_id}: Status: {result.status}, Text: {result.text}, Thinking: {result.thinking}")
 
-        # Read file
-        print("Results:")
-        for result in vlm.iter_batch_results(result_file) 
-            print(result)
+    # Close the connection
+    LOG.debug("Closing connection to VLM...")
+    await vlm.close_connection()
 
-    print("Done.")
+    LOG.debug("Done.")
+    return 0
+
+
+if __name__ == "__main__":
+    exit_code = asyncio.run(main())
+    exit(exit_code)

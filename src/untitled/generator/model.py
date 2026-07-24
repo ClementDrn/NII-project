@@ -23,25 +23,22 @@ Usage:
 # Re-export all classes and functions for backward compatibility
 from untitled.core.settings import ModelInstanceConfig, get_host_config_by_id
 from untitled.generator.model_client import (
-    BatchResponse,
-    BatchStatus,
     ModelClient,
     ModelType,
-    encode_image_to_base64,
     parse_model_response,
-    parse_vlm_response,  # WARN: Deprecated TODO: Remove for release
-    VLMClient,  # WARN: Deprecated TODO: Remove for release
 )
 from untitled.generator.model_config import (
     ModelConfig,
     get_model_config,
 )
-from untitled.generator.models_proxy import get_model_proxy_manager
 from untitled.generator.prompt_dispatcher import PromptRequest
 from untitled.generator.local_model import LocalModel
-from untitled.generator.remote_model import RemoteModel, RemoteVLM
+from untitled.generator.remote_model import RemoteModel
 from untitled.core.base import LOG, CONFIG
 from untitled.generator.model_process import ModelProcess
+from untitled.generator.providers.provider_adapter import ProviderAdapter
+from untitled.generator.providers.anthropic import AnthropicAdapter
+from untitled.generator.providers.litellm import LiteLLMAdapter
 
 
 class ModelClientFactory:
@@ -50,6 +47,27 @@ class ModelClientFactory:
     This class handles underlying logic when creating new LLM/VLM clients.
     """
     _model_processes = {}     # Map: instance_id -> ModelProcess
+
+    @staticmethod
+    def _select_provider_adapter(host: str, api_key: str, api_parameters: dict) -> ProviderAdapter:
+        """
+        Selects the appropriate provider adapter based on the host.
+        
+        Args:
+            host: Host URL of the model server
+            api_key: API key for authentication
+            api_parameters: Additional API parameters
+
+        Returns:
+            An instance of ProviderAdapter (AnthropicAdapter, LiteLLMAdapter, etc.)
+        """
+        if "api.anthropic.com" in host:
+            return AnthropicAdapter(api_key, api_parameters)    # host is implied for AnthropicAdapter
+        if "api.openai.com" in host:
+            return LiteLLMAdapter(host, api_key, api_parameters)
+        else:
+            LOG.warning(f"Unknown host '{host}', defaulting to LiteLLMAdapter.")
+            return LiteLLMAdapter(host, api_key, api_parameters)
 
     @classmethod
     def create(cls, instance_config: ModelInstanceConfig, api_parameters: dict = {}) -> ModelClient | None:
@@ -103,17 +121,23 @@ class ModelClientFactory:
                 LOG.info(f"Reusing existing local model process for instance: {instance_config.id}")
                 model_process = cls._model_processes[instance_config.id]
 
+            # Select provider adapter based on host
+            adapter = cls._select_provider_adapter(host, api_key, api_parameters)
+
             # Create LocalModel client
-            new_client = LocalModel(model_type, model_process, priority, batch_size, host, api_key, api_parameters)
+            new_client = LocalModel(model_type, model_process, priority, batch_size, adapter)
         else:
             # Fetch host
             host_settings = get_host_config_by_id(CONFIG, instance_config.remote_config.host_id) # type: ignore
             host = host_settings.host
             api_key = host_settings.api_key
 
+            # Select provider adapter based on host
+            adapter = cls._select_provider_adapter(host, api_key, api_parameters)
+
             # Create RemoteModel client
             LOG.info(f"Creating remote model client for host: {host_settings.host}")
-            new_client = RemoteModel(model_type, priority, batch_size, host, api_key, api_parameters)
+            new_client = RemoteModel(model_type, priority, batch_size, adapter)
 
         return new_client
 
@@ -140,8 +164,6 @@ def create_vlm_client(instance_config: ModelInstanceConfig, api_parameters: dict
 __all__ = [
     "ModelClient",
     "ModelType",
-    "BatchStatus",
-    "BatchResponse",
     "LocalModel",
     "RemoteModel",
     "ModelClientFactory",
@@ -149,5 +171,4 @@ __all__ = [
     "parse_model_response",
     # Utilities
     "PromptRequest",
-    "encode_image_to_base64",
 ]

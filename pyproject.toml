@@ -8,6 +8,8 @@ version = "0.1.0"
 dependencies = [
     "colorlog",
     "litellm",
+    "litellm[proxy]",
+    "anthropic",
     "pillow",
     "pydantic",
     "pydantic-settings",

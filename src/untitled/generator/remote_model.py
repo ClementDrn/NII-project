@@ -2,6 +2,7 @@ from typing import override
 from untitled.core.base import LOG
 from untitled.generator.model_config import ModelConfig
 from untitled.generator.model_client import ModelClient, ModelType
+from untitled.generator.providers.provider_adapter import ProviderAdapter
 
 
 class RemoteModel(ModelClient):
@@ -9,8 +10,8 @@ class RemoteModel(ModelClient):
     Remote model server client (LLM/VLM server is already running elsewhere).
     """
 
-    def __init__(self, model_type: ModelType, priority: int, batch_size: int, host: str, api_key: str, api_parameters: dict = {}):
-        super().__init__(model_type, priority, batch_size, host, api_key, api_parameters)
+    def __init__(self, model_type: ModelType, priority: int, batch_size: int, adapter: ProviderAdapter):
+        super().__init__(model_type, priority, batch_size, adapter)
         # We assume that remote model server is always running (started)
         self.state = ModelClient.State.STARTED
 

@@ -3,6 +3,7 @@ from untitled.core.base import LOG
 from untitled.generator.model_config import ModelConfig
 from untitled.generator.model_client import ModelClient, ModelType
 from untitled.generator.model_process import ModelProcess
+from untitled.generator.providers.provider_adapter import ProviderAdapter
 
 from typing import override
 import asyncio
@@ -16,8 +17,8 @@ class LocalModel(ModelClient):
     Local model server (LLM/VLM) that can be started and stopped on the local machine.
     """
 
-    def __init__(self, model_type: ModelType, process: ModelProcess, priority: int, batch_size: int, host: str, api_key: str, api_parameters: dict = {}):
-        super().__init__(model_type, priority, batch_size, host, api_key, api_parameters)
+    def __init__(self, model_type: ModelType, process: ModelProcess, priority: int, batch_size: int, adapter: ProviderAdapter):
+        super().__init__(model_type, priority, batch_size, adapter)
         self._process: ModelProcess = process        
 
     @override
