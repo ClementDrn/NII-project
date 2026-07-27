@@ -3,6 +3,7 @@ from untitled.core.settings import GeneratorStepConfig, get_generator_config_by_
 from untitled.generator.instruction_generator import get_api_parameters_from_config
 from untitled.generator.batch import Batch, BatchStatus, BatchRequest, BatchRequestResult
 from untitled.generator.model import create_model_client
+from untitled.generator.request import TextBlock
 
 import asyncio
 
@@ -46,8 +47,8 @@ async def main() -> int:
     LOG.debug("Creating and sending batch object...")
     batch: Batch = await vlm.batch(
         requests=[
-            BatchRequest(request_id="id0", system_text="Repeat three times the following:", user_text="Hello", user_images=None),
-            BatchRequest(request_id="id1", system_text="Repeat three times the following:", user_text="Bye", user_images=None),
+            BatchRequest(request_id="id0", system_text="Repeat three times the following:", user_content=[TextBlock(text="Hello")]),
+            BatchRequest(request_id="id1", system_text="Repeat three times the following:", user_content=[TextBlock(text="Bye")]),
         ]
     )
 

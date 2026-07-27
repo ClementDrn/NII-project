@@ -1,4 +1,5 @@
 from untitled.generator.model_client import ModelClient
+from untitled.generator.request import Request
 from untitled.core.base import LOG
 
 from typing import List
@@ -10,9 +11,7 @@ from dataclasses import dataclass
 @dataclass
 class PromptRequest:
     """A queued prompt request."""
-    system_text: str
-    user_text: str
-    user_image_paths: list[Path]
+    request: Request
     future: asyncio.Future
 
 
@@ -63,7 +62,7 @@ class PromptDispatcher:
         """
         try:
             # Send prompt
-            response = await client_resource.client.prompt(prompt.system_text, prompt.user_text, prompt.user_image_paths)
+            response = await client_resource.client.prompt(prompt.request)
             # Set the result in the future
             prompt.future.set_result(response)
         except Exception as e:

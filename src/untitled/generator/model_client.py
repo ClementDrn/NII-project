@@ -1,6 +1,7 @@
 from untitled.core.base import LOG, VLM_LOG
 from untitled.generator.batch import Batch, BatchRequest
 from untitled.generator.providers.provider_adapter import ProviderAdapter
+from untitled.generator.request import Request
 
 from abc import ABC, abstractmethod
 import io
@@ -28,16 +29,6 @@ def parse_model_response(chat_response: str) -> str:
 # Alias for backward compatibility
 # WARN: Deprecated TODO: Remove for release
 parse_vlm_response = parse_model_response
-
-
-def _encode_image_to_bytes(image_path: Path) -> bytes:
-    """
-    Encode an image to bytes.
-    """
-    with Image.open(image_path) as img:
-        buffered = io.BytesIO()
-        img.save(buffered, format="JPEG")
-        return buffered.getvalue()
 
 
 class ModelClient(ABC):
@@ -143,14 +134,12 @@ class ModelClient(ABC):
         """
         return await self.adapter.test_connection()
         
-    async def prompt(self, system_text: str, user_text: str, user_image_paths: list[Path]) -> str:
+    async def prompt(self, request: Request) -> str:
         """
         Send immediately a prompt to the model.
         
         Args:
-            system_text: System message
-            user_text: User message text
-            user_image_paths: List of image paths to include (only for VLM, ignored for LLM)
+            request: The request object containing system and user content
             
         Returns:
             The response text from the model
@@ -160,20 +149,13 @@ class ModelClient(ABC):
             raise ConnectionError("Model client is not connected.")
 
         # Convert image paths to formatted base64 urls
-        user_images_bytes: list[bytes] = []
-        if user_image_paths:
-            if self.model_type == ModelType.LLM:
-                LOG.warning("Images provided but model type is LLM. Images will be ignored.")
-            else:
-                for image_path in user_image_paths:
-                    user_images_bytes.append(_encode_image_to_bytes(image_path))
+        if self.model_type == ModelType.LLM:
+            for block in request.user_content:
+                if block.type == "image":
+                    LOG.warning(f"LLM model client received an image block. The following image will be ignored: {block.image_path}")
 
         # Delegate request entirely to the provider strategy
-        response = await self.adapter.send_prompt(
-            system_text=system_text, 
-            user_text=user_text, 
-            user_images=user_images_bytes
-        )
+        response = await self.adapter.send_prompt(request)
         return response
 
     async def batch(self, requests: list[BatchRequest]) -> Batch:

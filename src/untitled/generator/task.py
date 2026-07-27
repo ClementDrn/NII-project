@@ -5,9 +5,10 @@ from dataclasses import dataclass
 from asyncio import Future
 import yaml
 
-from untitled.core.base import CONFIG, PROJECT_ROOT
+from untitled.core.base import CONFIG, LOG, PROJECT_ROOT
 from untitled.generator.instruction import InstructionResult
 from untitled.generator.prompt_dispatcher import PromptRequest
+from untitled.generator.request import Request, RequestContentBlock, TextBlock, ImageBlock
 
 
 @dataclass
@@ -146,17 +147,41 @@ class Task:
         Returns:
             A PromptRequest ready to be dispatched.
         """
-        parts = []
+        # Blocks for user_content
+        # For caching, static content is preferably stored at the beginning.
+        blocks: List[RequestContentBlock] = []
+
+        # Add scene descriptions (for LLM-only planning step)
+        if self.has_descriptions_input and descriptions:
+            blocks.append(TextBlock(type="text", text=descriptions, to_be_cached=True))
         
+        # Add metadata (for VLM steps that process images + metadata)
+        # Concatenate metadata from frames with frame labels
+        # Interleave metadata with images if present
+        if self.has_metadata_input and frames:
+            image_count = len(images) if images else 0
+            frame_count = len(frames)
+            if image_count > 0 and frame_count != image_count:
+                LOG.warning(f"Number of frames ({frame_count}) does not match number of images ({image_count}).")
+
+            for i, frame in enumerate(frames):
+                metadata_text = str(frame.metadata)
+                blocks.append(TextBlock(type="text", text=f"Frame {i+1} (time: {frame.timestamp}):\n{metadata_text}", to_be_cached=True))
+                if images and i < image_count:
+                    # Add corresponding image block
+                    blocks.append(ImageBlock(type="image", image_path=images[i], to_be_cached=True))
+
+        # NOTE: From here, the blocks are dynamic, so they should not be cached.
+
         # Add failure context for corrective tasks
         if self.has_failure_text_input and failure_text:
-            parts.append(f"FAILURE REPORT:\n{failure_text}")
+            blocks.append(TextBlock(type="text", text=f"FAILURE REPORT:\n{failure_text}"))
         
         # Add route completion status
         if self.has_route_completion_input and was_route_completed is not None:
             status = "completed" if was_route_completed else "not completed"
-            parts.append(f"ROUTE STATUS: The route was {status}.")
-
+            blocks.append(TextBlock(type="text", text=f"ROUTE STATUS: The route was {status}."))
+                
         # Add previously tried instructions and their results for incremental generation
         if self.has_previously_tried_instructions_input and previously_tried_instructions:
             previous_instructions_text = "PREVIOUSLY TRIED INSTRUCTIONS:\n"
@@ -171,28 +196,13 @@ class Task:
                     "was_successful": instruction_result.was_successful
                 }
                 previous_instructions_text += f"Instruction {i+1}: {json.dumps(json_result)}\n"
-            parts.append(previous_instructions_text)
-
-        # Add scene descriptions (for LLM-only planning step)
-        if self.has_descriptions_input and descriptions:
-            parts.append(descriptions)
-        
-        # Add metadata (for VLM steps that process images + metadata)
-        # Concatenate metadata from frames with frame labels
-        if self.has_metadata_input and frames:
-            metadata_parts = []
-            for i, frame in enumerate(frames):
-                metadata_text = str(frame.metadata)
-                metadata_parts.append(f"Frame {i+1} (time: {frame.timestamp}):\n{metadata_text}")
-            concatenated_metadata = "\n\n".join(metadata_parts)
-            parts.append(concatenated_metadata)
-        
-        user_text = "\n\n".join(parts)
+            blocks.append(TextBlock(type="text", text=previous_instructions_text))
         
         return PromptRequest(
-            system_text=self._system_prompt_text,
-            user_text=user_text,
-            user_image_paths=images if self.has_images_input else None,
+            Request(
+                system_text=self._system_prompt_text,
+                user_content=blocks
+            ),
             future=future
         )
     

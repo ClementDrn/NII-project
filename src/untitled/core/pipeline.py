@@ -541,6 +541,7 @@ class Pipeline:
             Dictionary mapping experiment_index to InstructionSet or None
         """
         # Simulator is required
+        # FIXME: Why is simulator required? Is this an error?
         if self.simulator is None:
             LOG.error("Simulator not initialized. Cannot generate scenario instructions.")
             return {i: None for i in range(job.instruction_generation_count)}
@@ -553,6 +554,7 @@ class Pipeline:
         
         try:
             # Set job and scenario context
+            # FIXME: Why do we set simulator's context when we use the generator? Is this needed?
             self.simulator.set_job_context(job.id, scenario_id)
             self.simulator.set_scenario(scenario_id)
             

@@ -1,6 +1,10 @@
+import json
+
 from untitled.generator.providers.provider_adapter import ProviderAdapter
 from untitled.generator.batch import Batch, BatchRequest, BatchRequestStatus, BatchStatus, BatchRequestResult
+from untitled.generator.request import Request, RequestContentBlock
 from untitled.core.base import LOG, VLM_LOG
+from untitled.utils.image_encoder import image_to_jpeg_base64
 
 import anthropic
 from anthropic.types.messages.batch_create_params import Request as AnthropicRequest
@@ -11,47 +15,69 @@ from anthropic.types.content_block import ContentBlock as AnthropicContentBlock
 
 import time
 from typing import Any, AsyncIterator, List
-import base64
 
 
 # --- Utils -------------------------------------------------------------------
 
-def _convert_user_messages_to_anthropic_format(user_text: str, user_images: list[bytes]) -> list[dict[str, Any]]:
+def _convert_user_messages_to_anthropic_format(user_content: List[RequestContentBlock]) -> List[dict[str, Any]]:
     """
     Translates user messages to Anthropic format.
 
     Args:
-        user_text: The user prompt text
-        user_images: List of user-provided images in bytes format
+        user_content: List of request blocks
 
     Returns:
-        Tuple of anthropic_messages_array.
+        List of Anthropic-formatted message dictionaries
     """
-    anthropic_messages = []
+    content_list = []
 
-    # Process user text
-    if user_text:
-        anthropic_messages.append({"role": "user", "content": user_text})
+    # Skip if user_content is empty
+    if not user_content:
+        return []
 
-    # Process user images
-    for image_bytes in user_images:
-        # Convert image bytes to base64
-        base64_image = base64.b64encode(image_bytes).decode("utf-8")
-        anthropic_messages.append({
-            "role": "user",
-            "content": [
-                {
+    # Process each block in user_content
+    for i, block in enumerate(user_content):
+        formatted_block: dict[str, Any] = {}
+
+        # Handle different block types
+        match block.type:
+            case "text":
+                formatted_block.update({
+                    "type": "text",
+                    "text": block.text
+                })
+            case "image":
+                # Convert image to base64
+                base64_image = image_to_jpeg_base64(block.image_path)
+                formatted_block.update({
                     "type": "image",
                     "source": {
                         "type": "base64",
-                        "media_type": "image/jpeg",     # WARN: Assuming JPEG
+                        "media_type": "image/jpeg",
                         "data": base64_image
                     }
-                }
-            ]
-        })
+                })
+            case _:
+                LOG.warning(f"Unknown content block type '{block.type}' encountered. Ignoring this block.")
+                continue  # Skip unknown block types
 
-    return anthropic_messages
+        # Add cache control tag if this is the last block in a sequence of cached blocks
+        is_next_block_cached = user_content[i + 1].to_be_cached if i + 1 < len(user_content) else False
+        if block.to_be_cached:
+            if not is_next_block_cached:
+                LOG.debug(f"Adding cache control tag to block {i} of type '{block.type}'")
+                formatted_block.update({
+                    "cache_control": {
+                        "type": "ephemeral",
+                        "ttl": "1h"     # NOTE: A TTL of 1h doubles the $ cost (yet, hits on cached blocks only cost 10%) 
+                    }
+                })
+
+        # Add the formatted block to the content list
+        content_list.append(formatted_block)
+
+    user_block = {"role": "user", "content": content_list}
+    return [user_block]
 
 def _clean_model_name(model_name: str) -> str:
     """
@@ -67,14 +93,13 @@ def _clean_model_name(model_name: str) -> str:
         return model_name[len("anthropic/"):]
     return model_name
 
-def _build_anthropic_messages_kwargs(system_text: str, user_text: str, user_images: list[bytes], api_parameters: dict) -> dict:
+def _build_anthropic_messages_kwargs(system_text: str, user_content: List[RequestContentBlock], api_parameters: dict) -> dict:
     """
     Build the kwargs for the Anthropic messages.create() call.
 
     Args:
-        system_text: The system prompt text
-        user_text: The user prompt text
-        user_images: List of user-provided images in bytes format
+        system_text: The system text for the message
+        user_content: The user content for the message
         api_parameters: Optional dictionary of additional API parameters.
 
     Returns:
@@ -92,7 +117,7 @@ def _build_anthropic_messages_kwargs(system_text: str, user_text: str, user_imag
     }
     
     # Include system and user messages
-    anthropic_messages = _convert_user_messages_to_anthropic_format(user_text, user_images)
+    anthropic_messages = _convert_user_messages_to_anthropic_format(user_content)
     kwargs["messages"] = anthropic_messages
     if system_text:
         kwargs["system"] = system_text
@@ -163,8 +188,7 @@ class AnthropicBatch(Batch):
             # Prepare parameters for currentrequest
             kwargs = _build_anthropic_messages_kwargs(
                 system_text=request.system_text,
-                user_text=request.user_text or "",
-                user_images=request.user_images or [],
+                user_content=request.user_content,
                 api_parameters={"model": self._model, "max_tokens": self._max_tokens}   # WARN: Only model and max_tokens are passed as api_parameters for batches
             )
             # Add request to the batch
@@ -174,6 +198,15 @@ class AnthropicBatch(Batch):
                     params=AnthropicMessageCreateParamsNonStreaming(**kwargs),
                 )
             )
+
+        # Compute size of batch
+        payload = { "requests": anthropic_requests }
+        payload_size = len(json.dumps(payload).encode("utf-8")) / (1024 * 1024) # size in MB
+        LOG.debug(f"Batch payload size: {payload_size:.2f} MB for {len(anthropic_requests)} requests.")
+        # NOTE: Anthropic's API has a maximum request size of 256 MB. If the payload exceeds this, it will fail.
+        if payload_size > 256:
+            LOG.error(f"Batch payload size exceeds Anthropic's maximum request size of 256 MB. Current size: {payload_size:.2f} MB.")
+            raise ValueError("Batch payload size exceeds Anthropic's maximum request size of 256 MB.")
 
         # Create and send the batch
         message_batch: AnthropicMessageBatch = await self._client.messages.batches.create(
@@ -296,14 +329,12 @@ class AnthropicAdapter(ProviderAdapter):
             LOG.error(f"Anthropic connection test failed: {e}")
             return False
 
-    async def send_prompt(self, system_text: str = "", user_text: str = "", user_images: list[bytes] = []) -> str:
+    async def send_prompt(self, request: Request) -> str:
         """
         Send a message payload to the Anthropic API and return the text response.
         
         Args:
-            system_text: The system prompt text
-            user_text: The user prompt text
-            user_images: List of user-provided images in bytes format
+            request: The request object containing system and user content
 
         Returns:
             The extracted text response from the model.
@@ -312,7 +343,7 @@ class AnthropicAdapter(ProviderAdapter):
             raise ConnectionError("Anthropic client is not initialized.")
 
         # Prepare parameters for the Anthropic messages.create() call
-        kwargs = _build_anthropic_messages_kwargs(system_text, user_text, user_images, self.api_parameters)
+        kwargs = _build_anthropic_messages_kwargs(request.system_text, request.user_content, self.api_parameters)
         # Add timeout if not already specified
         if "timeout" not in kwargs:
             kwargs["timeout"] = 10 * 60  # 10 minutes

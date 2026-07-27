@@ -1,3 +1,4 @@
+from untitled.generator.request import Request
 from untitled.generator.batch import Batch, BatchRequest
 
 from abc import ABC, abstractmethod
@@ -25,14 +26,12 @@ class ProviderAdapter(ABC):
         ...
 
     @abstractmethod
-    async def send_prompt(self, system_text: str = "", user_text: str = "", user_images: list[bytes] = []) -> str:
+    async def send_prompt(self, request: Request) -> str:
         """
         Send a standardized OpenAI-formatted message payload to the provider.
         
         Args:
-            system_text: The system prompt text
-            user_text: The user prompt text
-            user_images: List of user-provided images in bytes format
+            request: The request object containing system and user content
             
         Returns:
             The extracted text response.

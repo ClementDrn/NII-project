@@ -1,7 +1,9 @@
 from untitled.generator.providers.provider_adapter import ProviderAdapter
 from untitled.core.base import LOG, VLM_LOG
 from untitled.generator.batch import Batch, BatchRequest
+from untitled.generator.request import Request, RequestContentBlock
 from untitled.generator.model import get_model_config
+from untitled.utils.image_encoder import image_to_jpeg_base64
 
 from urllib.parse import urlparse
 import time
@@ -75,29 +77,27 @@ class LiteLLMAdapter(ProviderAdapter):
             LOG.error(f"Model connection test failed: {e}")
             return False
 
-    async def send_prompt(self, system_text: str = "", user_text: str = "", user_images: list[bytes] = []) -> str:
+    async def send_prompt(self, request: Request) -> str:
         # Construct the LiteLLM/OpenAI compatible message list
         messages: list[dict[str, Any]] = []
-        if system_text:
-            messages.append({"role": "system", "content": system_text})
+        if request.system_text:
+            messages.append({"role": "system", "content": request.system_text})
 
+        # Construct user content blocks for the request
         user_content: list[dict[str, Any]] = []
-        
-        # Append images if any
-        for img_bytes in user_images:
-            img_base64 = base64.b64encode(img_bytes).decode("ascii")
-            data_url = f"data:image/jpeg;base64,{img_base64}"
-            user_content.append({
-                "type": "image_url",
-                "image_url": {"url": data_url}
-            })
-            
-        # Append text if any
-        if user_text:
-            user_content.append({
-                "type": "text",
-                "text": user_text
-            })
+        for block in request.user_content:
+            match block.type:
+                case "text":
+                    user_content.append({"type": "text", "text": block.text})
+                case "image":
+                    img_base64 = image_to_jpeg_base64(block.image_path)
+                    data_url = f"data:image/jpeg;base64,{img_base64}"
+                    user_content.append({
+                        "type": "image_url",
+                        "image_url": {"url": data_url}
+                    })
+                case _:
+                    LOG.warning(f"Unsupported content block type: {block.type}")
 
         if user_content:
             messages.append({"role": "user", "content": user_content})
@@ -115,7 +115,7 @@ class LiteLLMAdapter(ProviderAdapter):
 
         return self._extract_response_text(chat_response)
 
-    async def create_batch(self, batch_id: str, requests: list[BatchRequest]) -> Optional[Batch]:
+    async def create_batch(self, requests: list[BatchRequest]) -> Optional[Batch]:
         LOG.warning("Batch processing is not implemented for LiteLLM/OpenAI-compatible providers.")
         return None
 

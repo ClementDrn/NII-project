@@ -5,7 +5,7 @@ from untitled.generator.model import create_model_client, parse_model_response, 
 from untitled.generator.experiment_nature import ExperimentNature
 from untitled.generator.task import Task
 from untitled.generator.task_manager import TaskManager
-from untitled.core.base import PROJECT_ROOT, LOG, CONFIG
+from untitled.core.base import PROJECT_ROOT, LOG, VLM_LOG, CONFIG
 from untitled.simulator.simulation_data import SimulationData
 from untitled.generator.instruction import InstructionCategory, InstructionResult, InstructionSet, parse_instructions_from_json
 from typing import List, Optional, override
@@ -176,7 +176,7 @@ class SingleStepVLMInstructionGenerator(InstructionGenerator):
             was_route_completed=was_route_completed,
             previously_tried_instructions=limited_previous_instructions
         )
-        LOG.debug(f"Prepared prompt for planner:\n{prompt_request.user_text}\n")
+        VLM_LOG.debug(f"Prepared prompt for planner:\n{prompt_request.request.user_content}\n")
 
         # Send prompt to VLM
         await self._prompt_dispatcher.add(prompt_request)

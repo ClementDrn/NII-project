@@ -33,7 +33,7 @@ Check instructions that were previously generated and try to understand why they
 
 **OUTPUT FORMAT:**
 Return a JSON list of the **Top ${instruction_count_per_generation}$** Critical Test Cases, ranked by collision probability.
-Be carfeul of nested quotes: Use double quotes for String boundaries and single quotes inside the String if needed.
+Be careful of nested quotes: Use double quotes for String boundaries and single quotes inside the String if needed.
 
 [
   {

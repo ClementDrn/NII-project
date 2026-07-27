@@ -1,7 +1,9 @@
+from untitled.generator.request import RequestContentBlock
+
 from abc import ABC, abstractmethod
 from enum import Enum
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, List
+from typing import AsyncIterator, List
 
 
 @dataclass
@@ -10,8 +12,7 @@ class BatchRequest:
 
     request_id: str
     system_text: str
-    user_text: str | None = None
-    user_images: list[bytes] | None = None
+    user_content: List[RequestContentBlock]
 
 class BatchStatus(Enum):
     """Normalized batch status values used by the client API."""
