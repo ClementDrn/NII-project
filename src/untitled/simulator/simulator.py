@@ -333,33 +333,73 @@ class Simulator:
         # Combine agent args with benchmark args
         return benchmark_args + agent_args
     
-    def _kill_carla_processes(self):
-        """Kill only CARLA server processes."""
-        # Kill CarlaUE4.sh processes
-        try:
-            carla_pids = subprocess.check_output(
-                "ps aux | grep CarlaUE4 | grep -v grep | awk '{print $2}'",
-                shell=True
-            ).decode().split()
-            for pid in carla_pids:
-                LOG.debug(f"Killing CARLA process {pid}")
-                os.kill(int(pid), signal.SIGKILL)
-        except subprocess.CalledProcessError:
-            LOG.warning("Killing CARLA processes failed or no processes found.")
+    def _kill_stale_processes_on_ports(self, ports: List[int]):
+        """
+        Kill stale Leaderboard and CARLA processes on specific ports.
+        Attempts a graceful SIGTERM for the leaderboard first, falls back 
+        to SIGKILL, and then forcefully kills CARLA.
+        """
+        stale_pids = set()
+        
+        # 1. Gather all PIDs owned by you holding the specified ports
+        for port in ports:
+            try:
+                blocking_pids = subprocess.check_output(
+                    f"lsof -t -u $(id -un) -i:{port} 2>/dev/null", 
+                    shell=True
+                ).decode().split()
+                stale_pids.update(blocking_pids)
+            except subprocess.CalledProcessError:
+                pass
 
-    def _kill_bench2drive_leaderboard_processes(self):
-        """Kill only Bench2Drive leaderboard processes."""
-        # Kill leaderboard_evaluator.py processes
-        try:
-            leaderboard_pids = subprocess.check_output(
-                "ps aux | grep leaderboard_evaluator.py | grep -v grep | awk '{print $2}'",
-                shell=True
-            ).decode().split()
+        leaderboard_pids = []
+        carla_pids = []
+        
+        # 2. Categorize the PIDs by inspecting their command line arguments
+        for pid in stale_pids:
+            try:
+                ps_output = subprocess.check_output(
+                    f"ps -p {pid} -o args=", 
+                    shell=True
+                ).decode().strip()
+                
+                if "leaderboard_evaluator.py" in ps_output:
+                    leaderboard_pids.append(pid)
+                elif "CarlaUE4" in ps_output:
+                    carla_pids.append(pid)
+            except subprocess.CalledProcessError:
+                pass
+
+        # 3. Request graceful shutdown of Leaderboard processes
+        for pid in leaderboard_pids:
+            LOG.debug(f"Sending SIGTERM to stale leaderboard process {pid}")
+            try:
+                os.kill(int(pid), signal.SIGTERM)
+            except OSError:
+                pass
+                
+        # 4. Wait for graceful cleanup, then forcefully kill any survivors
+        if leaderboard_pids:
+            time.sleep(2)
             for pid in leaderboard_pids:
-                LOG.debug(f"Killing leaderboard process {pid}")
+                try:
+                    # Sending signal 0 checks if the process exists without affecting it
+                    os.kill(int(pid), 0)
+                    
+                    # If no OSError is raised, the process is still alive
+                    LOG.warning(f"Leaderboard process {pid} ignored SIGTERM, escalating to SIGKILL")
+                    os.kill(int(pid), signal.SIGKILL)
+                except OSError:
+                    # Process has successfully terminated
+                    pass
+            
+        # 5. Kill CARLA processes forcefully
+        for pid in carla_pids:
+            LOG.debug(f"Killing stale CARLA process {pid}")
+            try:
                 os.kill(int(pid), signal.SIGKILL)
-        except subprocess.CalledProcessError:
-            LOG.warning("Killing leaderboard processes failed or no processes found.")
+            except OSError:
+                pass
     
     def _create_run_script(
         self,
@@ -494,7 +534,12 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         """
         # Clean up any existing leaderboard processes
         # NOTE: CARLA is also killed. We may want to keep it running between runs to save time. However, restarting CARLA ensures a clean state and prevents issues.
-        self._kill_bench2drive_leaderboard_processes()
+        self._kill_stale_processes_on_ports([
+            self.port,
+            self.port + 1,
+            self.port + 2,
+            self.tm_port
+        ])
         time.sleep(2)
         
         # NOTE: CARLA server is started automatically by the Bench2Drive leaderboard evaluator, so we don't need to start it ourselves
@@ -535,7 +580,12 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
             )
         except subprocess.TimeoutExpired:
             LOG.error(f"Scenario execution timed out after 2 hours")
-            self._kill_bench2drive_leaderboard_processes()
+            self._kill_stale_processes_on_ports([
+                self.port,
+                self.port + 1,
+                self.port + 2,
+                self.tm_port
+            ])
             return self.current_run_id
         
         if result.returncode != 0:
@@ -546,7 +596,12 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         
         # Clean up leaderboard processes after run (CARLA is also killed here)
         time.sleep(2)
-        self._kill_bench2drive_leaderboard_processes()
+        self._kill_stale_processes_on_ports([
+            self.port,
+            self.port + 1,
+            self.port + 2,
+            self.tm_port
+        ])
         
         return self.current_run_id
 
@@ -833,14 +888,13 @@ python -u {str(self.leaderboard_evaluator)} {args_str} \\
         """Clean up any running processes."""
         LOG.info("Cleaning up simulator processes...")
         
-        # Kill leaderboard processes first
-        self._kill_bench2drive_leaderboard_processes()
-        
-        # Give leaderboard's atexit handler a moment to cleanup CARLA
-        time.sleep(2)
-
-        # Then kill any remaining CARLA processes
-        self._kill_carla_processes()
+        # Kill remaining leaderboard and CARLA processes 
+        self._kill_stale_processes_on_ports([
+            self.port,
+            self.port + 1,
+            self.port + 2,
+            self.tm_port
+        ])
     
 # TODO: Move this method to after __init__()
     def __del__(self):
