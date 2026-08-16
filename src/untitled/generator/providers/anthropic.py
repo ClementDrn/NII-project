@@ -164,11 +164,12 @@ class AnthropicBatch(Batch):
         if not self._client.api_key:
             raise ValueError("AnthropicBatch requires a client that is initialized with an API key.")
 
-        # Fetch max_tokens and model from api_parameters
-        self._max_tokens = api_parameters.get("max_tokens", 4096)
+        # Check that model name is valid
         self._model = _clean_model_name(api_parameters.get("model", ""))
         if not self._model:
             raise ValueError("Model parameter is required for Anthropic batch processing.")
+
+        self._api_parameters: dict = api_parameters
 
     @staticmethod
     def _map_anthropic_status_to_batch_status(anthropic_status: str) -> BatchStatus:
@@ -189,7 +190,7 @@ class AnthropicBatch(Batch):
             kwargs = _build_anthropic_messages_kwargs(
                 system_text=request.system_text,
                 user_content=request.user_content,
-                api_parameters={"model": self._model, "max_tokens": self._max_tokens}   # WARN: Only model and max_tokens are passed as api_parameters for batches
+                api_parameters=self._api_parameters
             )
             # Add request to the batch
             anthropic_requests.append(

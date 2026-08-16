@@ -92,8 +92,13 @@ def get_model_config(model_id: str) -> ModelConfig:
             model_name="anthropic/claude-opus-4-6",
             served_name="claude-opus-4.6",
             max_model_len=1000000,
-            thinking_activation_params={"reasoning_effort": "high"},
-            thinking_deactivation_params={"reasoning_effort": "low"},
+            # Anthropic uses the native `thinking` config object, not OpenAI-style reasoning_effort.
+            thinking_activation_params={
+                "thinking": {"type": "adaptive", "display": "summarized"}
+            },
+            thinking_deactivation_params={
+                "thinking": {"type": "disabled"}
+            },
             thinking_default_params={},
             max_output_tokens_param="max_tokens",  # Specific to Claude Opus API
             temperature_param=""    # Not supported when thinking is enabled
