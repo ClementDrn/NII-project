@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 from enum import Enum
 import json
+import re
 
 from untitled.core.base import LOG
 
@@ -113,6 +114,47 @@ class InstructionSet:
             return None
         return self.instructions[rank - 1]
 
+def parse_json_from_text(text: str) -> Optional[List[dict]]:
+    """
+    Attempt to parse a JSON array of objects from the given text.
+    This is useful for extracting JSON output that may be embedded in other text.
+    
+    Args:
+        text: The input text containing JSON data.
+
+    Returns:
+        A list of dictionaries if parsing is successful, None otherwise.
+    """
+    # Optimized JSON decoder
+    decoder = json.JSONDecoder()
+
+    start_index = len(text)
+    while True:
+        # Find next '[' character from the end of the text
+        search_end = start_index
+        start_index = text.rfind('[', 0, search_end)
+        if start_index == -1:
+            # No more '[' found, stop searching
+            break
+
+        try:
+            # The decoder finds the exact end of the JSON
+            parsed, _ = decoder.raw_decode(text, start_index)
+            
+            # Check that it is a list of dicts to avoid parsing non-instruction JSON arrays (e.g. [3.0, 4.0])
+            if isinstance(parsed, list):
+                if len(parsed) > 0 and isinstance(parsed[0], dict):
+                    return parsed
+                elif len(parsed) == 0:
+                    return parsed
+                    
+        except json.JSONDecodeError:
+            # Not a valid JSON array at this starting bracket
+            pass
+
+            
+    print("Could not find a valid JSON array of objects in the text.")
+    return None
 
 def parse_instructions_from_json(json_text: str) -> Optional[InstructionSet]:
     """
@@ -145,56 +187,41 @@ def parse_instructions_from_json(json_text: str) -> Optional[InstructionSet]:
         LOG.error("Cannot parse instruction from empty JSON text.")
         return None
     
-    # Safety strip of extra headers/footers if present (strip until first '[' and after last ']')
-    first_bracket = stripped_json.find('[')
-    last_bracket = stripped_json.rfind(']')
-    if first_bracket != -1 and last_bracket != -1 and last_bracket > first_bracket:
-        stripped_json = stripped_json[first_bracket:last_bracket+1]
-    else:
-        LOG.error("Invalid JSON format: missing array brackets.")
+    # Attempt to parse JSON array from text
+    data = parse_json_from_text(stripped_json)
+    if data is None:
+        LOG.error("Failed to parse JSON from text.")
         return None
-
-    try:
-        # Parse JSON array
-        data = json.loads(stripped_json)
-        
-        if not isinstance(data, list):
-            LOG.error("Expected JSON array of test cases, got: {type(data)}")
-            return None
-        
-        if len(data) == 0:
-            LOG.warning("Received empty list of test cases.")
-            return InstructionSet(instructions=[])
-        
-        # Parse each test case
-        instructions = []
-        for item in data:
-            try:
-                injection_window = InjectionWindow(
-                    start_timestamp=float(item["injection_window"]["start_timestamp"]),
-                    end_timestamp=float(item["injection_window"]["end_timestamp"])
-                )
-                
-                instruction = Instruction(
-                    rank=int(item["rank"]),
-                    injection_window=injection_window,
-                    text=str(item.get("text", item.get("instruction", ""))),
-                    target_module_logic=str(item["target_module_logic"]),
-                    reasoning=str(item["reasoning"])
-                )
-                
-                instructions.append(instruction)
-            except (KeyError, ValueError, TypeError) as e:
-                LOG.error(f"Failed to parse test case: {e}. Item: {item}")
-                continue
-        
-        if len(instructions) == 0:
-            LOG.error("No valid test cases could be parsed from JSON.")
-            return None
-        
-        LOG.info(f"Successfully parsed {len(instructions)} test case(s).")
-        return InstructionSet(instructions=instructions)
-        
-    except json.JSONDecodeError as e:
-        LOG.error(f"Failed to parse JSON: {e}")
+    
+    if len(data) == 0:
+        LOG.warning("Received empty list of test cases.")
+        return InstructionSet(instructions=[])
+    
+    # Parse each test case
+    instructions = []
+    for item in data:
+        try:
+            injection_window = InjectionWindow(
+                start_timestamp=float(item["injection_window"]["start_timestamp"]),
+                end_timestamp=float(item["injection_window"]["end_timestamp"])
+            )
+            
+            instruction = Instruction(
+                rank=int(item["rank"]),
+                injection_window=injection_window,
+                text=str(item.get("text", item.get("instruction", ""))),
+                target_module_logic=str(item["target_module_logic"]),
+                reasoning=str(item["reasoning"])
+            )
+            
+            instructions.append(instruction)
+        except (KeyError, ValueError, TypeError) as e:
+            LOG.error(f"Failed to parse test case: {e}. Item: {item}")
+            continue
+    
+    if len(instructions) == 0:
+        LOG.error("No valid test cases could be parsed from JSON.")
         return None
+    
+    LOG.info(f"Successfully parsed {len(instructions)} test case(s).")
+    return InstructionSet(instructions=instructions)
