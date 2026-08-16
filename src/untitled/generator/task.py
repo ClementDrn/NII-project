@@ -155,21 +155,33 @@ class Task:
         if self.has_descriptions_input and descriptions:
             blocks.append(TextBlock(type="text", text=descriptions, to_be_cached=True))
         
-        # Add metadata (for VLM steps that process images + metadata)
-        # Concatenate metadata from frames with frame labels
-        # Interleave metadata with images if present
-        if self.has_metadata_input and frames:
-            image_count = len(images) if images else 0
-            frame_count = len(frames)
-            if image_count > 0 and frame_count != image_count:
-                LOG.warning(f"Number of frames ({frame_count}) does not match number of images ({image_count}).")
+        # Add images and metadata (for VLM steps that process images + metadata)
+        # NOTE: The order of images and metadata can be interleaved or sequential based on task design.
+        is_interleaving_enabled = False
+        if is_interleaving_enabled:
+            # Interleave metadata with images if present
+            if self.has_metadata_input and frames:
+                image_count = len(images) if images else 0
+                frame_count = len(frames)
+                if image_count > 0 and frame_count != image_count:
+                    LOG.warning(f"Number of frames ({frame_count}) does not match number of images ({image_count}).")
 
-            for i, frame in enumerate(frames):
-                metadata_text = str(frame.metadata)
-                blocks.append(TextBlock(type="text", text=f"Frame {i+1} (time: {frame.timestamp}):\n{metadata_text}", to_be_cached=True))
-                if images and i < image_count:
-                    # Add corresponding image block
-                    blocks.append(ImageBlock(type="image", image_path=images[i], to_be_cached=True))
+                for i, frame in enumerate(frames):
+                    # Concatenate metadata from frames with frame labels
+                    metadata_text = str(frame.metadata)
+                    blocks.append(TextBlock(type="text", text=f"Frame {i+1} (time: {frame.timestamp}):\n{metadata_text}", to_be_cached=True))
+                    if images and i < image_count:
+                        # Add corresponding image block
+                        blocks.append(ImageBlock(type="image", image_path=images[i], to_be_cached=True))
+        else:
+            # Add metadata first, then images
+            if self.has_metadata_input and frames:
+                metadata_text = "\n".join([f"Frame {i+1} (time: {frame.timestamp}):\n{frame.metadata}" for i, frame in enumerate(frames)])
+                blocks.append(TextBlock(type="text", text=metadata_text, to_be_cached=True))
+            
+            if self.has_images_input and images:
+                for image_path in images:
+                    blocks.append(ImageBlock(type="image", image_path=image_path, to_be_cached=True))
 
         # NOTE: From here, the blocks are dynamic, so they should not be cached.
 
