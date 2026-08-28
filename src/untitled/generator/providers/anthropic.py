@@ -14,6 +14,8 @@ from anthropic.types.messages.message_batch import MessageBatch as AnthropicMess
 from anthropic.types.content_block import ContentBlock as AnthropicContentBlock
 
 import time
+import asyncio
+import random
 from typing import Any, AsyncIterator, List
 
 
@@ -281,6 +283,10 @@ class AnthropicAdapter(ProviderAdapter):
     Adapter implementation for the official Anthropic API.
     Converts OpenAI-formatted message arrays into Anthropic's native schema.
     """
+    _RETRY_MAX_ATTEMPTS = 5
+    _RETRY_INITIAL_DELAY_SECONDS = 5.0
+    _RETRY_MAX_DELAY_SECONDS = 60.0
+    _RETRY_JITTER_SECONDS = 1.0
     
     def __init__(self, api_key: str, api_parameters: dict = {}):
         self.api_key: str = api_key
@@ -347,12 +353,40 @@ class AnthropicAdapter(ProviderAdapter):
         kwargs = _build_anthropic_messages_kwargs(request.system_text, request.user_content, self.api_parameters)
         # Add timeout if not already specified
         if "timeout" not in kwargs:
-            kwargs["timeout"] = 10 * 60  # 10 minutes
+            kwargs["timeout"] = 20 * 60  # 20 minutes
 
-        # Send the request to Anthropic's API
+        # Send the request to Anthropic's API. Retry transient capacity failures,
+        # including errors returned when the service is overloaded.
         start_time = time.time()
-        response = await self.client.messages.create(**kwargs)
+        response = None
+        for attempt_index in range(self._RETRY_MAX_ATTEMPTS + 1):
+            try:
+                # Use streaming to avoid HTTP timeouts. This is equivalent to:
+                # Gives same result as: response = await self.client.messages.create(**kwargs)
+                async with self.client.messages.stream(**kwargs) as stream:
+                    response = await stream.get_final_message()
+                break
+            except Exception as error:
+                # If the error is not retryable or we've exhausted attempts, raise the error
+                has_more_attempts = attempt_index < self._RETRY_MAX_ATTEMPTS
+                if not self._is_retryable_model_error(error) or not has_more_attempts:
+                    raise
+
+                # Otherwise, log the error and wait before retrying
+                wait_seconds = self._retry_wait_seconds(attempt_index)
+                LOG.warning(
+                    "Transient Anthropic error on attempt %d/%d (%s). Waiting %.1fs before retry.",
+                    attempt_index + 1,
+                    self._RETRY_MAX_ATTEMPTS + 1,
+                    error,
+                    wait_seconds,
+                )
+                await asyncio.sleep(wait_seconds)
         elapsed_time = time.time() - start_time
+
+        # Check that response is not None
+        if response is None:
+            raise RuntimeError("Anthropic request completed without a response.")
         
         # Extract token usage
         prompt_tokens = response.usage.input_tokens
@@ -360,12 +394,35 @@ class AnthropicAdapter(ProviderAdapter):
         total_tokens = prompt_tokens + completion_tokens
         
         LOG.debug(f"Anthropic request completed in {elapsed_time:.2f} seconds. Tokens: {total_tokens} (prompt: {prompt_tokens}, completion: {completion_tokens}).")
-        VLM_LOG.debug(f"Token usage: prompt={prompt_tokens}, completion={completion_tokens}, total={total_tokens}")
-        
+        VLM_LOG.debug(f"Anthropic request completed. Token usage: prompt={prompt_tokens}, completion={completion_tokens}, total={total_tokens}")
+        VLM_LOG.debug(f"Response content: {response.content}")
+
         # Extract response text
         # Anthropic returns a list of content blocks
         text_blocks = [block.text for block in response.content if block.type == "text"]
         return "\n".join(text_blocks)
+
+    @staticmethod
+    def _is_retryable_model_error(error: Exception) -> bool:
+        error_text = f"{type(error).__name__}: {error}".lower()
+        retry_indicators = (
+            "overloaded",
+            "overloaded_error",
+            "service unavailable",
+            "serviceunavailable",
+            "temporarily unavailable",
+            "timeout",
+            "timed out",
+        )
+        return any(indicator in error_text for indicator in retry_indicators)
+
+    @classmethod
+    def _retry_wait_seconds(cls, attempt_index: int) -> float:
+        delay = min(
+            cls._RETRY_MAX_DELAY_SECONDS,
+            cls._RETRY_INITIAL_DELAY_SECONDS * (2 ** attempt_index),
+        )
+        return delay + random.uniform(0.0, cls._RETRY_JITTER_SECONDS)
 
     async def create_batch(self, requests: list[BatchRequest]) -> Batch:
         """Create a batch for processing multiple requests."""

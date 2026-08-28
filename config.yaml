@@ -125,7 +125,7 @@ generators:
     steps:
       - id: "planning"
         model_name: "claude-opus-4.6"
-        max_tokens: 64000
+        max_tokens: 128000
         thinking_mode: "enabled"
   - id: "claude-opus-4.6_single_step_incremental"
     design: "single_step_vlm"
@@ -135,7 +135,7 @@ generators:
     steps:
       - id: "planning"
         model_name: "claude-opus-4.6"
-        max_tokens: 64000
+        max_tokens: 128000
         thinking_mode: "enabled"
   # Gemini 3.1 Pro based VLM generators
   - id: "gemini-3.1-pro_single_step"
