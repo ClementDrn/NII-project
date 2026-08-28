@@ -49,8 +49,15 @@ class Simulator:
         """
         # TODO: Use private attribute naming convention (i.e., underscore prefix).
         # Check required environment variables
-        if not CONFIG.carla_env.path or not CONFIG.carla_env.conda_path:
-            raise ValueError("CONDA_PATH and CARLA_PATH must be set in .env file")
+        if not CONFIG.carla_env:
+            raise ValueError("CONFIG.carla_env is None.")
+        if (
+            not CONFIG.carla_env.path or 
+            not CONFIG.carla_env.conda_path or 
+            not CONFIG.carla_env.port or 
+            not CONFIG.carla_env.traffic_manager_port
+        ):
+            raise ValueError("CONDA_PATH, CARLA_PATH, CARLA_PORT, and CARLA_TRAFFIC_MANAGER_PORT must be set in .env file")
         
         # Set debug mode (parameter overrides config)
         self.debug = debug if debug is not None else CONFIG.simulator.debug
@@ -86,7 +93,7 @@ class Simulator:
         self.out_root = CONFIG.carla_env.output_path
         self.time_str = time.strftime("%Y%m%d-%H%M%S")
         self.base_dir = self.out_root / self.ads.agent_name / self.benchmark / str(self.seed) / self.time_str
-        self.base_job_subdir: Path = ""     # e.g., "groundtruths", "experiments", etc.
+        self.base_job_subdir: Path = Path("")     # e.g., "groundtruths", "experiments", etc.
 
         # Make sure base directory exists
         self.base_dir.mkdir(parents=True, exist_ok=True)
@@ -103,8 +110,8 @@ class Simulator:
         self.route_id_str = routes[0].split("_")[-1][:-4].zfill(3)
         
         # Ports for CARLA
-        self.port = 2000
-        self.tm_port = 2500
+        self.port = CONFIG.carla_env.port
+        self.tm_port = CONFIG.carla_env.traffic_manager_port
         
         # Current run tracking
         self.current_run_id = 0

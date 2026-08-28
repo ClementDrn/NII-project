@@ -86,6 +86,8 @@ class CARLAEnvConfig(BaseSettings):
     path: Path = Field(validation_alias="CARLA_PATH")
     conda_path: str = Field(validation_alias="CONDA_PATH")
     output_path: Path = Field(validation_alias="OUTPUT_PATH")
+    port: int = Field(validation_alias="CARLA_PORT")
+    traffic_manager_port: int = Field(validation_alias="CARLA_TRAFFIC_MANAGER_PORT")
 
 
 class FilterConfig(BaseSettings):
