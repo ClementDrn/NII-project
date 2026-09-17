@@ -48,6 +48,18 @@ def _parse_args() -> argparse.Namespace:
         default=1,
         help="Number of repeated runs for a single legacy instruction input",
     )
+    parser.add_argument(
+        "--output_dir",
+        type=Path,
+        default=None,
+        help="Existing simulation root to write into instead of a new timestamped directory",
+    )
+    parser.add_argument(
+        "--run_index",
+        type=_non_negative_int,
+        default=None,
+        help="Explicit run index for a single batch instruction job",
+    )
     args = parser.parse_args()
 
     # Validate instruction file path if provided.
@@ -56,6 +68,13 @@ def _parse_args() -> argparse.Namespace:
             parser.error(f"--instruction_filepath does not exist: {args.instruction_filepath}")
         if not args.instruction_filepath.is_file():
             parser.error(f"--instruction_filepath must be a file: {args.instruction_filepath}")
+
+    if args.run_index is not None and args.instruction_filepath is None:
+        parser.error("--run_index requires --instruction_filepath")
+    if args.run_index is not None and args.repeat_count != 1:
+        parser.error("--run_index cannot be combined with --repeat_count")
+    if args.output_dir is not None and not args.output_dir.is_dir():
+        parser.error(f"--output_dir must be an existing directory: {args.output_dir}")
 
     return args
 
@@ -182,7 +201,7 @@ def main():
         runtime_jobs = default_jobs
 
     LOG.info("Initializing simulator...")
-    simulator = Simulator(ADS("simlingo"), True)
+    simulator = Simulator(ADS("simlingo"), True, base_dir=args.output_dir)
     
     for job_index, job in enumerate(runtime_jobs):
         LOG.info(f"Running scenario {job.scenario_id} with instruction: '{(job.instruction.text if job.instruction else 'None')}'...")
@@ -193,7 +212,8 @@ def main():
         # Run simulation
         for i in range(job.repeat_count):
             LOG.info(f"Starting run {i+1}/{job.repeat_count} for scenario {job.scenario_id}...")
-            simulator.run_scenario(job.instruction)
+            run_index = args.run_index if args.run_index is not None else None
+            simulator.run_scenario(job.instruction, run_id=run_index)
 
     return 0
 

@@ -39,13 +39,19 @@ class Simulator:
     - Retrieving logged images and metadata from simulation runs
     """
     
-    def __init__(self, ads: Optional[ADS] = None, debug: bool = None):
+    def __init__(
+        self,
+        ads: Optional[ADS] = None,
+        debug: bool = None,
+        base_dir: Optional[Path] = None,
+    ):
         """
         Initialize the CARLA simulator.
         
         Args:
             ads: ADS agent configuration. If None, creates default SimLingo agent.
             debug: Enable debug output (images with visualization). If None, uses config setting.
+            base_dir: Existing output root to reuse instead of creating a timestamped directory.
         """
         # TODO: Use private attribute naming convention (i.e., underscore prefix).
         # Check required environment variables
@@ -92,7 +98,9 @@ class Simulator:
         # Output directories
         self.out_root = CONFIG.carla_env.output_path
         self.time_str = time.strftime("%Y%m%d-%H%M%S")
-        self.base_dir = self.out_root / self.ads.agent_name / self.benchmark / str(self.seed) / self.time_str
+        self.base_dir = base_dir or (
+            self.out_root / self.ads.agent_name / self.benchmark / str(self.seed) / self.time_str
+        )
         self.base_job_subdir: Path = Path("")     # e.g., "groundtruths", "experiments", etc.
 
         # Make sure base directory exists
