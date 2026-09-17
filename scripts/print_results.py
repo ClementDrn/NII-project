@@ -54,23 +54,31 @@ def print_results(job_dir: Path, ground_truth_cache_dir: Path) -> None:
             classification = scenario.classify_run(exp)
             marker = ""
             if classification == ExperimentResult.ADVERSARIAL:
-                marker = f" {Colors.RED}[ADVERSARIAL]{Colors.RESET}"
+                marker = f" {Colors.PURPLE}[ADVERSARIAL]{Colors.RESET}"
             elif classification == ExperimentResult.CORRECTIVE:
                 marker = f" {Colors.GREEN}[CORRECTIVE]{Colors.RESET}"
             elif classification == ExperimentResult.UNCHANGED:
                 marker = f" {Colors.YELLOW}[UNCHANGED]{Colors.RESET}"
+            elif classification == ExperimentResult.ERROR:
+                marker = f" {Colors.RED}[ERROR]{Colors.RESET}"
             
             print(f"  run_{exp.run_id:03d}: penalty={exp.score_penalty:.3f}, "
                   f"route={exp.score_route:.0f}%, infractions={exp.infractions_count}, "
                   f"collisions={exp.collisions_count}{marker}")
             if exp.prompt_text:
-                print(f"       prompt: \"{exp.prompt_text[:60]}{'...' if len(exp.prompt_text) > 60 else ''}\"")
+                timing = ""
+                if exp.t_start is not None:
+                    t_start = exp.t_start
+                    t_end = exp.t_end if exp.t_end is not None else exp.t_start
+                    timing = f" t_start={t_start:.2f}s t_end={t_end:.2f}s"
+                print(f"       prompt: \"{exp.prompt_text[:60]}{'...' if len(exp.prompt_text) > 60 else ''}\"{timing}")
         
         # Summary of scenario
         scenario_summary = scenario.get_summary()
         print(f"  Scenario summary: {scenario_summary['adversarial']} adversarial, "
               f"{scenario_summary['corrective']} corrective, "
-              f"{scenario_summary['unchanged']} unchanged out of "
+              f"{scenario_summary['unchanged']} unchanged, "
+              f"{scenario_summary['errors']} errors out of "
               f"{scenario_summary['total_experiments']} experiments")
 
     
@@ -85,12 +93,15 @@ def print_results(job_dir: Path, ground_truth_cache_dir: Path) -> None:
     print(f"Adversarial (worse than GT): {summary['adversarial']}")
     print(f"Corrective (better than GT): {summary['corrective']}")
     print(f"Unchanged: {summary['unchanged']}")
+    print(f"Errors: {summary['errors']}")
     
     if summary['total_experiments'] > 0:
         adv_rate = (summary['adversarial'] / summary['total_experiments']) * 100
         corr_rate = (summary['corrective'] / summary['total_experiments']) * 100
+        err_rate = (summary['errors'] / summary['total_experiments']) * 100
         print(f"Adversarial rate: {adv_rate:.1f}%")
         print(f"Corrective rate: {corr_rate:.1f}%")
+        print(f"Error rate: {err_rate:.1f}%")
     print("=" * 80)
 
 
