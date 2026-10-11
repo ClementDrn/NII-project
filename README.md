@@ -103,6 +103,11 @@ uv pip install -e .   # if you need dev libs: uv pip install -e ".[dev]"
 We just created the project's Python environment containing all necessary dependencies.
 It must be activated before running any of this project's scripts. In order to deactivate the environment, just enter command `deactivate`.
 
+Downloading an extra model is required if you wish to use natural language processing features, such as measuring the relevance of generated text. Otherwise, it is not needed.
+```sh
+python3 -m spacy download en_core_web_trf
+```
+
 ### Setup Configuration 
 
 If you did not do it yet, copy the [.env.example](.env.example) file as `.env` and change each variable value with your environement settings.
