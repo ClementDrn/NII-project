@@ -2,7 +2,7 @@ from untitled.generator.providers.provider_adapter import ProviderAdapter
 from untitled.core.base import LOG, VLM_LOG
 from untitled.generator.batch import Batch, BatchRequest
 from untitled.generator.request import Request, RequestContentBlock
-from untitled.generator.model import get_model_config
+from untitled.generator.model_config import get_model_config
 from untitled.utils.image_encoder import image_to_jpeg_base64
 
 from urllib.parse import urlparse
