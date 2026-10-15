@@ -48,7 +48,7 @@ class RunResult:
         is_route_deviation = "deviated from the route" in status.lower()
         is_blocked = "agent got blocked" in status.lower()
 
-        return is_failed and not is_route_deviation and not is_blocked
+        return is_failed and not is_route_deviation #and not is_blocked
 
     @property
     def is_agent_blocked(self) -> bool:
@@ -99,8 +99,8 @@ class ScenarioResults:
             return ExperimentResult.NONE
         
         # Blocked counts as an infraction
-        if exp.is_agent_blocked:
-            return ExperimentResult.ADVERSARIAL
+        #if exp.is_agent_blocked:
+        #    return ExperimentResult.ADVERSARIAL
 
         # Check penalty score
         if ground_truth.score_penalty > exp.score_penalty:

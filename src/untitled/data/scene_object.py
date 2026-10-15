@@ -310,7 +310,7 @@ def parse_scene_objects(sentence: str) -> List[SceneObject]:
                 object_type = SceneObjectType.INTERSECTION
             elif noun_text in ["junction", "exit"]:
                 object_type = SceneObjectType.JUNCTION
-            elif noun_text in ["construction", "worker", "workers"]:
+            elif noun_text in ["construction", "worker", "workers", "roadwork", "roadworks", "cones", "cone"]:
                 object_type = SceneObjectType.CONSTRUCTION
             elif noun_text in ["accident"]:
                 object_type = SceneObjectType.ACCIDENT
