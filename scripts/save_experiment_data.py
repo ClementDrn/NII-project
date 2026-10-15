@@ -232,12 +232,12 @@ def main() -> None:
         help="Path to the ground truth cache directory (default: cache)",
     )
     parser.add_argument(
-        "--hallucinations", action="store_true",
+        "--hallucinations", "-H", action="store_true",
         help="Check instruction hallucinations using injection metadata and append four metric columns",
     )
-    parser.add_argument("--model", default="N/A", help="Model label written to each row (default: N/A)")
-    parser.add_argument("--method", default="N/A", help="Method label written to each row (default: N/A)")
-    parser.add_argument("--repetition", default="N/A", help="Repetition label written to each row (default: N/A)")
+    parser.add_argument("--model", "-M", default="N/A", help="Model label written to each row (default: N/A)")
+    parser.add_argument("--method", "-m", default="N/A", help="Method label written to each row (default: N/A)")
+    parser.add_argument("--repetition", "-r", default="N/A", help="Repetition label written to each row (default: N/A)")
     args = parser.parse_args()
 
     project_root = Path(__file__).parent.parent
