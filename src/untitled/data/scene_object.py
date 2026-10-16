@@ -322,7 +322,7 @@ def parse_scene_objects(sentence: str) -> List[SceneObject]:
                 object_type = SceneObjectType.SIDEWALK
 
             # Nouns that require descriptive words to determine their type
-            elif noun_text in ["zone"]:
+            elif noun_text in ["zone", "barrier"]:
                 if any(word in ["construction", "work"] for word in description_words):
                     object_type = SceneObjectType.CONSTRUCTION
             elif noun_text in ["spot"]:
