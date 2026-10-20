@@ -101,6 +101,7 @@ class InstructionGenerator(ABC):
             "REDACTED",
             "N/A",
             "I can’t provide",
+            "I can’t help"
         )
         for redaction_indicator in keywords:
             if redaction_indicator in instruction_raw:
