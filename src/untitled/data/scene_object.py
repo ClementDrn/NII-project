@@ -25,6 +25,7 @@ class SceneObjectType(Enum):
     BIKE_LANE = "bike_lane"
     SHOULDER = "shoulder"
     SIDEWALK = "sidewalk"
+    CROSSWALK = "crosswalk"
     INTERSECTION = "intersection"
     JUNCTION = "junction"
     CONSTRUCTION = "construction"
@@ -293,7 +294,7 @@ def parse_scene_objects(sentence: str) -> List[SceneObject]:
                 object_type = SceneObjectType.BICYCLE
             elif noun_text in ["pedestrian", "person"]:
                 object_type = SceneObjectType.PEDESTRIAN
-            elif noun_text in ["sign"]:
+            elif noun_text in ["sign", "yield", "stop"]:
                 object_type = SceneObjectType.TRAFFIC_SIGN
             elif noun_text in ["light"]:
                 object_type = SceneObjectType.TRAFFIC_LIGHT
@@ -320,6 +321,8 @@ def parse_scene_objects(sentence: str) -> List[SceneObject]:
                 object_type = SceneObjectType.SHOULDER
             elif noun_text in ["sidewalk", "pavement"]:
                 object_type = SceneObjectType.SIDEWALK
+            elif noun_text in ["crosswalk", "crosswalks"]:
+                object_type = SceneObjectType.CROSSWALK
 
             # Nouns that require descriptive words to determine their type
             elif noun_text in ["zone", "barrier"]:
