@@ -37,25 +37,25 @@ def _parse_args() -> argparse.Namespace:
         description="Run simulation with hardcoded jobs or a JSON file of extracted instructions"
     )
     parser.add_argument(
-        "--instruction_filepath",
+        "--instruction_filepath", "-i",
         type=Path,
         default=None,
         help="Path to instruction JSON (flattened extracted records or custom_prompts.json format)",
     )
     parser.add_argument(
-        "--repeat_count",
+        "--repeat_count", "-R",
         type=_positive_int,
         default=1,
         help="Number of repeated runs for a single legacy instruction input",
     )
     parser.add_argument(
-        "--output_dir",
+        "--output_dir", "-o",
         type=Path,
         default=None,
         help="Existing simulation root to write into instead of a new timestamped directory",
     )
     parser.add_argument(
-        "--run_index",
+        "--run_index", "-r",
         type=_non_negative_int,
         default=None,
         help="Explicit run index for a single batch instruction job",
