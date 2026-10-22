@@ -42,6 +42,7 @@ def _get_actor_object_type(actor: dict) -> SceneObjectType | None:
     Determines the scene object type of an actor in the metadata.
     Returns None for unsupported classes, including the ego vehicle.
     """
+    # WARN: Not all classes are collected in the metdata nor are supported for hallucination checks.
     class_name = actor.get("class")
     if class_name in {"car", "static_car"}:
         # NOTE: data_agent.py collects bicycles and motorbikes under the car class too.
@@ -58,6 +59,8 @@ def _get_actor_object_type(actor: dict) -> SceneObjectType | None:
         return SceneObjectType.TRAFFIC_LIGHT
     elif class_name == "stop_sign":
         return SceneObjectType.TRAFFIC_SIGN
+    
+    # Return None if the actor class is unsupported for hallucination checks
     return None
 
 

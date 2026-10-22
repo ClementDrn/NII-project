@@ -307,7 +307,7 @@ def parse_scene_objects(sentence: str) -> List[SceneObject]:
                     object_type = SceneObjectType.PARKING_LANE
                 else:
                     object_type = SceneObjectType.DRIVING_LANE
-            elif noun_text in ["intersection"]:
+            elif noun_text in ["intersection", "crossroad"]:
                 object_type = SceneObjectType.INTERSECTION
             elif noun_text in ["junction", "exit"]:
                 object_type = SceneObjectType.JUNCTION
@@ -337,7 +337,7 @@ def parse_scene_objects(sentence: str) -> List[SceneObject]:
                 object_type = SceneObjectType.MISC
 
             # Below are types to ignore, as they are not scene objects
-            elif noun_text in ["m", "km", "m/s", "km/h", "mph", "speed", "velocity"]:
+            elif noun_text in ["m", "km", "m/s", "km/h", "mph", "speed", "velocity", "distance", "meters", "seconds", "meter", "second"]:
                 continue
             elif noun_text in ["side", "left", "right", "front", "back", "middle"]:
                 continue
