@@ -10,14 +10,14 @@ import sys
 from pathlib import Path
 
 
-EXPERIMENT_DIR = Path("/data1/cdarne/digit/output/simlingo/bench2drive/1/08-16-opus-4.6-incremental-n1")
+EXPERIMENT_DIR = Path("PATH_TO_JOBS_PARENT_DIR")
 FILTER_ID = "undersampled_filter"
 GENERATOR_ID = "claude-opus-4.6_single_step_incremental"
 MODEL_INSTANCE_ID = "claude-opus-4.6_0"
 
 # Entries are ordered so that each later generation sees the repaired prior run.
 RUNS_TO_REPAIR = {
-    18: (2,),
+    40: (1,2,),
 }
 
 

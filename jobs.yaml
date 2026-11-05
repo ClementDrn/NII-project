@@ -78,7 +78,7 @@ jobs:
     model_instances:
       - "gpt-5-mini_0"
     experiment_nature: "adversarial"
-    instruction_generation_count: 1   # how many times to generate instructions, in one iteration
+    instruction_generation_count: 1   # deprecated: how many times to generate instructions, in one iteration
     instruction_count_per_generation: 3
     repeat_count: 1   # will cause to loop the pipeline, possibly with context-aware generation after the first iteration
     stop_repeat_on_success: false
