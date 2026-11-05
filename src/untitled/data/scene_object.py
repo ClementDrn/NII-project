@@ -305,6 +305,8 @@ def parse_scene_objects(sentence: str) -> List[SceneObject]:
                     object_type = SceneObjectType.BIKE_LANE
                 elif "parking" in description_words:
                     object_type = SceneObjectType.PARKING_LANE
+                elif any(word in ["emergency", "shoulder"] for word in description_words):
+                    object_type = SceneObjectType.SHOULDER
                 else:
                     object_type = SceneObjectType.DRIVING_LANE
             elif noun_text in ["intersection", "crossroad"]:
