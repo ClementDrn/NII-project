@@ -8,7 +8,7 @@ import sys
 
 
 def parse_cmdargs() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run the simulation pipeline")
+    parser = argparse.ArgumentParser(description="Run the generation and simulation pipeline")
     parser.add_argument(
         "--jobs-filepath",
         default="jobs.yaml",

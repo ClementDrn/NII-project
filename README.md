@@ -120,13 +120,44 @@ If you move this file out of the repository root, then you must write down its n
 
 If needed, you can also change the properties in [config.yaml](config.yaml).
 
-### Launch Prototype
+### Launch Pipeline
 
-After you have specified what scenarios you want to run in [jobs.yaml](jobs.yaml), you can run the [prototype.py](scripts/prototype.py) script.
+After you have specified what scenarios you want to run in [jobs.yaml](jobs.yaml), you can run the core pipeline with script [scripts/run/run_pipeline.py](scripts/run/run_pipeline.py).
 ```sh
 source .venv/bin/activate
-python scripts/prototype.py
+python scripts/run/run_pipeline.py
 ```
+
+
+## Scripts
+
+Run scripts from the repository root with the project's virtual environment activated. The `scripts/` directories contain:
+
+- `run/`: launch pipelines, simulations, and experiment reruns.
+- `vlm/`: generate instructions and try model requests, including API batches.
+- `test/`: inspect frame filtering and instruction rules.
+- `results/`: display, summarize, and export experiment results.
+- `evaluate/`: evaluate instruction naturalness and count scene object mentions.
+- `utils/`: extract instructions, export failed runs, and merge job directories.
+- `stats/`: perform statistical analysis over the results.
+
+A typical workflow is:
+```sh
+# Run experiments from jobs.yaml
+python scripts/run/run_pipeline.py
+
+# Export results to CSV (and check for instruction hallucinations)
+python scripts/results/save_experiment_data.py -H path/containing/jobs results.csv
+
+# Export the different scene object categories mentioned
+python scripts/evaluate/analyze_scene_objects.py results.csv results-o.csv
+# Evaluate naturalness of instructions with a GPT-5-mini
+python scripts/evaluate/evaluate_naturalness_of_instructions.py results-o.csv results-x.csv
+
+# TODO: Perform a statistical analyzis on the results
+```
+
+Use `--help` on these scripts for their options.
 
 
 ## Provided Data
