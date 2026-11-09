@@ -124,3 +124,22 @@ After you have specified what scenarios you want to run in [jobs.yaml](jobs.yaml
 source .venv/bin/activate
 python scripts/prototype.py
 ```
+
+
+## Provided Data
+
+The data that we collected and used during our experimental analysis are available under the `data/` directory.
+You are free to use them under the terms of the [CC-4.0-BY](https://creativecommons.org/licenses/by/4.0/) license.
+Check [data/DATA.md](data/DATA.md) for more information.
+
+
+## License
+
+The code of this project is made available through the MIT License.
+Please note that different licenses apply for data files and vendor code.
+
+
+## Citing
+
+If this project is useful for your work, please cite us.
+

@@ -1,0 +1,81 @@
+instruction_id,instruction,method
+1,"Pass that braking car, the road ahead is clear",digit
+2,"Speed up, don't slow down at the intersection, we're running late",digit
+3,Move to the left lane now,digit
+4,"Keep going, that car is just pulling into a parking spot",digit
+5,"Change to the right lane now, our turn is just ahead",digit
+6,Get in the left lane and keep your speed up,digit
+7,"Go straight through the intersection, don't turn",digit
+8,Control your following distance to 70 meters.,baseline
+9,Overtake the red car ahead,digit
+10,"Don't slow down, keep driving, there's nothing ahead",digit
+11,Increase current speed by 3 meters per second,baseline
+12,"Overtake the car ahead, it is going too slow",digit
+13,Decelerate ACC speed by 6 meters per second,baseline
+14,"Overtake the car ahead, it's going too slow",digit
+15,"At the intersection, your direction should be right.",baseline
+16,Increase distance to 65 meters,baseline
+17,Make the following distance 13 meters less.,baseline
+18,Add 3 meters per second to the current speed.,baseline
+19,Move into the left lane.,baseline
+20,Decelerate ACC speed by 8 meters per second,baseline
+21,Switch to the right lane and keep your speed up,digit
+22,Decrease gap to 20 meters.,baseline
+23,Overtake the slow car ahead,digit
+24,Alter the gap to be 12 meters more.,baseline
+25,"Pass the slow car ahead, we need to go faster",digit
+26,Increase gap to 65 meters.,baseline
+27,Boost the current speed by 7 meters per second.,baseline
+28,Follow the right path at the intersection.,baseline
+29,"Move to the left lane, this lane is too slow",digit
+30,"Switch to the left lane, it looks clearer ahead over there",digit
+31,Set a following distance 15 meters closer.,baseline
+32,Hold a following distance of 70 meters.,baseline
+33,"Don't stop in the middle of the intersection, keep moving through",digit
+34,Follow the left path at the intersection.,baseline
+35,Set the gap 8 meters longer.,baseline
+36,Switch to the left lane to overtake this slow car,digit
+37,Increase distance to 75 meters,baseline
+38,"The road is flooding on the right, move over to the left!",digit
+39,Pass the vehicle by right lane.,baseline
+40,"Our turn is coming up, get in the right lane",digit
+41,Accelerate speed to 30 meters per second,baseline
+42,"Keep going straight, don't stop at this intersection",digit
+43,Switch to the right lane and don't slow down,digit
+44,"Keep up with traffic, don't slow down",digit
+45,"Get in the right lane, our exit is coming up",digit
+46,Reduce current speed by 6 meters per second.,baseline
+47,Go ahead and pass that slow car in front of us,digit
+48,"Go ahead and overtake, the lane is clear",digit
+49,Set a following distance 12 meters higher.,baseline
+50,Proceed to the right at the intersection.,baseline
+51,Could you guide the car into the emergency lane and stop?,baseline
+52,Keep cruise control at a speed of 10 meters per second.,baseline
+53,Pass the slow car in front on the left,digit
+54,"Overtake the car in front, the road is clear",digit
+55,Continue straight ahead at the intersection.,baseline
+56,"There's a parking spot on the left, turn in quickly before someone takes it",digit
+57,"Head for the emergency lane and cease driving, if you would.",baseline
+58,"Pass the car ahead, move to the left lane to overtake",digit
+59,Overtake the lead vehicle by using the left lane.,baseline
+60,Add 3 meters per second to the current speed.,baseline
+61,Boost the current speed by 5 meters per second.,baseline
+62,Switch to the left lane and speed up to overtake,digit
+63,"Go straight through the intersection, don't slow down",digit
+64,Change the following distance to 10 meters more.,baseline
+65,Decrease gap to 15 meters.,baseline
+66,Increase ACC speed to 28 meters per second,baseline
+67,Enhance the ACC speed by 7 meters per second.,baseline
+68,Overtake the cyclist ahead,digit
+69,"Change to the right lane and speed up, we need to hurry",digit
+70,"Cut it tighter, you're swinging too wide",digit
+71,Follow the straight path at the crossroad.,baseline
+72,"Go around these stopped cars ahead, pass them on the left",digit
+73,"Pass the slow car ahead, change to the left lane",digit
+74,"It's fine, that car is just parking, keep driving.",digit
+75,Add 7 meters per second to the current speed.,baseline
+76,"No cars coming, go ahead and pass the construction now",digit
+77,Overtake the lead vehicle by using the left lane.,baseline
+78,Hold a following distance of 65 meters.,baseline
+79,"Speed up, we need to make this green light",digit
+80,Decrease distance to 25 meters,baseline
