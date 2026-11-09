@@ -1,4 +1,7 @@
-# Adversarial Instruction Testing for VLA4AD
+# DIGIT
+
+*Driving Instruction Generation and Injection for Testing* (DIGIT) is a framework that permits the generation of driving instructions by utilizing a vision-language model (VLM) as well as their injection into simulations of the driving agent SimLingo inside CARLA environments.
+
 
 ## Getting Started
 
@@ -6,8 +9,8 @@ Our pipeline requires Linux (tested on Ubuntu 20 & 22) and at least 16 GB of GPU
 
 Clone the repository.
 ```sh
-git clone --recursive UNTITLED_REPOSITORY
-cd untitled
+git clone --recursive PATH_TO_REPO
+cd digit
 ```
 
 ### Install CARLA and its dependencies
