@@ -1,167 +1,85 @@
+"""Test the real simulator filesystem and run indexing without launching CARLA."""
+from pathlib import Path
+from unittest.mock import MagicMock
+
 import pytest
-from tests.fakes import FakeSimulator
+
+from digit.core.base import CONFIG
+from digit.core.settings import CARLAEnvConfig
+from digit.simulator import simulator as simulator_module
 from digit.simulator.simulator import Simulator
 
 
-class TestSimulator:
-    """
-    Test the Simulator class using FakeSimulator.
-    
-    Uses FakeSimulator to avoid CARLA dependencies while testing
-    path calculation logic that is identical in both implementations.
-    """
-
-    @pytest.fixture
-    def simulator(self):
-        return FakeSimulator()
-
-    # --- Test the calculate_scenario_base_dir and calculate_run_base_dir methods ---
-    def test_calculate_run_base_dir_no_subdir(self, simulator):
-        """
-        Test the calculate_run_base_dir method.
-        """
-        # base_dir: Path, job_id: int, scenario_id: int, run_id: int, has_job_subdir: bool = True
-        base_dir = "/path/to/base/dir"
-        job_id = 123
-        scenario_id = 456
-        run_id = 789
-        has_job_subdir = False
-        expected_dir = "/path/to/base/dir/job_123/sce_456/run_789"
-        assert simulator._calculate_run_base_dir(base_dir, job_id, scenario_id, run_id, has_job_subdir) == expected_dir
-
-    def test_calculate_run_base_dir(self, simulator):
-        """
-        Test the calculate_run_base_dir method.
-        """
-        # base_dir: Path, job_id: int, scenario_id: int, run_id: int, has_job_subdir: bool = True
-        base_dir = "/path/to/base/dir"
-        job_id = 123
-        scenario_id = 456
-        run_id = 789
-        has_job_subdir = True
-        expected_dir = "/path/to/base/dir/job_123/sce_456/run_789"
-        assert simulator._calculate_run_base_dir(base_dir, job_id, scenario_id, run_id, has_job_subdir) == expected_dir
-
-    def test_calculate_run_base_dir_plus_subdir(self, simulator):
-        """
-        Test the calculate_run_base_dir method.
-        """
-        # base_dir: Path, job_id: int, scenario_id: int, run_id: int, has_job_subdir: bool = True
-        base_dir = "/path/to/base/dir"
-        job_id = 123
-        scenario_id = 456
-        run_id = 789
-        has_job_subdir = True
-        simulator.set_base_job_subdir("job_subdir")
-        expected_dir = "/path/to/base/dir/job_123/job_subdir/sce_456/run_789"
-        assert simulator._calculate_run_base_dir(base_dir, job_id, scenario_id, run_id, has_job_subdir) == expected_dir
-        
-    # --- Test directory hierarchy creation -----------------------------------
-
-    def test_directory_hierarchy_creation_1_scenario_and_groundtruth(self, fake_simulator_with_fs, temp_base_dir):
-        """
-        Test that the directory hierarchy is created correctly.
-        """
-        simulator = fake_simulator_with_fs
-        
-        # Simulate groundtruths
-        simulator.set_base_job_subdir("gt")
-        simulator.set_job_context(123, 1)
-        simulator.set_scenario(1)
-        simulator.run_scenario()
-        simulator.run_scenario()
-        
-        # Simulate experiments (no subdir)
-        simulator.set_base_job_subdir("")
-        simulator.set_job_context(123, 1)
-        simulator.set_scenario(1)
-        simulator.run_scenario()
-        simulator.run_scenario()
-
-        # Check that the expected directories were created in the output directory
-        output_dir = temp_base_dir / "output"
-        expected_paths = [
-            output_dir / "job_123" / "gt" / "sce_001" / "run_000",
-            output_dir / "job_123" / "gt" / "sce_001" / "run_001",
-            output_dir / "job_123" / "sce_001" / "run_000",
-            output_dir / "job_123" / "sce_001" / "run_001",
-        ]
-        for expected_path in expected_paths:
-            assert expected_path.exists() and expected_path.is_dir(), f"Expected directory {expected_path} to be created"
-    def test_directory_hierarchy_creation_2_scenarios_and_groundtruth(self, fake_simulator_with_fs, temp_base_dir):
-        """
-        Test that the directory hierarchy is created correctly.
-        """
-        simulator = fake_simulator_with_fs
-        
-        # Simulate groundtruths
-        simulator.set_base_job_subdir("gt")
-        # Scenario 1 with 2 runs
-        simulator.set_job_context(123, 1)
-        simulator.set_scenario(1)
-        simulator.run_scenario()
-        simulator.run_scenario()
-        # Scenario 2 with 1 run
-        simulator.set_job_context(123, 2)
-        simulator.set_scenario(2)
-        simulator.run_scenario()
-
-        # Simulate experiments (no subdir)
-        simulator.set_base_job_subdir("")
-        # Scenario 1 with 2 runs
-        simulator.set_job_context(123, 1)
-        simulator.set_scenario(1)
-        simulator.run_scenario()
-        simulator.run_scenario()
-        # Scenario 2 with 1 run
-        simulator.set_job_context(123, 2)
-        simulator.set_scenario(2)
-        simulator.run_scenario()    
-
-        # Check that the expected directories were created in the output directory
-        output_dir = temp_base_dir / "output"
-        expected_paths = [
-            output_dir / "job_123" / "gt" / "sce_001" / "run_000",
-            output_dir / "job_123" / "gt" / "sce_001" / "run_001",
-            output_dir / "job_123" / "gt" / "sce_002" / "run_000",
-            output_dir / "job_123" / "sce_001" / "run_000",
-            output_dir / "job_123" / "sce_001" / "run_001",
-            output_dir / "job_123" / "sce_002" / "run_000",
-        ]
-        for expected_path in expected_paths:
-            assert expected_path.exists() and expected_path.is_dir(), f"Expected directory {expected_path} to be created"
+@pytest.fixture
+def simulator(tmp_path, monkeypatch):
+    benchmark = tmp_path / 'benchmark'
+    routes = tmp_path / 'routes'
+    routes.mkdir()
+    for index in (1, 2):
+        (routes / f'bench2drive_{index:02d}.xml').write_text('<routes></routes>')
+    (benchmark / 'leaderboard/leaderboard').mkdir(parents=True)
+    (benchmark / 'leaderboard/leaderboard/leaderboard_evaluator.py').touch()
+    (benchmark / 'scenario_runner').mkdir()
+    monkeypatch.setattr(simulator_module, 'BENCHMARK_ROOT', benchmark)
+    monkeypatch.setattr(simulator_module, 'ROUTES_ROOT', routes)
+    monkeypatch.setattr(CONFIG, 'carla_env', CARLAEnvConfig(
+        CARLA_PATH=tmp_path / 'carla', CONDA_PATH=str(tmp_path / 'conda'),
+        OUTPUT_PATH=tmp_path / 'output', CARLA_PORT=2000, CARLA_TRAFFIC_MANAGER_PORT=2050,
+    ))
+    ads = MagicMock()
+    ads.agent_name = 'test_agent'
+    ads.get_agent_args.return_value = []
+    ads.get_agent_python_path.return_value = tmp_path / 'agent'
+    return Simulator(ads=ads, debug=False, base_dir=tmp_path / 'output')
 
 
-def test_real_simulator_run_ids_reset_per_scenario_with_job_context_first(tmp_path):
-    """
-    Regression test for run ID indexing in real Simulator.
+@pytest.mark.parametrize(('subdir', 'include_subdir', 'expected'), [
+    ('', True, 'job_123/sce_001/run_002'),
+    ('ground_truths', True, 'job_123/ground_truths/sce_001/run_002'),
+    ('ground_truths', False, 'job_123/sce_001/run_002'),
+])
+def test_run_directory_layout(simulator, subdir, include_subdir, expected):
+    simulator.set_base_job_subdir(Path(subdir))
+    simulator.set_job_context(123, 1)
+    assert simulator.get_run_dir(1, 2, has_job_subdir=include_subdir) == simulator.base_dir / expected
 
-    Ensures run IDs are tracked per (job, scenario, subdir) context even when
-    set_job_context is called before set_scenario (the sequence used by the runner).
-    """
-    simulator = Simulator.__new__(Simulator)
 
-    # Minimal state needed for set_job_context, set_scenario, and _next_run_id
-    simulator.route_path = tmp_path
-    (tmp_path / "bench2drive_01.xml").write_text("<routes></routes>", encoding="utf-8")
-    (tmp_path / "bench2drive_02.xml").write_text("<routes></routes>", encoding="utf-8")
-    simulator.base_job_subdir = ""
-    simulator.current_job_id = None
-    simulator.current_scenario_id = None
-    simulator._run_ids = {}
-
-    # Sequence mirrors production flow: set_job_context() then set_scenario()
+def test_run_ids_are_independent_per_job_scenario_and_subdir(simulator):
     simulator.set_job_context(123, 1)
     simulator.set_scenario(1)
-    assert simulator._next_run_id() == 0
-    assert simulator._next_run_id() == 1
-
+    assert [simulator._next_run_id(), simulator._next_run_id()] == [0, 1]
     simulator.set_job_context(123, 2)
     simulator.set_scenario(2)
     assert simulator._next_run_id() == 0
-
-    # Same scenario in a different job subdir starts from 0 independently
-    simulator.base_job_subdir = "gt"
     simulator.set_job_context(123, 1)
     simulator.set_scenario(1)
+    assert simulator._next_run_id() == 2
+    simulator.set_base_job_subdir(Path('ground_truths'))
     assert simulator._next_run_id() == 0
+    simulator.set_job_context(124, 1)
+    assert simulator._next_run_id() == 0
+
+
+def test_run_script_creates_real_output_hierarchy_and_prompt(simulator):
+    import json
+    from digit.generator.instruction import Instruction, InjectionWindow
+
+    simulator.set_job_context(123, 1)
+    simulator.set_scenario(1)
+    instruction = Instruction(rank=1, text='Turn left', reasoning='test', target_module_logic='planning',
+                              injection_window=InjectionWindow(start_timestamp=1, end_timestamp=3))
+    script = Path(simulator._create_run_script(instruction))
+    run_dir = simulator.get_run_dir(1, 0)
+    assert script.is_file()
+    assert (run_dir / 'images').is_dir()
+    assert (run_dir / 'metadata').is_dir()
+    prompts = json.loads((run_dir / 'custom_prompts.json').read_text())
+    assert prompts[0]['text'] == 'Turn left'
+    assert prompts[0]['injection_time'] == 1
+    assert prompts[0]['injection_duration'] == 2
+
+
+@pytest.mark.parametrize('scenario_id', [-1, 220])
+def test_out_of_range_scenario_is_rejected(simulator, scenario_id):
+    with pytest.raises(ValueError, match='out of valid range'):
+        simulator.set_scenario(scenario_id)

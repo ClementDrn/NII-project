@@ -37,9 +37,9 @@ def create_frame(image_name: str = "test_image.png") -> SimulationFrameData:
 def create_mock_embedder(embedding_dim: int = 768) -> MagicMock:
     """Helper function to create a mock Embedder."""
     mock_embedder = MagicMock(spec=Embedder)
-    # Return a random normalized embedding by default
+    # Use a deterministic unit vector; numerical edge cases supply explicit vectors.
     mock_embedder.embed.return_value = torch.nn.functional.normalize(
-        torch.randn(embedding_dim), dim=0
+        torch.arange(1, embedding_dim + 1, dtype=torch.float32), dim=0
     )
     return mock_embedder
 
@@ -450,5 +450,4 @@ class TestClusterFrames:
         # With threshold 1, only identical embeddings should cluster
         result = cluster_frames(frame_data, mock_embedder, similarity_threshold=1.0)
 
-        # With random embeddings and threshold 1, likely to have multiple clusters
-        assert len(result) >= 1
+        assert sum(cluster.get_data().frame_count for cluster in result) == len(frames)

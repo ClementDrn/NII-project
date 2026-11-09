@@ -7,7 +7,7 @@ def test_get_model_config_supported_model():
     config = get_model_config("r4b")
 
     assert isinstance(config, ModelConfig)
-    assert config.model_name == "yannqi/R-4B"
+    assert config.model_name == "yannqi/r-4b"
     assert config.served_name == "r4b"
     assert config.max_model_len == 32768
 

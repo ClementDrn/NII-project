@@ -1,6 +1,4 @@
 import pytest
-import tempfile
-import shutil
 from pathlib import Path
 import yaml
 from digit.core.job_handler import Job, JobHandler
@@ -8,17 +6,9 @@ from digit.generator.experiment_nature import ExperimentNature
 
 
 @pytest.fixture
-def temp_dir():
-    """Create a temporary directory and clean up after test."""
-    temp_path = Path(tempfile.mkdtemp())
-    yield temp_path
-    shutil.rmtree(temp_path)
-
-
-@pytest.fixture
-def sample_jobs_yaml(temp_dir):
+def sample_jobs_yaml(tmp_path):
     """Create a sample jobs.yaml file."""
-    jobs_file = temp_dir / "jobs.yaml"
+    jobs_file = tmp_path / "jobs.yaml"
     jobs_data = {
         "version": "2.0-dev",
         "jobs": [
@@ -47,9 +37,9 @@ def sample_jobs_yaml(temp_dir):
 
 
 @pytest.fixture
-def jobs_yaml_with_all_scenarios(temp_dir):
+def jobs_yaml_with_all_scenarios(tmp_path):
     """Create a jobs.yaml file with 'all' scenarios."""
-    jobs_file = temp_dir / "jobs_all.yaml"
+    jobs_file = tmp_path / "jobs_all.yaml"
     jobs_data = {
         "version": "2.0-dev",
         "jobs": [
@@ -70,9 +60,9 @@ def jobs_yaml_with_all_scenarios(temp_dir):
 
 
 @pytest.fixture
-def cache_dir_with_logs(temp_dir):
+def cache_dir_with_logs(tmp_path):
     """Create a cache directory with some ground truth logs."""
-    cache_dir = temp_dir / "cache"
+    cache_dir = tmp_path / "cache"
     
     # Create cached logs for scenario 5, runs 0-2
     for run_id in range(3):
@@ -89,9 +79,9 @@ def cache_dir_with_logs(temp_dir):
 
 
 @pytest.fixture
-def jobs_yaml_with_experiment_nature(temp_dir):
+def jobs_yaml_with_experiment_nature(tmp_path):
     """Create a jobs.yaml file with experiment_nature specified."""
-    jobs_file = temp_dir / "jobs_nature.yaml"
+    jobs_file = tmp_path / "jobs_nature.yaml"
     jobs_data = {
         "version": "2.0-dev",
         "jobs": [
@@ -122,9 +112,9 @@ def jobs_yaml_with_experiment_nature(temp_dir):
 
 
 @pytest.fixture
-def jobs_yaml_with_repeat_flags(temp_dir):
+def jobs_yaml_with_repeat_flags(tmp_path):
     """Create a jobs.yaml file with repeat-related flags specified."""
-    jobs_file = temp_dir / "jobs_repeat_flags.yaml"
+    jobs_file = tmp_path / "jobs_repeat_flags.yaml"
     jobs_data = {
         "version": "2.0-dev",
         "jobs": [
@@ -267,9 +257,9 @@ class TestJobHandler:
         assert job.stop_repeat_on_success is True
         assert job.repeat_for_uniform_instruction_category_distribution is True
 
-    def test_load_jobs_repeat_flags_defaults(self, temp_dir):
+    def test_load_jobs_repeat_flags_defaults(self, tmp_path):
         """Test that repeat-related flags default correctly when omitted."""
-        jobs_file = temp_dir / "jobs_repeat_defaults.yaml"
+        jobs_file = tmp_path / "jobs_repeat_defaults.yaml"
         jobs_data = {
             "version": "2.0-dev",
             "jobs": [
@@ -291,9 +281,9 @@ class TestJobHandler:
         assert job.stop_repeat_on_success is False
         assert job.repeat_for_uniform_instruction_category_distribution is False
     
-    def test_load_jobs_with_invalid_experiment_nature(self, temp_dir):
+    def test_load_jobs_with_invalid_experiment_nature(self, tmp_path):
         """Test loading jobs with invalid experiment_nature raises ValueError."""
-        jobs_file = temp_dir / "jobs_invalid_nature.yaml"
+        jobs_file = tmp_path / "jobs_invalid_nature.yaml"
         jobs_data = {
             "version": "2.0-dev",
             "jobs": [
@@ -319,36 +309,36 @@ class TestJobHandler:
         with pytest.raises(FileNotFoundError):
             JobHandler("/path/that/does/not/exist/jobs.yaml")
     
-    def test_load_jobs_invalid_yaml(self, temp_dir):
+    def test_load_jobs_invalid_yaml(self, tmp_path):
         """Test loading jobs from invalid YAML file raises ValueError."""
-        invalid_yaml = temp_dir / "invalid.yaml"
+        invalid_yaml = tmp_path / "invalid.yaml"
         with open(invalid_yaml, 'w') as f:
             f.write("{ invalid yaml content [")
         
         with pytest.raises(ValueError, match="Invalid YAML format"):
             JobHandler(str(invalid_yaml))
     
-    def test_load_jobs_missing_jobs_key(self, temp_dir):
+    def test_load_jobs_missing_jobs_key(self, tmp_path):
         """Test loading YAML without 'jobs' key raises ValueError."""
-        no_jobs_yaml = temp_dir / "no_jobs.yaml"
+        no_jobs_yaml = tmp_path / "no_jobs.yaml"
         with open(no_jobs_yaml, 'w') as f:
             yaml.dump({"version": "2.0-dev"}, f)
         
         with pytest.raises(ValueError, match="missing 'jobs' key"):
             JobHandler(str(no_jobs_yaml))
     
-    def test_load_jobs_invalid_jobs_type(self, temp_dir):
+    def test_load_jobs_invalid_jobs_type(self, tmp_path):
         """Test loading YAML with non-list 'jobs' raises ValueError."""
-        invalid_jobs_yaml = temp_dir / "invalid_jobs.yaml"
+        invalid_jobs_yaml = tmp_path / "invalid_jobs.yaml"
         with open(invalid_jobs_yaml, 'w') as f:
             yaml.dump({"version": "2.0-dev", "jobs": "not a list"}, f)
         
         with pytest.raises(ValueError, match="'jobs' must be a list"):
             JobHandler(str(invalid_jobs_yaml))
     
-    def test_load_jobs_missing_name_field(self, temp_dir):
+    def test_load_jobs_missing_name_field(self, tmp_path):
         """Test loading job without 'name' field raises ValueError."""
-        missing_name_yaml = temp_dir / "missing_name.yaml"
+        missing_name_yaml = tmp_path / "missing_name.yaml"
         jobs_data = {
             "version": "2.0-dev",
             "jobs": [
@@ -365,9 +355,9 @@ class TestJobHandler:
         with pytest.raises(ValueError, match="missing required field: 'name'"):
             JobHandler(str(missing_name_yaml))
     
-    def test_load_jobs_missing_scenarios_field(self, temp_dir):
+    def test_load_jobs_missing_scenarios_field(self, tmp_path):
         """Test loading job without 'scenarios' field raises ValueError."""
-        missing_scenarios_yaml = temp_dir / "missing_scenarios.yaml"
+        missing_scenarios_yaml = tmp_path / "missing_scenarios.yaml"
         jobs_data = {
             "version": "2.0-dev",
             "jobs": [
@@ -384,9 +374,9 @@ class TestJobHandler:
         with pytest.raises(ValueError, match="missing required field: 'scenarios'"):
             JobHandler(str(missing_scenarios_yaml))
     
-    def test_load_jobs_invalid_scenarios_type(self, temp_dir):
+    def test_load_jobs_invalid_scenarios_type(self, tmp_path):
         """Test loading job with invalid scenarios type raises ValueError."""
-        invalid_scenarios_yaml = temp_dir / "invalid_scenarios.yaml"
+        invalid_scenarios_yaml = tmp_path / "invalid_scenarios.yaml"
         jobs_data = {
             "version": "2.0-dev",
             "jobs": [
@@ -404,9 +394,9 @@ class TestJobHandler:
         with pytest.raises(ValueError, match="'scenarios' must be a list or 'all'"):
             JobHandler(str(invalid_scenarios_yaml))
     
-    def test_load_jobs_incompatible_version(self, temp_dir):
+    def test_load_jobs_incompatible_version(self, tmp_path):
         """Test loading jobs with incompatible version raises ValueError."""
-        incompatible_version_yaml = temp_dir / "incompatible_version.yaml"
+        incompatible_version_yaml = tmp_path / "incompatible_version.yaml"
         jobs_data = {
             "version": "1.0",  # Incompatible with 2.0-dev
             "jobs": [
@@ -448,9 +438,9 @@ class TestIsGroundTruthCached:
         # Job 0 has no cache_dir specified
         assert handler.is_ground_truth_cached(0, 1, 0) is False
     
-    def test_is_ground_truth_cached_cache_exists(self, temp_dir, cache_dir_with_logs):
+    def test_is_ground_truth_cached_cache_exists(self, tmp_path, cache_dir_with_logs):
         """Test that method returns True when cached logs exist."""
-        jobs_file = temp_dir / "jobs.yaml"
+        jobs_file = tmp_path / "jobs.yaml"
         jobs_data = {
             "version": "2.0-dev",
             "jobs": [
@@ -474,9 +464,9 @@ class TestIsGroundTruthCached:
         assert handler.is_ground_truth_cached(0, 5, 2) is True
         assert handler.is_ground_truth_cached(0, 7, 0) is True
     
-    def test_is_ground_truth_cached_cache_not_exists(self, temp_dir, cache_dir_with_logs):
+    def test_is_ground_truth_cached_cache_not_exists(self, tmp_path, cache_dir_with_logs):
         """Test that method returns False when cached logs don't exist."""
-        jobs_file = temp_dir / "jobs.yaml"
+        jobs_file = tmp_path / "jobs.yaml"
         jobs_data = {
             "version": "2.0-dev",
             "jobs": [
@@ -506,15 +496,15 @@ class TestIsGroundTruthCached:
         # Job ID 999 doesn't exist
         assert handler.is_ground_truth_cached(999, 1, 0) is False
     
-    def test_is_ground_truth_cached_path_formatting(self, temp_dir):
+    def test_is_ground_truth_cached_path_formatting(self, tmp_path):
         """Test that method uses correct path formatting with zero-padding."""
-        cache_dir = temp_dir / "cache"
+        cache_dir = tmp_path / "cache"
         
         # Create a cache with specific formatting
         log_dir = cache_dir / "sce_005" / "run_000"
         log_dir.mkdir(parents=True, exist_ok=True)
         
-        jobs_file = temp_dir / "jobs.yaml"
+        jobs_file = tmp_path / "jobs.yaml"
         jobs_data = {
             "version": "2.0-dev",
             "jobs": [
@@ -535,14 +525,14 @@ class TestIsGroundTruthCached:
         # Should find the cache with proper formatting
         assert handler.is_ground_truth_cached(0, 5, 0) is True
     
-    def test_is_ground_truth_cached_relative_path(self, temp_dir):
+    def test_is_ground_truth_cached_relative_path(self, tmp_path):
         """Test that method works with relative cache directory paths."""
         # Create cache in a subdirectory
-        cache_dir = temp_dir / "relative_cache"
+        cache_dir = tmp_path / "relative_cache"
         log_dir = cache_dir / "sce_010" / "run_000"
         log_dir.mkdir(parents=True, exist_ok=True)
         
-        jobs_file = temp_dir / "jobs.yaml"
+        jobs_file = tmp_path / "jobs.yaml"
         jobs_data = {
             "version": "2.0-dev",
             "jobs": [
