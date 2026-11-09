@@ -1,8 +1,8 @@
-from untitled.core.base import LOG, CONFIG
-from untitled.core.settings import HostConfig, ModelInstanceConfig, get_model_instance_config_by_id, get_host_config_by_id
-from untitled.generator.model_config import ModelConfig, get_model_config
-from untitled.generator.model_client import ModelType, parse_model_response
-from untitled.generator.remote_model import RemoteModel
+from digit.core.base import LOG, CONFIG
+from digit.core.settings import HostConfig, ModelInstanceConfig, get_model_instance_config_by_id, get_host_config_by_id
+from digit.generator.model_config import ModelConfig, get_model_config
+from digit.generator.model_client import ModelType, parse_model_response
+from digit.generator.remote_model import RemoteModel
 
 import asyncio
 

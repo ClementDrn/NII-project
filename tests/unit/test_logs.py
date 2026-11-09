@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 import tempfile
 import shutil
-from untitled.core.logs import init_logging
+from digit.core.logs import init_logging
 
 
 @pytest.fixture

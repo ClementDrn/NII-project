@@ -2,8 +2,8 @@ import asyncio
 
 import anthropic
 
-from untitled.core.base import CONFIG, LOG
-from untitled.core.settings import get_host_config_by_id
+from digit.core.base import CONFIG, LOG
+from digit.core.settings import get_host_config_by_id
 
 
 # --- Batch configuration -----------------------------------------------------

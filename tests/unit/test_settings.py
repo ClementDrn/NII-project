@@ -7,7 +7,7 @@ from typing import List
 import yaml
 import logging
 
-from untitled.core.settings import (
+from digit.core.settings import (
     Settings,
     GeneratorConfig,
     SimulatorConfig,

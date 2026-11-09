@@ -1,4 +1,4 @@
-from untitled.data.job_results import ExperimentResult, JobResults
+from digit.data.job_results import ExperimentResult, JobResults
 
 import argparse
 import sys

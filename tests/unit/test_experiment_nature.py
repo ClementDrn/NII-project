@@ -1,5 +1,5 @@
 import pytest
-from untitled.generator.experiment_nature import ExperimentNature
+from digit.generator.experiment_nature import ExperimentNature
 
 
 class TestExperimentNature:

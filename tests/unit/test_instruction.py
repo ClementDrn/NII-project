@@ -1,6 +1,6 @@
 import pytest
 import json
-from untitled.generator.instruction import (
+from digit.generator.instruction import (
     Instruction,
     InstructionSet,
     InjectionWindow,

@@ -1,5 +1,5 @@
 """
-Unit tests for untitled.data.job_results module.
+Unit tests for digit.data.job_results module.
 
 Tests the JobResults parser which reads simulation results from disk.
 Uses tmp_path fixtures with real files rather than mocking the filesystem.
@@ -8,7 +8,7 @@ import json
 import pytest
 from pathlib import Path
 
-from untitled.data.job_results import (
+from digit.data.job_results import (
     ExperimentResult,
     RunResult,
     ScenarioResults,

@@ -4,9 +4,9 @@ from pathlib import Path
 import torch
 from typing import List
 
-from untitled.filter.filter import Cluster, cluster_frames
-from untitled.filter.embedder import Embedder
-from untitled.simulator.simulation_data import SimulationData, SimulationFrameData, SimulationMetadata
+from digit.filter.filter import Cluster, cluster_frames
+from digit.filter.embedder import Embedder
+from digit.simulator.simulation_data import SimulationData, SimulationFrameData, SimulationMetadata
 
 
 def create_mock_metadata() -> SimulationMetadata:

@@ -4,9 +4,9 @@ from pathlib import Path
 import yaml
 import os
 
-from untitled.core.settings import load_config
-from untitled.core.job_handler import JobHandler
-from untitled.core.version import CONFIG_VERSION, HOSTS_VERSION, JOBS_VERSION, are_versions_compatible
+from digit.core.settings import load_config
+from digit.core.job_handler import JobHandler
+from digit.core.version import CONFIG_VERSION, HOSTS_VERSION, JOBS_VERSION, are_versions_compatible
 
 
 # File paths

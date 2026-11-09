@@ -7,8 +7,8 @@ import sys
 from pathlib import Path
 from typing import Dict, Iterable, Optional, Tuple
 
-from untitled.data.job_results import ExperimentResult, JobResults
-from untitled.generator.instruction import InstructionCategory
+from digit.data.job_results import ExperimentResult, JobResults
+from digit.generator.instruction import InstructionCategory
 
 
 CATEGORY_COLUMNS = [

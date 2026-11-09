@@ -19,9 +19,9 @@ import sys
 from pathlib import Path
 from typing import Iterable, Optional, Tuple
 
-from untitled.generator.instruction import InstructionCategory
-from untitled.generator.rules import get_rule_for_category
-from untitled.simulator.simulation_data import SimulationFrameData, load_metadata
+from digit.generator.instruction import InstructionCategory
+from digit.generator.rules import get_rule_for_category
+from digit.simulator.simulation_data import SimulationFrameData, load_metadata
 
 
 def _parse_category_from_spec(spec: str) -> Optional[Tuple[InstructionCategory, Optional[float]]]:

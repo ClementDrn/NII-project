@@ -9,8 +9,8 @@ Provides a duck-typed replacement for the real Simulator that:
 from pathlib import Path
 from typing import Optional, Dict, Tuple, List, Any
 
-from untitled.generator.instruction import Instruction
-from untitled.simulator.simulation_result import (
+from digit.generator.instruction import Instruction
+from digit.simulator.simulation_result import (
     SimulationResult,
     SimulationStatus,
     SimulationInfractions,

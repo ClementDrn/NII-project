@@ -2,9 +2,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from untitled.generator.remote_model import RemoteModel
-from untitled.generator.model_client import ModelClient, ModelType
-from untitled.generator.model_config import ModelConfig
+from digit.generator.remote_model import RemoteModel
+from digit.generator.model_client import ModelClient, ModelType
+from digit.generator.model_config import ModelConfig
 
 
 @pytest.mark.asyncio

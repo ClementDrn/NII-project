@@ -13,30 +13,30 @@ from typing import AsyncIterator
 
 import httpx
 
-from untitled.core.base import CONFIG, LOG, PROJECT_ROOT, SIMULATION_FPS
-from untitled.core.job_handler import Job, JobHandler
-from untitled.core.settings import (
+from digit.core.base import CONFIG, LOG, PROJECT_ROOT, SIMULATION_FPS
+from digit.core.job_handler import Job, JobHandler
+from digit.core.settings import (
     GeneratorStepConfig,
     configure_settings_for_job,
     get_generator_config_by_id,
     get_model_instance_config_by_id,
 )
-from untitled.generator.batch import (
+from digit.generator.batch import (
     Batch,
     BatchRequest,
     BatchRequestResult,
     BatchRequestStatus,
     BatchStatus,
 )
-from untitled.generator.instruction import InstructionSet, parse_instructions_from_json
-from untitled.generator.instruction_generator import get_api_parameters_from_config
-from untitled.generator.model import ModelClient, create_model_client, parse_model_response
-from untitled.generator.task import Task
-from untitled.generator.task_manager import TaskManager
-from untitled.filter.embedder import DINOEmbedder, Embedder
-from untitled.filter.filter import cluster_frames
-from untitled.simulator.simulation_data import SimulationData, SimulationFrameData
-from untitled.simulator.simulator import Simulator
+from digit.generator.instruction import InstructionSet, parse_instructions_from_json
+from digit.generator.instruction_generator import get_api_parameters_from_config
+from digit.generator.model import ModelClient, create_model_client, parse_model_response
+from digit.generator.task import Task
+from digit.generator.task_manager import TaskManager
+from digit.filter.embedder import DINOEmbedder, Embedder
+from digit.filter.filter import cluster_frames
+from digit.simulator.simulation_data import SimulationData, SimulationFrameData
+from digit.simulator.simulator import Simulator
 
 
 # --- Experiment configuration -----------------------------------------------

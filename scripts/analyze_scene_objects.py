@@ -10,7 +10,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from untitled.data.scene_object import SceneObjectType, parse_scene_objects
+from digit.data.scene_object import SceneObjectType, parse_scene_objects
 
 
 # Keep the CSV columns in sync with the types supported by the scene parser.

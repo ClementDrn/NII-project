@@ -1,5 +1,5 @@
-from untitled.core.base import LOG
-from untitled.core.pipeline import Pipeline
+from digit.core.base import LOG
+from digit.core.pipeline import Pipeline
 
 import asyncio
 import argparse

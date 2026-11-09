@@ -1,9 +1,9 @@
-from untitled.core.base import LOG, CONFIG
-from untitled.core.settings import GeneratorStepConfig, get_generator_config_by_id, get_model_instance_config_by_id
-from untitled.generator.instruction_generator import get_api_parameters_from_config
-from untitled.generator.batch import Batch, BatchStatus, BatchRequest, BatchRequestResult
-from untitled.generator.model import create_model_client
-from untitled.generator.request import TextBlock
+from digit.core.base import LOG, CONFIG
+from digit.core.settings import GeneratorStepConfig, get_generator_config_by_id, get_model_instance_config_by_id
+from digit.generator.instruction_generator import get_api_parameters_from_config
+from digit.generator.batch import Batch, BatchStatus, BatchRequest, BatchRequestResult
+from digit.generator.model import create_model_client
+from digit.generator.request import TextBlock
 
 import asyncio
 

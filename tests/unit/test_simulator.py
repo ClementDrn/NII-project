@@ -1,6 +1,6 @@
 import pytest
 from tests.fakes import FakeSimulator
-from untitled.simulator.simulator import Simulator
+from digit.simulator.simulator import Simulator
 
 
 class TestSimulator:

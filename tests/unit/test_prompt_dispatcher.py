@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from untitled.generator.prompt_dispatcher import PromptDispatcher, PromptRequest
+from digit.generator.prompt_dispatcher import PromptDispatcher, PromptRequest
 
 
 class FakeClient:

@@ -101,7 +101,7 @@ def mock_config():
     """
     Provide a MagicMock replacement for the global CONFIG object.
     
-    This patches untitled.core.base.CONFIG to avoid CARLA environment
+    This patches digit.core.base.CONFIG to avoid CARLA environment
     validation and other config-dependent behavior during tests.
     
     Usage:
@@ -110,7 +110,7 @@ def mock_config():
             mock_config.carla_env.path = "/fake/carla"
             # Code under test will see mocked config
     """
-    with patch("untitled.core.base.CONFIG") as mock:
+    with patch("digit.core.base.CONFIG") as mock:
         # Set up common nested attributes
         mock.carla_env = MagicMock()
         mock.carla_env.path = "/fake/carla/path"
@@ -183,7 +183,7 @@ def sample_perfect_result():
 @pytest.fixture
 def sample_failed_result():
     """Provide a sample SimulationResult with FAILED status."""
-    from untitled.simulator.simulation_result import SimulationStatus
+    from digit.simulator.simulation_result import SimulationStatus
     from tests.fakes import make_simulation_infractions, make_simulation_scores
     
     return make_simulation_result(

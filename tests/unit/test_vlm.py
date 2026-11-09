@@ -1,15 +1,15 @@
 from unittest.mock import patch, MagicMock
 
-from untitled.generator.model import create_model_client
-from untitled.core.settings import ModelInstanceConfig, LocalVLMConfig, RemoteVLMConfig
+from digit.generator.model import create_model_client
+from digit.core.settings import ModelInstanceConfig, LocalVLMConfig, RemoteVLMConfig
 
 
 def test_create_model_client_returns_local_client():
-    with patch("untitled.generator.model.get_model_config") as mock_get_config:
+    with patch("digit.generator.model.get_model_config") as mock_get_config:
         mock_model_config = MagicMock()
         mock_model_config.max_model_len = 32768  # Must be >= context_window (default 8192)
         mock_get_config.return_value = mock_model_config
-        with patch("untitled.generator.model.LocalModel") as mock_local:
+        with patch("digit.generator.model.LocalModel") as mock_local:
             # Create local instance config
             local_config = LocalVLMConfig(port=8000)
             instance_config = ModelInstanceConfig(
@@ -23,10 +23,10 @@ def test_create_model_client_returns_local_client():
 
 
 def test_create_model_client_returns_remote_client():
-    with patch("untitled.generator.model.get_model_config") as mock_get_config:
+    with patch("digit.generator.model.get_model_config") as mock_get_config:
         mock_get_config.return_value = MagicMock()
-        with patch("untitled.generator.model.RemoteModel") as mock_remote:
-            with patch("untitled.generator.model.get_host_config_by_id") as mock_get_host:
+        with patch("digit.generator.model.RemoteModel") as mock_remote:
+            with patch("digit.generator.model.get_host_config_by_id") as mock_get_host:
                 mock_get_host.return_value = MagicMock(host="http://remote-host", api_key="token")
                 # Create remote instance config
                 remote_config = RemoteVLMConfig(host_id="test-host")

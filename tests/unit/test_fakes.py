@@ -17,7 +17,7 @@ from tests.fakes import (
     make_simulation_meta,
     make_failed_simulation_result,
 )
-from untitled.simulator.simulation_result import SimulationStatus
+from digit.simulator.simulation_result import SimulationStatus
 
 
 class TestFakeSimulator:

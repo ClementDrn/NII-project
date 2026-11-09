@@ -5,14 +5,14 @@ from pathlib import Path
 import pytest
 from unittest.mock import MagicMock
 
-from untitled.core.base import CONFIG
-from untitled.core.job_handler import Job
-from untitled.core.pipeline import Pipeline
-from untitled.core.settings import GeneratorConfig
-from untitled.generator.instruction import InstructionCategory
-from untitled.generator.rule_based_instruction_generator import RuleBasedInstructionGenerator
-from untitled.simulator.simulation_data import SimulationData, SimulationFrameData, SimulationMetadata
-import untitled.generator.rule_based_instruction_generator as rule_based_module
+from digit.core.base import CONFIG
+from digit.core.job_handler import Job
+from digit.core.pipeline import Pipeline
+from digit.core.settings import GeneratorConfig
+from digit.generator.instruction import InstructionCategory
+from digit.generator.rule_based_instruction_generator import RuleBasedInstructionGenerator
+from digit.simulator.simulation_data import SimulationData, SimulationFrameData, SimulationMetadata
+import digit.generator.rule_based_instruction_generator as rule_based_module
 
 
 class AlwaysValidRule:

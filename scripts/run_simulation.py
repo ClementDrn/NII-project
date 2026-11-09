@@ -5,10 +5,10 @@ import json
 from pathlib import Path
 from typing import Optional
 
-from untitled.core.base import LOG
-from untitled.generator.instruction import InjectionWindow, Instruction
-from untitled.simulator.simulator import Simulator
-from untitled.simulator.ads import ADS
+from digit.core.base import LOG
+from digit.generator.instruction import InjectionWindow, Instruction
+from digit.simulator.simulator import Simulator
+from digit.simulator.ads import ADS
 
 
 @dataclass

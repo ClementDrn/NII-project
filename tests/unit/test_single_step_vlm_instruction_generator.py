@@ -4,12 +4,12 @@ from pathlib import Path
 import json
 import asyncio
 
-from untitled.simulator.simulation_data import SimulationData, SimulationFrameData, SimulationMetadata
-from untitled.generator.model import ModelClient
-from untitled.core.settings import GeneratorStepConfig, ModelInstanceConfig, LocalVLMConfig
-from untitled.generator.instruction import Instruction, InstructionSet, InjectionWindow
-from untitled.generator.prompt_dispatcher import PromptRequest
-from untitled.generator.single_step_vlm_instruction_generator import SingleStepVLMInstructionGenerator
+from digit.simulator.simulation_data import SimulationData, SimulationFrameData, SimulationMetadata
+from digit.generator.model import ModelClient
+from digit.core.settings import GeneratorStepConfig, ModelInstanceConfig, LocalVLMConfig
+from digit.generator.instruction import Instruction, InstructionSet, InjectionWindow
+from digit.generator.prompt_dispatcher import PromptRequest
+from digit.generator.single_step_vlm_instruction_generator import SingleStepVLMInstructionGenerator
 
 
 # --- Fixtures and Mocks ------------------------------------------------------
@@ -69,11 +69,11 @@ def mock_system_task():
 
 # --- Tests -------------------------------------------------------------------
 
-@patch("untitled.generator.single_step_vlm_instruction_generator.Task")
-@patch("untitled.generator.single_step_vlm_instruction_generator.PromptDispatcher")
-@patch("untitled.generator.single_step_vlm_instruction_generator.ModelClientFactory")
-@patch("untitled.generator.instruction_generator.get_model_config")
-@patch("untitled.generator.single_step_vlm_instruction_generator.CONFIG")
+@patch("digit.generator.single_step_vlm_instruction_generator.Task")
+@patch("digit.generator.single_step_vlm_instruction_generator.PromptDispatcher")
+@patch("digit.generator.single_step_vlm_instruction_generator.ModelClientFactory")
+@patch("digit.generator.instruction_generator.get_model_config")
+@patch("digit.generator.single_step_vlm_instruction_generator.CONFIG")
 def test_init(mock_config, mock_get_model_config, mock_factory, mock_dispatcher, mock_task):
     """Test initialization of SingleStepVLMInstructionGenerator."""
     # Setup CONFIG with proper steps and model_instances
@@ -115,13 +115,13 @@ def test_init(mock_config, mock_get_model_config, mock_factory, mock_dispatcher,
     assert mock_task.call_count == 2
 
 @pytest.mark.asyncio
-@patch("untitled.generator.single_step_vlm_instruction_generator.Task")
-@patch("untitled.generator.single_step_vlm_instruction_generator.parse_instructions_from_json")
-@patch("untitled.generator.single_step_vlm_instruction_generator.parse_model_response")
-@patch("untitled.generator.single_step_vlm_instruction_generator.PromptDispatcher")
-@patch("untitled.generator.single_step_vlm_instruction_generator.ModelClientFactory")
-@patch("untitled.generator.instruction_generator.get_model_config")
-@patch("untitled.generator.single_step_vlm_instruction_generator.CONFIG")
+@patch("digit.generator.single_step_vlm_instruction_generator.Task")
+@patch("digit.generator.single_step_vlm_instruction_generator.parse_instructions_from_json")
+@patch("digit.generator.single_step_vlm_instruction_generator.parse_model_response")
+@patch("digit.generator.single_step_vlm_instruction_generator.PromptDispatcher")
+@patch("digit.generator.single_step_vlm_instruction_generator.ModelClientFactory")
+@patch("digit.generator.instruction_generator.get_model_config")
+@patch("digit.generator.single_step_vlm_instruction_generator.CONFIG")
 async def test_generate_instruction_single_frame(mock_config, mock_get_model_config, mock_factory, 
                                                   mock_dispatcher, mock_parse, mock_parse_instruction,
                                                   mock_task,
@@ -214,13 +214,13 @@ async def test_generate_instruction_single_frame(mock_config, mock_get_model_con
     assert instruction_set.instructions[0].text == "Turn left at the intersection"
 
 @pytest.mark.asyncio
-@patch("untitled.generator.single_step_vlm_instruction_generator.Task")
-@patch("untitled.generator.single_step_vlm_instruction_generator.parse_instructions_from_json")
-@patch("untitled.generator.single_step_vlm_instruction_generator.parse_model_response")
-@patch("untitled.generator.single_step_vlm_instruction_generator.PromptDispatcher")
-@patch("untitled.generator.single_step_vlm_instruction_generator.ModelClientFactory")
-@patch("untitled.generator.instruction_generator.get_model_config")
-@patch("untitled.generator.single_step_vlm_instruction_generator.CONFIG")
+@patch("digit.generator.single_step_vlm_instruction_generator.Task")
+@patch("digit.generator.single_step_vlm_instruction_generator.parse_instructions_from_json")
+@patch("digit.generator.single_step_vlm_instruction_generator.parse_model_response")
+@patch("digit.generator.single_step_vlm_instruction_generator.PromptDispatcher")
+@patch("digit.generator.single_step_vlm_instruction_generator.ModelClientFactory")
+@patch("digit.generator.instruction_generator.get_model_config")
+@patch("digit.generator.single_step_vlm_instruction_generator.CONFIG")
 async def test_generate_instruction_multiple_frames_uses_first_frame(mock_config, mock_get_model_config,
                                                                       mock_factory, mock_dispatcher, mock_parse,
                                                                       mock_parse_instruction, mock_task):
@@ -354,13 +354,13 @@ async def test_generate_instruction_multiple_frames_uses_first_frame(mock_config
     assert len(instruction_set.instructions) == 1
 
 @pytest.mark.asyncio
-@patch("untitled.generator.single_step_vlm_instruction_generator.Task")
-@patch("untitled.generator.single_step_vlm_instruction_generator.parse_instructions_from_json")
-@patch("untitled.generator.single_step_vlm_instruction_generator.parse_model_response")
-@patch("untitled.generator.single_step_vlm_instruction_generator.PromptDispatcher")
-@patch("untitled.generator.single_step_vlm_instruction_generator.ModelClientFactory")
-@patch("untitled.generator.instruction_generator.get_model_config")
-@patch("untitled.generator.single_step_vlm_instruction_generator.CONFIG")
+@patch("digit.generator.single_step_vlm_instruction_generator.Task")
+@patch("digit.generator.single_step_vlm_instruction_generator.parse_instructions_from_json")
+@patch("digit.generator.single_step_vlm_instruction_generator.parse_model_response")
+@patch("digit.generator.single_step_vlm_instruction_generator.PromptDispatcher")
+@patch("digit.generator.single_step_vlm_instruction_generator.ModelClientFactory")
+@patch("digit.generator.instruction_generator.get_model_config")
+@patch("digit.generator.single_step_vlm_instruction_generator.CONFIG")
 async def test_generate_instruction_no_think_tags(mock_config, mock_get_model_config, mock_factory,
                                                    mock_dispatcher, mock_parse, mock_parse_instruction,
                                                    mock_task,
@@ -457,11 +457,11 @@ async def test_generate_instruction_no_think_tags(mock_config, mock_get_model_co
     assert instruction_set.instructions[0].text == "Continue straight ahead"
 
 @pytest.mark.asyncio
-@patch("untitled.generator.single_step_vlm_instruction_generator.Task")
-@patch("untitled.generator.single_step_vlm_instruction_generator.PromptDispatcher")
-@patch("untitled.generator.single_step_vlm_instruction_generator.ModelClientFactory")
-@patch("untitled.generator.instruction_generator.get_model_config")
-@patch("untitled.generator.single_step_vlm_instruction_generator.CONFIG")
+@patch("digit.generator.single_step_vlm_instruction_generator.Task")
+@patch("digit.generator.single_step_vlm_instruction_generator.PromptDispatcher")
+@patch("digit.generator.single_step_vlm_instruction_generator.ModelClientFactory")
+@patch("digit.generator.instruction_generator.get_model_config")
+@patch("digit.generator.single_step_vlm_instruction_generator.CONFIG")
 async def test_free_method(mock_config, mock_get_model_config, mock_factory, mock_dispatcher, mock_task):
     """Test the free method shuts down dispatcher and stops VLM."""
     # Setup CONFIG with proper steps and model_instances

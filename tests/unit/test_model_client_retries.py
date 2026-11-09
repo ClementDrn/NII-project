@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from untitled.generator.model_client import ModelClient, ModelType
+from digit.generator.model_client import ModelClient, ModelType
 
 
 class DummyModelClient(ModelClient):
@@ -27,9 +27,9 @@ async def test_send_prompt_retries_on_timeout_then_succeeds():
     }
 
     with (
-        patch("untitled.generator.model_client.acompletion", new=AsyncMock(side_effect=[timeout_error, success_response])) as mock_acompletion,
-        patch("untitled.generator.model_client.asyncio.sleep", new=AsyncMock()) as mock_sleep,
-        patch("untitled.generator.model_client.random.uniform", return_value=0.0),
+        patch("digit.generator.model_client.acompletion", new=AsyncMock(side_effect=[timeout_error, success_response])) as mock_acompletion,
+        patch("digit.generator.model_client.asyncio.sleep", new=AsyncMock()) as mock_sleep,
+        patch("digit.generator.model_client.random.uniform", return_value=0.0),
     ):
         result = await client._send_prompt("sys", "user", [])
 
@@ -45,9 +45,9 @@ async def test_send_prompt_retries_on_overload_until_exhausted():
     overload_error = Exception("AnthropicError - overloaded_error: Overloaded")
 
     with (
-        patch("untitled.generator.model_client.acompletion", new=AsyncMock(side_effect=overload_error)) as mock_acompletion,
-        patch("untitled.generator.model_client.asyncio.sleep", new=AsyncMock()) as mock_sleep,
-        patch("untitled.generator.model_client.random.uniform", return_value=0.0),
+        patch("digit.generator.model_client.acompletion", new=AsyncMock(side_effect=overload_error)) as mock_acompletion,
+        patch("digit.generator.model_client.asyncio.sleep", new=AsyncMock()) as mock_sleep,
+        patch("digit.generator.model_client.random.uniform", return_value=0.0),
     ):
         with pytest.raises(Exception):
             await client._send_prompt("sys", "user", [])
@@ -63,8 +63,8 @@ async def test_send_prompt_does_not_retry_non_retryable_error():
     non_retryable_error = Exception("ValidationError: bad request")
 
     with (
-        patch("untitled.generator.model_client.acompletion", new=AsyncMock(side_effect=non_retryable_error)) as mock_acompletion,
-        patch("untitled.generator.model_client.asyncio.sleep", new=AsyncMock()) as mock_sleep,
+        patch("digit.generator.model_client.acompletion", new=AsyncMock(side_effect=non_retryable_error)) as mock_acompletion,
+        patch("digit.generator.model_client.asyncio.sleep", new=AsyncMock()) as mock_sleep,
     ):
         with pytest.raises(Exception):
             await client._send_prompt("sys", "user", [])

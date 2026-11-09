@@ -36,16 +36,16 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Optional
 
-from untitled.core.base import CONFIG, LOG, SIMULATION_FPS
-from untitled.core.settings import GeneratorConfig, get_filter_config_by_id, get_generator_config_by_id, get_model_instance_config_by_id
-from untitled.filter.embedder import DINOEmbedder
-from untitled.filter.filter import cluster_frames
-from untitled.generator.experiment_nature import ExperimentNature
-from untitled.generator.instruction import InjectionWindow, Instruction, InstructionResult
-from untitled.generator.multi_step_vlm_instruction_generator import MultiStepVLMInstructionGenerator
-from untitled.generator.single_step_vlm_instruction_generator import SingleStepVLMInstructionGenerator
-from untitled.simulator.simulation_data import SimulationData, SimulationFrameData, load_metadata
-from untitled.simulator.simulation_result import SimulationResult
+from digit.core.base import CONFIG, LOG, SIMULATION_FPS
+from digit.core.settings import GeneratorConfig, get_filter_config_by_id, get_generator_config_by_id, get_model_instance_config_by_id
+from digit.filter.embedder import DINOEmbedder
+from digit.filter.filter import cluster_frames
+from digit.generator.experiment_nature import ExperimentNature
+from digit.generator.instruction import InjectionWindow, Instruction, InstructionResult
+from digit.generator.multi_step_vlm_instruction_generator import MultiStepVLMInstructionGenerator
+from digit.generator.single_step_vlm_instruction_generator import SingleStepVLMInstructionGenerator
+from digit.simulator.simulation_data import SimulationData, SimulationFrameData, load_metadata
+from digit.simulator.simulation_result import SimulationResult
 
 
 def _positive_int(value: str) -> int:

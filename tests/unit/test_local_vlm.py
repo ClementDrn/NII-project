@@ -2,9 +2,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from untitled.generator.local_model import LocalModel
-from untitled.generator.model_client import ModelClient, ModelType
-from untitled.generator.model_process import ModelProcess
+from digit.generator.local_model import LocalModel
+from digit.generator.model_client import ModelClient, ModelType
+from digit.generator.model_process import ModelProcess
 
 
 class DummyProcess:
@@ -23,10 +23,10 @@ async def test_local_model_start_success(monkeypatch):
     process = DummyProcess()
 
     create_proc_mock = AsyncMock(return_value=process)
-    monkeypatch.setattr("untitled.generator.local_model.asyncio.create_subprocess_exec", create_proc_mock)
+    monkeypatch.setattr("digit.generator.local_model.asyncio.create_subprocess_exec", create_proc_mock)
 
     sleep_mock = AsyncMock()
-    monkeypatch.setattr("untitled.generator.local_model.asyncio.sleep", sleep_mock)
+    monkeypatch.setattr("digit.generator.local_model.asyncio.sleep", sleep_mock)
     
     # Create mock ModelProcess
     mock_model_process = MagicMock(spec=ModelProcess)
@@ -46,10 +46,10 @@ async def test_local_model_start_success(monkeypatch):
 async def test_local_model_start_raises_when_connection_fails(monkeypatch):
     process = DummyProcess()
     create_proc_mock = AsyncMock(return_value=process)
-    monkeypatch.setattr("untitled.generator.local_model.asyncio.create_subprocess_exec", create_proc_mock)
+    monkeypatch.setattr("digit.generator.local_model.asyncio.create_subprocess_exec", create_proc_mock)
 
     sleep_mock = AsyncMock()
-    monkeypatch.setattr("untitled.generator.local_model.asyncio.sleep", sleep_mock)
+    monkeypatch.setattr("digit.generator.local_model.asyncio.sleep", sleep_mock)
     
     # Create mock ModelProcess that fails to start
     mock_model_process = MagicMock(spec=ModelProcess)
@@ -69,7 +69,7 @@ async def test_local_model_stop_terminates_process(monkeypatch):
     async def wait_for_mock(coro, timeout):
         return await coro
     
-    monkeypatch.setattr("untitled.generator.local_model.asyncio.wait_for", wait_for_mock)
+    monkeypatch.setattr("digit.generator.local_model.asyncio.wait_for", wait_for_mock)
 
     mock_model_process = MagicMock(spec=ModelProcess)
     mock_model_process.stop = AsyncMock()
@@ -93,7 +93,7 @@ async def test_local_model_stop_closes_connection_when_connected(monkeypatch):
     async def wait_for_mock(coro, timeout):
         return await coro
     
-    monkeypatch.setattr("untitled.generator.local_model.asyncio.wait_for", wait_for_mock)
+    monkeypatch.setattr("digit.generator.local_model.asyncio.wait_for", wait_for_mock)
 
     mock_model_process = MagicMock(spec=ModelProcess)
     mock_model_process.stop = AsyncMock()

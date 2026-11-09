@@ -6,9 +6,9 @@ This script loads simulation frames from the cache directory and clusters
 them based on visual similarity using DINO embeddings.
 """
 
-from untitled.filter.embedder import DINOEmbedder
-from untitled.filter.filter import cluster_frames
-from untitled.simulator.simulation_data import (
+from digit.filter.embedder import DINOEmbedder
+from digit.filter.filter import cluster_frames
+from digit.simulator.simulation_data import (
     SimulationData,
     SimulationFrameData,
     load_metadata,

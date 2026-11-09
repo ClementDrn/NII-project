@@ -6,7 +6,7 @@ data objects with sensible defaults that can be easily overridden.
 """
 from typing import Any, Dict, List, Optional
 
-from untitled.simulator.simulation_result import (
+from digit.simulator.simulation_result import (
     SimulationResult,
     SimulationStatus,
     SimulationInfractions,

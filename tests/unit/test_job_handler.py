@@ -3,8 +3,8 @@ import tempfile
 import shutil
 from pathlib import Path
 import yaml
-from untitled.core.job_handler import Job, JobHandler
-from untitled.generator.experiment_nature import ExperimentNature
+from digit.core.job_handler import Job, JobHandler
+from digit.generator.experiment_nature import ExperimentNature
 
 
 @pytest.fixture

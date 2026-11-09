@@ -1,6 +1,6 @@
 import pytest
 
-from untitled.generator.model_config import get_model_config, ModelConfig
+from digit.generator.model_config import get_model_config, ModelConfig
 
 
 def test_get_model_config_supported_model():

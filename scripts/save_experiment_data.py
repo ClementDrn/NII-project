@@ -4,9 +4,9 @@ import json
 from pathlib import Path
 from typing import Any, Dict, Iterable
 
-from untitled.core.base import LOG, SIMULATION_FPS
-from untitled.data.hallucinations import check_hallucinations_in_instruction
-from untitled.data.job_results import ExperimentResult, JobResults
+from digit.core.base import LOG, SIMULATION_FPS
+from digit.data.hallucinations import check_hallucinations_in_instruction
+from digit.data.job_results import ExperimentResult, JobResults
 
 
 FIELDNAMES = [

@@ -6,7 +6,7 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Any
 import yaml
-from untitled.generator.task import Task, TaskData
+from digit.generator.task import Task, TaskData
 
 
 @dataclass

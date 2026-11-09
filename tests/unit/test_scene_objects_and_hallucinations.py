@@ -4,8 +4,8 @@ import pytest
 from spacy.tokens import Doc
 from spacy.vocab import Vocab
 
-from untitled.data.hallucinations import check_hallucinations_in_instruction, parse_scene_objects
-from untitled.data.scene_object import (
+from digit.data.hallucinations import check_hallucinations_in_instruction, parse_scene_objects
+from digit.data.scene_object import (
     ColorModifier,
     PositionModifier,
     SceneObject,
@@ -153,7 +153,7 @@ def metric_objects(monkeypatch):
         if unknown:
             modifiers.append(SceneObjectModifier(doc[0], SceneObjectModifierType.UNKNOWN))
         objects = [SceneObject(doc[0], kind, modifiers) for _ in range(repeats)]
-        monkeypatch.setattr('untitled.data.hallucinations.parse_scene_objects', lambda _: objects)
+        monkeypatch.setattr('digit.data.hallucinations.parse_scene_objects', lambda _: objects)
     return install
 
 

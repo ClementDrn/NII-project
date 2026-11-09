@@ -1,7 +1,7 @@
-from untitled.core.base import LOG, CONFIG
-from untitled.core.settings import get_model_instances_config_by_step_id
-from untitled.generator.model import create_model_client
-from untitled.generator.instruction_generator import get_api_parameters_from_config
+from digit.core.base import LOG, CONFIG
+from digit.core.settings import get_model_instances_config_by_step_id
+from digit.generator.model import create_model_client
+from digit.generator.instruction_generator import get_api_parameters_from_config
 
 from pathlib import Path
 import asyncio
