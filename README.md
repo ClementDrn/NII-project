@@ -1,17 +1,12 @@
 # DIGIT
 
-**Driving Instruction Generation and Injection for Testing** generates passenger
-instructions with rule-based or vision-language models and injects them into
-SimLingo driving simulations in CARLA.
-
-Version **1.0.0** runs from a source checkout on Linux with Python 3.12 or newer.
-Config/jobs files use format **2.0**, and hosts files use **1.0**.
+**Driving Instruction Generation and Injection for Testing** generates passenger instructions with rule-based or vision-language models and injects them into SimLingo driving simulations in CARLA.
 
 ## Setup
 
 ```sh
-git clone --recurse-submodules https://github.com/ClementDrn/NII-project.git
-cd NII-project
+git clone --recurse-submodules https://github.com/ClementDrn/digit.git
+cd digit
 uv venv --python 3.12
 source .venv/bin/activate
 uv sync --frozen --extra dev
@@ -19,20 +14,13 @@ cp .env.example .env
 cp hosts.example.yaml hosts.yaml
 ```
 
-Edit `.env` and `hosts.yaml` for your machine and model providers. `HOSTS_PATH`
-is relative to the checkout root unless absolute; existing environment variables
-override `.env`. Both private files are ignored by Git. Keep the source checkout
-and its submodules together when running DIGIT.
+Edit `.env` and `hosts.yaml` for your machine and model providers. `HOSTS_PATH` is relative to the checkout root unless absolute; existing environment variables override `.env`. Both private files are ignored by Git.
+Keep the source checkout and its submodules together when running DIGIT.
 
-The simulation pipeline needs **CARLA 0.9.15** with additional maps, a GPU, and
-SimLingo in its own conda environment. Set `CARLA_PATH`, `CONDA_PATH`, and
-`OUTPUT_PATH` in `.env`. Follow the pinned
-[SimLingo setup instructions](vendor/ads/simlingo/README.md) to install its
-environment and model weights.
+The simulation pipeline needs **CARLA 0.9.15** with additional maps, a GPU, and SimLingo in its own conda environment. Set `CARLA_PATH`, `CONDA_PATH`, and `OUTPUT_PATH` in `.env`.
+Follow the pinned [SimLingo setup instructions](vendor/ads/simlingo/README.md) to install its environment and model weights.
 
-Remote APIs use the credentials in `.env`. Optional local model instances use
-a separate vLLM environment at `vendor/vlm/.venv`; install a vLLM version
-compatible with your GPU/CUDA setup and select the instances in `config.yaml`.
+Remote APIs use the credentials in `.env`. Optional local model instances use a separate vLLM environment at `vendor/vlm/.venv`; install a vLLM version compatible with your GPU/CUDA setup and select the instances in `config.yaml`.
 
 ## Run
 
@@ -44,9 +32,9 @@ source .venv/bin/activate
 python scripts/run/run_pipeline.py
 ```
 
-`baseline.yaml` provides a rule-based job configuration. To run it, pass
-`--jobs-filepath baseline.yaml`. The first Ctrl+C cancels the pipeline and starts
-cleanup; a second interrupts cleanup.
+`baseline.yaml` provides a rule-based job configuration. To run it, pass `--jobs-filepath baseline.yaml`.
+
+The first Ctrl+C cancels the pipeline and starts cleanup; a second interrupts cleanup.
 
 Model requests accept explicit inputs:
 
@@ -58,10 +46,9 @@ python scripts/vlm/send_vlm_request.py \
   --image /path/to/first.png --image /path/to/second.png
 ```
 
-Use `--help` on individual scripts for their options. Incremental repairs use
-`scripts/run/rerun_incremental_experiments.py` with an explicit experiment
-directory and JSON plan such as `{"40": [1, 2]}`. Use `--dry-run` to inspect the
-commands first; existing runs are preserved as timestamped backups.
+Use `--help` on individual scripts for their options.
+Incremental repairs use `scripts/run/rerun_incremental_experiments.py` with an explicit experiment directory and JSON plan such as `{"40": [1, 2]}`.
+Use `--dry-run` to inspect the commands first; existing runs are preserved as timestamped backups.
 
 ## Results and tests
 
@@ -81,15 +68,9 @@ python -m spacy download en_core_web_trf
 pytest
 ```
 
-<<<<<<< HEAD
-Tests use temporary files and scripted model responses; they do not need CARLA,
-running model servers, or private configuration. Python callers using configured
-pipeline components must call `digit.core.base.initialize_runtime()` explicitly.
-=======
-The suite uses temporary files and scripted model responses. It requires no CARLA
-installation, running model servers, API keys, private `.env`/hosts files, or
-untracked experiment data. The NLP tests use the locally installed spaCy model;
-tests do not download models. Network connections during tests fail explicitly.
+The suite uses temporary files and scripted model responses.
+It requires no CARLA installation, running model servers, API keys, private `.env`/hosts files, or untracked experiment data.
+The NLP tests use the locally installed spaCy model; tests do not download models. Network connections during tests fail explicitly.
 Configuration integration tests validate the committed files and example settings.
 
 ## Scripts
@@ -127,23 +108,18 @@ Use `--help` on these scripts for their options.
 
 The statistical code lives in `src/stats`, separate from the `digit` package.
 Analysis can run independently of CARLA, SimLingo, GPU models, and API services.
-From a source checkout, install only the analysis dependencies and reproduce the
-tables and figures from the experimental data:
-
+From a source checkout, install only the analysis dependencies and reproduce the tables and figures from the experimental data:
 ```sh
 python -m pip install -r scripts/stats/requirements.txt
 python scripts/stats/analyze.py reproduce --output-dir output/analysis
 ```
 
 Open `output/analysis/report.md` for links to the generated results.
-Numerical tables, publication figures, and an input/configuration manifest are
-saved alongside it. Individual workflows include `effectiveness`,
-`complementarity`, `naturalness`, `scene`, `timing`, `diagnostics`, and `validate`.
+Numerical tables, publication figures, and an input/configuration manifest are saved alongside it.
+Individual workflows include `effectiveness`, `complementarity`, `naturalness`, `scene`, `timing`, `diagnostics`, and `validate`.
 
-See [the analysis guide](doc/analysis.md) for formulas, interpretation, input
-requirements, installation options, and adapting the study profile. The
-[walkthrough notebook](scripts/stats/walkthrough.ipynb) uses the same Python API.
-
+See [the analysis guide](doc/analysis.md) for formulas, interpretation, input requirements, installation options, and adapting the study profile.
+The [walkthrough notebook](scripts/stats/walkthrough.ipynb) uses the same Python API.
 
 ## Provided Data
 
@@ -151,12 +127,10 @@ The data that we collected and used during our experimental analysis are availab
 You are free to use them under the terms of the [CC-4.0-BY](https://creativecommons.org/licenses/by/4.0/) license.
 Check [data/DATA.md](data/DATA.md) for more information.
 
-
 ## License
 
 The code of this project is made available through the [MIT License](LICENSE).
 Please note that different licenses apply for data files and vendor code.
-
 
 ## Citing
 
