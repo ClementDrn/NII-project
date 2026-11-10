@@ -81,10 +81,83 @@ python -m spacy download en_core_web_trf
 pytest
 ```
 
+<<<<<<< HEAD
 Tests use temporary files and scripted model responses; they do not need CARLA,
 running model servers, or private configuration. Python callers using configured
 pipeline components must call `digit.core.base.initialize_runtime()` explicitly.
+=======
+The suite uses temporary files and scripted model responses. It requires no CARLA
+installation, running model servers, API keys, private `.env`/hosts files, or
+untracked experiment data. The NLP tests use the locally installed spaCy model;
+tests do not download models. Network connections during tests fail explicitly.
+Configuration integration tests validate the committed files and example settings.
 
-Published experiment data are described in [data/DATA.md](data/DATA.md).
-Code uses the [MIT License](LICENSE); data use [CC BY 4.0](data/LICENSE).
-Vendor components retain their own licenses.
+## Scripts
+
+Run scripts from the repository root with the project's virtual environment activated. The `scripts/` directories contain:
+
+- `run/`: launch pipelines, simulations, and experiment reruns.
+- `vlm/`: generate instructions and try model requests, including API batches.
+- `test/`: inspect frame filtering and instruction rules.
+- `results/`: display, summarize, and export experiment results.
+- `evaluate/`: evaluate instruction naturalness and count scene object mentions.
+- `utils/`: extract instructions, export failed runs, and merge job directories.
+- `stats/`: perform statistical analysis over the results.
+
+A typical workflow is:
+```sh
+# Run experiments from jobs.yaml
+python scripts/run/run_pipeline.py
+
+# Export results to CSV (and check for instruction hallucinations)
+python scripts/results/save_experiment_data.py -H path/containing/jobs results.csv
+
+# Export the different scene object categories mentioned
+python scripts/evaluate/analyze_scene_objects.py results.csv results-o.csv
+# Evaluate naturalness of instructions with a GPT-5-mini
+python scripts/evaluate/evaluate_naturalness_of_instructions.py results-o.csv results-x.csv
+
+# Reproduce the paper's quantitative analysis from the provided CSVs
+python scripts/stats/analyze.py reproduce --output-dir output/analysis
+```
+
+Use `--help` on these scripts for their options.
+
+### Quantitative analysis
+
+The statistical code lives in `src/stats`, separate from the `digit` package.
+Analysis can run independently of CARLA, SimLingo, GPU models, and API services.
+From a source checkout, install only the analysis dependencies and reproduce the
+tables and figures from the experimental data:
+
+```sh
+python -m pip install -r scripts/stats/requirements.txt
+python scripts/stats/analyze.py reproduce --output-dir output/analysis
+```
+
+Open `output/analysis/report.md` for links to the generated results.
+Numerical tables, publication figures, and an input/configuration manifest are
+saved alongside it. Individual workflows include `effectiveness`,
+`complementarity`, `naturalness`, `scene`, `timing`, `diagnostics`, and `validate`.
+
+See [the analysis guide](doc/analysis.md) for formulas, interpretation, input
+requirements, installation options, and adapting the study profile. The
+[walkthrough notebook](scripts/stats/walkthrough.ipynb) uses the same Python API.
+
+
+## Provided Data
+
+The data that we collected and used during our experimental analysis are available under the `data/` directory.
+You are free to use them under the terms of the [CC-4.0-BY](https://creativecommons.org/licenses/by/4.0/) license.
+Check [data/DATA.md](data/DATA.md) for more information.
+
+
+## License
+
+The code of this project is made available through the [MIT License](LICENSE).
+Please note that different licenses apply for data files and vendor code.
+
+
+## Citing
+
+If this project is useful for your work, please cite us.
