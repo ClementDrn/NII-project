@@ -15,7 +15,8 @@
 # - generator: ID of the generator config to use (defined in config.yaml)
 # - model_instances: List of model instance IDs to use (defined in config.yaml)
 # - experiment_nature: Nature of the experiment ("adversarial" or "corrective") (default: "adversarial")
-# - instruction_generation_count: Number of instruction generations to perform (default: 1)
+# - repeat_count: Number of times to repeat the experiment (default: 1)
+# - stop_repeat_on_success: Whether to stop repeating the experiment on success (default: false)
 # - instruction_count_per_generation: Number of instructions to use per generation (should be <= generator's count)
 #
 # Example:
@@ -35,7 +36,6 @@
 #     model_instances:
 #       - "gpt5_mini_0"
 #     experiment_nature: "adversarial"
-#     instruction_generation_count: 1
 #     instruction_count_per_generation: 3
 ---
 version: "2.0-dev"
@@ -78,7 +78,6 @@ jobs:
     model_instances:
       - "gpt-5-mini_0"
     experiment_nature: "adversarial"
-    instruction_generation_count: 1   # deprecated: how many times to generate instructions, in one iteration
     instruction_count_per_generation: 3
     repeat_count: 1   # will cause to loop the pipeline, possibly with context-aware generation after the first iteration
     stop_repeat_on_success: false
