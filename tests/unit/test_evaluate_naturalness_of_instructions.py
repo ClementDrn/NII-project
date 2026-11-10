@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 
-SCRIPT_PATH = Path(__file__).parents[2] / "scripts" / "evaluate_naturalness_of_instructions.py"
+SCRIPT_PATH = Path(__file__).parents[2] / "scripts" / "evaluate" / "evaluate_naturalness_of_instructions.py"
 spec = importlib.util.spec_from_file_location("evaluate_naturalness", SCRIPT_PATH)
 assert spec is not None and spec.loader is not None
 module = importlib.util.module_from_spec(spec)

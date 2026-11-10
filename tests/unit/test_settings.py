@@ -1,6 +1,4 @@
 import pytest
-import tempfile
-import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List
@@ -26,14 +24,6 @@ from digit.core.settings import (
     get_model_instances_config_by_step_id,
     configure_settings_for_job,
 )
-
-
-@pytest.fixture
-def temp_config_dir():
-    """Create a temporary directory for config files and clean up after test."""
-    temp_dir = Path(tempfile.mkdtemp())
-    yield temp_dir
-    shutil.rmtree(temp_dir)
 
 
 @pytest.fixture
@@ -209,6 +199,8 @@ class TestCARLAEnvConfig:
         monkeypatch.setenv("CARLA_PATH", "/path/to/carla")
         monkeypatch.setenv("CONDA_PATH", "/path/to/conda")
         monkeypatch.setenv("OUTPUT_PATH", "/path/to/output")
+        monkeypatch.setenv("CARLA_PORT", "2000")
+        monkeypatch.setenv("CARLA_TRAFFIC_MANAGER_PORT", "2050")
         
         config = CARLAEnvConfig()
         
@@ -302,6 +294,8 @@ class TestSettings:
         monkeypatch.setenv("CARLA_PATH", "/path/to/carla")
         monkeypatch.setenv("CONDA_PATH", "/path/to/conda")
         monkeypatch.setenv("OUTPUT_PATH", "/path/to/output")
+        monkeypatch.setenv("CARLA_PORT", "2000")
+        monkeypatch.setenv("CARLA_TRAFFIC_MANAGER_PORT", "2050")
         
         settings = Settings()
         
@@ -317,6 +311,8 @@ class TestSettings:
         monkeypatch.setenv("CARLA_PATH", "/path/to/carla")
         monkeypatch.setenv("CONDA_PATH", "/path/to/conda")
         monkeypatch.setenv("OUTPUT_PATH", "/path/to/output")
+        monkeypatch.setenv("CARLA_PORT", "2000")
+        monkeypatch.setenv("CARLA_TRAFFIC_MANAGER_PORT", "2050")
         
         # Create filter configs
         filters = [
@@ -676,7 +672,7 @@ class TestSettingsActiveProperties:
 class TestLoadConfig:
     """Test suite for load_config function."""
 
-    def test_load_config_minimal(self, temp_config_dir, logger, monkeypatch):
+    def test_load_config_minimal(self, tmp_path, logger, monkeypatch):
         """Test loading minimal configuration."""
         # Clear HOSTS_PATH to ensure no hosts are loaded
         monkeypatch.delenv("HOSTS_PATH", raising=False)
@@ -686,7 +682,7 @@ class TestLoadConfig:
 CONDA_PATH=/path/to/conda
 OUTPUT_PATH=/path/to/output
 """
-        with open(temp_config_dir / ".env", "w") as f:
+        with open(tmp_path / ".env", "w") as f:
             f.write(env_content)
         
         # Create config.yaml
@@ -717,11 +713,11 @@ OUTPUT_PATH=/path/to/output
             ],
             "model_instances": []
         }
-        with open(temp_config_dir / "config.yaml", "w") as f:
+        with open(tmp_path / "config.yaml", "w") as f:
             yaml.dump(config_data, f)
         
         # Load config
-        settings = load_config(temp_config_dir, logger)
+        settings = load_config(tmp_path, logger)
         
         assert len(settings.filters) == 1
         assert settings.filters[0].id == "default_filter"
@@ -732,16 +728,16 @@ OUTPUT_PATH=/path/to/output
         assert settings.model_instances == []
         assert settings.hosts == []
 
-    def test_load_config_with_hosts(self, temp_config_dir, logger, monkeypatch):
+    def test_load_config_with_hosts(self, tmp_path, logger, monkeypatch):
         """Test loading configuration with hosts.yaml."""
         # Create .env file with HOSTS_PATH
-        hosts_yaml_path = temp_config_dir / "hosts.yaml"
+        hosts_yaml_path = tmp_path / "hosts.yaml"
         env_content = f"""CARLA_PATH=/path/to/carla
 CONDA_PATH=/path/to/conda
 OUTPUT_PATH=/path/to/output
 HOSTS_PATH={hosts_yaml_path}
 """
-        with open(temp_config_dir / ".env", "w") as f:
+        with open(tmp_path / ".env", "w") as f:
             f.write(env_content)
         
         # Create config.yaml
@@ -790,7 +786,7 @@ HOSTS_PATH={hosts_yaml_path}
                 }
             ]
         }
-        with open(temp_config_dir / "config.yaml", "w") as f:
+        with open(tmp_path / "config.yaml", "w") as f:
             yaml.dump(config_data, f)
         
         # Create hosts.yaml
@@ -804,11 +800,11 @@ HOSTS_PATH={hosts_yaml_path}
                 }
             ]
         }
-        with open(temp_config_dir / "hosts.yaml", "w") as f:
+        with open(tmp_path / "hosts.yaml", "w") as f:
             yaml.dump(hosts_data, f)
         
         # Load config
-        settings = load_config(temp_config_dir, logger)
+        settings = load_config(tmp_path, logger)
         
         assert len(settings.filters) == 1
         assert settings.filters[0].id == "fine_filter"
@@ -825,14 +821,14 @@ HOSTS_PATH={hosts_yaml_path}
         assert settings.hosts[0].id == "my_vlm_host"
         assert settings.hosts[0].host == "http://localhost:8000"
 
-    def test_load_config_without_hosts_file(self, temp_config_dir, logger, monkeypatch):
+    def test_load_config_without_hosts_file(self, tmp_path, logger, monkeypatch):
         """Test loading configuration when hosts.yaml doesn't exist."""
         # Create .env file
         env_content = """CARLA_PATH=/path/to/carla
 CONDA_PATH=/path/to/conda
 OUTPUT_PATH=/path/to/output
 """
-        with open(temp_config_dir / ".env", "w") as f:
+        with open(tmp_path / ".env", "w") as f:
             f.write(env_content)
         
         # Create config.yaml
@@ -843,22 +839,22 @@ OUTPUT_PATH=/path/to/output
             "simulators": [{"id": "carla_basic", "type": "carla", "debug": False, "gpu_id": 0}],
             "model_instances": []
         }
-        with open(temp_config_dir / "config.yaml", "w") as f:
+        with open(tmp_path / "config.yaml", "w") as f:
             yaml.dump(config_data, f)
         
         # Load config (no hosts.yaml file)
-        settings = load_config(temp_config_dir, logger)
+        settings = load_config(tmp_path, logger)
         
         assert settings.hosts == []
 
-    def test_load_config_filters_comments(self, temp_config_dir, logger):
+    def test_load_config_filters_comments(self, tmp_path, logger):
         """Test that fields starting with _ are filtered out."""
         # Create .env file
         env_content = """CARLA_PATH=/path/to/carla
 CONDA_PATH=/path/to/conda
 OUTPUT_PATH=/path/to/output
 """
-        with open(temp_config_dir / ".env", "w") as f:
+        with open(tmp_path / ".env", "w") as f:
             f.write(env_content)
         
         # Create config.yaml with comment fields
@@ -870,24 +866,24 @@ OUTPUT_PATH=/path/to/output
             "simulators": [{"id": "carla_basic", "type": "carla", "debug": False, "gpu_id": 0}],
             "model_instances": []
         }
-        with open(temp_config_dir / "config.yaml", "w") as f:
+        with open(tmp_path / "config.yaml", "w") as f:
             yaml.dump(config_data, f)
         
         # Load config
-        settings = load_config(temp_config_dir, logger)
+        settings = load_config(tmp_path, logger)
         
         # Should load successfully without comment fields
         assert len(settings.generators) == 1
         assert settings.generators[0].design == "single_step_vlm"
 
-    def test_load_config_version_mismatch(self, temp_config_dir, logger):
+    def test_load_config_version_mismatch(self, tmp_path, logger):
         """Test that incompatible version raises an error."""
         # Create .env file
         env_content = """CARLA_PATH=/path/to/carla
 CONDA_PATH=/path/to/conda
 OUTPUT_PATH=/path/to/output
 """
-        with open(temp_config_dir / ".env", "w") as f:
+        with open(tmp_path / ".env", "w") as f:
             f.write(env_content)
         
         # Create config.yaml with incompatible version
@@ -898,9 +894,9 @@ OUTPUT_PATH=/path/to/output
             "simulators": [],
             "model_instances": []
         }
-        with open(temp_config_dir / "config.yaml", "w") as f:
+        with open(tmp_path / "config.yaml", "w") as f:
             yaml.dump(config_data, f)
         
         # Should raise ValueError
         with pytest.raises(ValueError, match="Incompatible config version"):
-            load_config(temp_config_dir, logger)
+            load_config(tmp_path, logger)

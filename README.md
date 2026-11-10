@@ -129,6 +129,23 @@ python scripts/run/run_pipeline.py
 ```
 
 
+## Tests
+
+Run the suite from the repository root using Python 3.12 or newer:
+
+```sh
+source .venv/bin/activate
+uv pip install -e ".[dev]"
+python -m spacy download en_core_web_trf  # once, for the NLP parsing tests
+pytest
+```
+
+The suite uses temporary files and scripted model responses. It requires no CARLA
+installation, running model servers, API keys, private `.env`/hosts files, or
+untracked experiment data. The NLP tests use the locally installed spaCy model;
+tests do not download models. Network connections during tests fail explicitly.
+Configuration integration tests validate the committed files and example settings.
+
 ## Scripts
 
 Run scripts from the repository root with the project's virtual environment activated. The `scripts/` directories contain:

@@ -21,51 +21,35 @@ from tests.fakes import make_res_json, make_experiment_info, make_custom_prompts
 # ScenarioResults.classify_run Tests
 # =============================================================================
 
-class TestScenarioResultsClassifyRun:
-    """Tests for the classify_run method of ScenarioResults."""
-    
-    def test_returns_adversarial_when_experiment_penalty_lower_than_ground_truth(self):
-        """Lower penalty = worse performance = adversarial."""
-        gt = RunResult(scenario_id=1, run_id=0, score_penalty=1.0, score_route=100.0, score_composed=100.0, status="Perfect", infractions_count=0, collisions_count=0)
-        exp = RunResult(scenario_id=1, run_id=1, ground_truth_index=0, score_penalty=0.5, score_route=100.0, score_composed=50.0, status="Failed", infractions_count=1, collisions_count=1)
-        
-        scenario = ScenarioResults(scenario_id=1, ground_truths={0: gt}, experiments=[exp])
-        
-        assert scenario.classify_run(exp) == ExperimentResult.ADVERSARIAL
-    
-    def test_returns_corrective_when_experiment_penalty_higher_than_ground_truth(self):
-        """Higher penalty = better performance = corrective."""
-        gt = RunResult(scenario_id=1, run_id=0, score_penalty=0.5, score_route=100.0, score_composed=50.0, status="Failed", infractions_count=1, collisions_count=1)
-        exp = RunResult(scenario_id=1, run_id=1, ground_truth_index=0, score_penalty=1.0, score_route=100.0, score_composed=100.0, status="Perfect", infractions_count=0, collisions_count=0)
-        
-        scenario = ScenarioResults(scenario_id=1, ground_truths={0: gt}, experiments=[exp])
-        
-        assert scenario.classify_run(exp) == ExperimentResult.CORRECTIVE
-    
-    def test_returns_unchanged_when_penalties_equal(self):
-        """Equal penalties = unchanged."""
-        gt = RunResult(scenario_id=1, run_id=0, score_penalty=0.8, score_route=100.0, score_composed=80.0, status="Completed", infractions_count=1, collisions_count=0)
-        exp = RunResult(scenario_id=1, run_id=1, ground_truth_index=0, score_penalty=0.8, score_route=100.0, score_composed=80.0, status="Completed", infractions_count=1, collisions_count=0)
-        
-        scenario = ScenarioResults(scenario_id=1, ground_truths={0: gt}, experiments=[exp])
-        
-        assert scenario.classify_run(exp) == ExperimentResult.UNCHANGED
-    
-    def test_returns_none_when_no_ground_truth(self):
-        """Cannot classify without ground truth."""
-        exp = RunResult(scenario_id=1, run_id=1, ground_truth_index=0, score_penalty=0.5, score_route=100.0, score_composed=50.0, status="Failed", infractions_count=1, collisions_count=1)
-        
-        scenario = ScenarioResults(scenario_id=1, ground_truths={}, experiments=[exp])
-        
-        assert scenario.classify_run(exp) == ExperimentResult.NONE
-    
-    def test_returns_none_when_experiment_is_none(self):
-        """Cannot classify None experiment."""
-        gt = RunResult(scenario_id=1, run_id=0, score_penalty=1.0, score_route=100.0, score_composed=100.0, status="Perfect", infractions_count=0, collisions_count=0)
-        
-        scenario = ScenarioResults(scenario_id=1, ground_truths={0: gt}, experiments=[])
-        
-        assert scenario.classify_run(None) == ExperimentResult.NONE
+@pytest.mark.parametrize(('status', 'penalty', 'gt_index', 'expected'), [
+    ('Completed', 0.5, 0, ExperimentResult.ADVERSARIAL),
+    ('Completed', 1.0, 0, ExperimentResult.CORRECTIVE),
+    ('Completed', 0.8, 0, ExperimentResult.UNCHANGED),
+    ('Completed', 0.5, None, ExperimentResult.NONE),
+    ('Completed', 0.5, 99, ExperimentResult.NONE),
+    ('Failed', 0.5, 0, ExperimentResult.ERROR),
+    ('Failed', 0.5, None, ExperimentResult.ERROR),
+    ('Failed - Agent got blocked', 0.8, 0, ExperimentResult.ADVERSARIAL),
+    ('Failed - Agent deviated from the route', 0.5, 0, ExperimentResult.ADVERSARIAL),
+    ('Failed - Agent timed out', 0.5, 0, ExperimentResult.ADVERSARIAL),
+    ('Failed - Agent timed out', 0.8, 0, ExperimentResult.ERROR),
+])
+def test_classify_run_distinguishes_infractions_from_simulator_errors(status, penalty, gt_index, expected):
+    ground_truth = RunResult(
+        scenario_id=1, run_id=0, score_penalty=0.8, score_route=100.0,
+        score_composed=80.0, status='Completed', infractions_count=1, collisions_count=0,
+    )
+    experiment = RunResult(
+        scenario_id=1, run_id=1, score_penalty=penalty, score_route=100.0,
+        score_composed=100 * penalty, status=status, infractions_count=1,
+        collisions_count=0, ground_truth_index=gt_index,
+    )
+    scenario = ScenarioResults(scenario_id=1, ground_truths={0: ground_truth}, experiments=[experiment])
+    assert scenario.classify_run(experiment) is expected
+
+
+def test_missing_experiment_cannot_be_classified():
+    assert ScenarioResults(scenario_id=1).classify_run(None) is ExperimentResult.NONE
 
 
 # =============================================================================

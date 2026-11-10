@@ -15,6 +15,13 @@ from digit.simulator.simulation_data import SimulationData, SimulationFrameData,
 import digit.generator.rule_based_instruction_generator as rule_based_module
 
 
+@pytest.fixture(autouse=True)
+def isolated_random_state():
+    state = random.getstate()
+    yield
+    random.setstate(state)
+
+
 class AlwaysValidRule:
     def __init__(self, category: InstructionCategory):
         self.category = category
