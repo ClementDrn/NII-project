@@ -1,0 +1,35 @@
+# Paths are relative to this file; --data-dir overrides only the data directory.
+data_dir: ../../data
+selected_model: claude-opus-4.6
+scenarios: [0, 5, 8, 18, 20, 24, 36, 37, 40, 41, 44, 56, 63, 71, 73, 77, 79, 80, 100, 113, 120, 122, 133, 184, 193]
+repetitions: 3
+runs_per_session: 3
+baseline_repetitions: 2
+baseline_max_runs: 16
+results:
+  - baseline-x.csv
+  - claude-oneshot-x.csv
+  - claude-incremental-x.csv
+  - gpt-5-mini-oneshot.csv
+  - gpt-5-mini-incremental.csv
+  - gpt-5-2-oneshot.csv
+  - gpt-5-2-incremental.csv
+sampling:
+  draws: 20000
+  seed: 20261020
+  scene_seed: 20261022
+naturalness:
+  instructions: naturalness-instructions.csv
+  human: eval-human-naturalness.csv
+  llm: eval-llm-naturalness.csv
+  sample_per_method: 40
+  human_raters: 11
+  populations: {baseline: 658, digit: 225}
+timing:
+  # Measured totals / request counts: 6907/25, 20993/25, 24997/25.
+  generation_seconds: [276.28, 839.72, 999.88]
+  simulation_seconds: 585.94  # 29297 seconds / 50 simulations
+  baseline_generation_seconds: 14
+  baseline_generation_attempts: 800
+  batch_seconds: 403  # First response measured; complete delivery is assumed.
+  batch_spread: 0

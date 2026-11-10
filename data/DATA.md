@@ -10,8 +10,8 @@ Some of them also include the ratings of the naturalness of instructions as well
 | [baseline-x.csv](baseline-x.csv)                         | Baseline                    | ✔️           | ✔️                 |
 | [claude-incremental-x.csv](claude-incremental-x.csv)     | Claude-Opus-4.6 Incremental | ✔️           | ✔️                 |
 | [claude-oneshot-x.csv](claude-oneshot-x.csv)             | Claude-Opus-4.6 One-shot    | ✔️           | ✔️                 |
-| [gpt-5.2-incremental.csv](gpt-5.2-incremental.csv)       | GPT-5.2 Incremental         | ❌           | ❌                 |
-| [gpt-5.2-oneshot.csv](gpt-5.2-oneshot.csv)               | GPT-5.2 One-shot            | ❌           | ❌                 |
+| [gpt-5-2-incremental.csv](gpt-5-2-incremental.csv)       | GPT-5.2 Incremental         | ❌           | ❌                 |
+| [gpt-5-2-oneshot.csv](gpt-5-2-oneshot.csv)               | GPT-5.2 One-shot            | ❌           | ❌                 |
 | [gpt-5-mini-incremental.csv](gpt-5-mini-incremental.csv) | GPT-5-mini Incremental      | ❌           | ❌                 |
 | [gpt-5-mini-oneshot.csv](gpt-5-mini-oneshot.csv)         | GPT-5-mini One-shot         | ❌           | ❌                 |
 
@@ -26,6 +26,20 @@ The following data files present the naturalness ratings from the LLM judge and 
 | -------------------------------------------------------- | ---------- |
 | [eval-human-naturalness.csv](eval-human-naturalness.csv) | Humans     |
 | [eval-llm-naturalness.csv](eval-llm-naturalness.csv)     | LLM        |
+
+
+## Analysis schema and reproduction
+
+Run `python scripts/stats/analyze.py reproduce` from the repository root. See [the analysis guide](../doc/analysis.md) for standalone installation, workflows, formulas, and generated analysis outputs.
+
+- The unique experiment key is `(model, method, repetition, scenario, run)`. DIGIT has three repetitions of three runs per scenario; baseline has two corrected repetitions with up to 16 runs per scenario/repetition.
+- `adversarial?`, `redacted?`, and `errored?` are raw binary flags. End-to-end analysis counts refusals/errors as attempts without observed success, while retaining all original flags. For example, raw adversarial flags on unusable GPT-5.2 outputs do not count as successful end-to-end tests.
+- `instruction` preserves repeated texts. `start` and `end` are injection times in simulation seconds, not campaign wall-clock timestamps. `category` and `reasoning` provide provenance.
+- `object_count` and `modifier_count` count extracted mentions, not unique scene objects. Their `*_hallucination_count` fields are metadata-flagged subsets. Object-type columns count mentions and must sum to `object_count`, including the `unknown` column. Missing annotations cannot be interpreted as zero.
+- `naturalness` is an integer 1–5 GPT-5-mini rating. Full-pool scores are present only for baseline and the two Claude variants.
+- Sampled naturalness items use unique `instruction_id` values and explicit `method` labels (`baseline` or `digit`, meaning Claude incremental). Rating files join on that ID, with unique `(instruction_id, user_id)` keys. The packaged human panel already contains the 11 complete raters, each rating all 80 items. No incomplete-rater records are silently dropped during analysis.
+
+The study profile specifies the experimental design and analysis settings. Analysis reads these CSVs without modifying them.
 
 
 ## License

@@ -154,10 +154,32 @@ python scripts/evaluate/analyze_scene_objects.py results.csv results-o.csv
 # Evaluate naturalness of instructions with a GPT-5-mini
 python scripts/evaluate/evaluate_naturalness_of_instructions.py results-o.csv results-x.csv
 
-# TODO: Perform a statistical analyzis on the results
+# Reproduce the paper's quantitative analysis from the provided CSVs
+python scripts/stats/analyze.py reproduce --output-dir output/analysis
 ```
 
 Use `--help` on these scripts for their options.
+
+### Quantitative analysis
+
+The statistical code lives in `src/stats`, separate from the `digit` package.
+Analysis can run independently of CARLA, SimLingo, GPU models, and API services.
+From a source checkout, install only the analysis dependencies and reproduce the
+tables and figures from the experimental data:
+
+```sh
+python -m pip install -r scripts/stats/requirements.txt
+python scripts/stats/analyze.py reproduce --output-dir output/analysis
+```
+
+Open `output/analysis/report.md` for links to the generated results.
+Numerical tables, publication figures, and an input/configuration manifest are
+saved alongside it. Individual workflows include `effectiveness`,
+`complementarity`, `naturalness`, `scene`, `timing`, `diagnostics`, and `validate`.
+
+See [the analysis guide](doc/analysis.md) for formulas, interpretation, input
+requirements, installation options, and adapting the study profile. The
+[walkthrough notebook](scripts/stats/walkthrough.ipynb) uses the same Python API.
 
 
 ## Provided Data
