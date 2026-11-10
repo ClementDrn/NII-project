@@ -1,43 +1,31 @@
-# This file contains the supported versions for various components of the project.
+"""Supported configuration formats, independent of the software package version."""
 
-# Version for configuration files
-CONFIG_VERSION = "2.0-dev"
-JOBS_VERSION = "2.0-dev"
-HOSTS_VERSION = "1.0-dev"
+import re
+
+CONFIG_VERSION = "2.0"
+JOBS_VERSION = "2.0"
+HOSTS_VERSION = "1.0"
+
+
+def _parse_format_version(value: str) -> tuple[int, int]:
+    # Released formats are major.minor. Read the historical -dev spelling too.
+    match = (
+        re.fullmatch(r"([0-9]+)(?:\.([0-9]+))?(?:-dev)?", value)
+        if isinstance(value, str)
+        else None
+    )
+    if match is None:
+        raise ValueError(f"Invalid configuration version format: {value!r}")
+    return int(match.group(1)), int(match.group(2) or 0)
 
 
 def are_versions_compatible(imported_version: str, supported_version: str) -> bool:
+    """Accept the same major format with a minor no newer than supported.
+
+    A missing minor means zero. Historical ``-dev`` suffixes remain readable;
+    package versions such as ``1.0.0`` are not configuration format versions.
+    Malformed versions raise ValueError.
     """
-    Check if the file version is compatible with the supported version.
-    For compatibility, the major version numbers must match, and the minor version must be less than or equal to the supported minor version.
-
-    Parameters:
-    - imported_version (str): The version string from the imported file (e.g., "1.2").
-    - supported_version (str): The supported version string (e.g., "2.0").
-    
-    Returns:
-    - bool: True if versions are compatible, False otherwise.
-    
-    Raises:
-    - ValueError: If version format is invalid.
-    """
-    # Remove any suffixes like "-dev" from the version strings
-    imported_version = imported_version.split('-')[0]
-    supported_version = supported_version.split('-')[0]
-
-    # Split imported version into major and minor numbers
-    split_imported_version = imported_version.split('.')
-    if len(split_imported_version) < 1 or len(split_imported_version) > 2:
-        raise ValueError(f"Invalid imported version format: {imported_version}")
-    imported_major = int(split_imported_version[0])
-    imported_minor = int(split_imported_version[1]) if len(split_imported_version) > 1 else 0
-
-    # Split supported version into major and minor numbers
-    split_supported_version = supported_version.split('.')
-    if len(split_supported_version) < 1 or len(split_supported_version) > 2:
-        raise ValueError(f"Invalid supported version format: {supported_version}")
-    supported_major = int(split_supported_version[0])
-    supported_minor = int(split_supported_version[1]) if len(split_supported_version) > 1 else 0
-
-    # Majors must match and imported minor must be less than or equal to supported minor
-    return (imported_major == supported_major) and (imported_minor <= supported_minor)
+    imported_major, imported_minor = _parse_format_version(imported_version)
+    supported_major, supported_minor = _parse_format_version(supported_version)
+    return imported_major == supported_major and imported_minor <= supported_minor

@@ -31,7 +31,9 @@ CATEGORY_COLUMNS = [
 ]
 
 
-def _parse_category_from_file_stem(stem: str) -> Optional[Tuple[InstructionCategory, int]]:
+def _parse_category_from_file_stem(
+    stem: str,
+) -> Optional[Tuple[InstructionCategory, int]]:
     # Without variables
     direct_mappings: Dict[str, Tuple[InstructionCategory, int]] = {
         "left_lc": (InstructionCategory.LANE_CHANGE_LEFT, 0),
@@ -81,7 +83,9 @@ def _load_commands(json_path: Path) -> Iterable[str]:
     return [cmd.strip() for cmd in commands if isinstance(cmd, str) and cmd.strip()]
 
 
-def build_instruction_text_map(dataset_dir: Path) -> Tuple[Dict[str, InstructionCategory], int]:
+def build_instruction_text_map(
+    dataset_dir: Path,
+) -> Tuple[Dict[str, InstructionCategory], int]:
     text_to_category: Dict[str, InstructionCategory] = {}
     conflicts = 0
 
@@ -101,10 +105,15 @@ def build_instruction_text_map(dataset_dir: Path) -> Tuple[Dict[str, Instruction
     return text_to_category, conflicts
 
 
-def summarize_baseline(job_dir: Path, ground_truth_cache_dir: Path, dataset_dir: Path, out_path: Path) -> None:
+def summarize_baseline(
+    job_dir: Path, ground_truth_cache_dir: Path, dataset_dir: Path, out_path: Path
+) -> None:
     text_to_category, conflicts = build_instruction_text_map(dataset_dir)
     if conflicts > 0:
-        print(f"Warning: {conflicts} command texts map to multiple categories.", file=sys.stderr)
+        print(
+            f"Warning: {conflicts} command texts map to multiple categories.",
+            file=sys.stderr,
+        )
 
     try:
         results = JobResults(job_dir, ground_truth_cache_dir)
@@ -173,7 +182,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Summarize baseline adversarialness per scenario into a CSV file"
     )
-    parser.add_argument("job_dir", type=str, help="Path to job directory (e.g., output/.../job_000)")
+    parser.add_argument(
+        "job_dir", type=str, help="Path to job directory (e.g., output/.../job_000)"
+    )
     parser.add_argument(
         "--gt-dir",
         type=str,
@@ -193,6 +204,9 @@ def main() -> None:
         help="Output CSV path (default: baseline_summary.csv)",
     )
     args = parser.parse_args()
+    from digit.core.base import initialize_logging
+
+    initialize_logging()
 
     project_root = Path(__file__).parent.parent
 

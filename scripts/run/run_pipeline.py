@@ -1,57 +1,39 @@
-from digit.core.base import LOG
-from digit.core.pipeline import Pipeline
+"""Run DIGIT jobs with cancellation-safe cleanup."""
 
-import asyncio
 import argparse
-import signal
-import sys
+import asyncio
 
 
-def parse_cmdargs() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run the generation and simulation pipeline")
-    parser.add_argument(
-        "--jobs-filepath",
-        default="jobs.yaml",
-        help="Path to jobs configuration file (default: jobs.yaml)",
-    )
-    return parser.parse_args()
-
-
-### MAIN FUNCTION #############################################################
-async def main():
-    # Parse command-line arguments
-    cmdargs = parse_cmdargs()
-
-    # Instantiate pipeline
-    pipeline = Pipeline(jobs_filepath=cmdargs.jobs_filepath)
-
-    # Define interruption signal handler
-    # It does not exit immediately on first SIGINT to allow graceful shutdown
-    shutdown_requested = False
-    def sigint_handler(sig, frame):
-        nonlocal shutdown_requested
-        if not shutdown_requested:
-            LOG.info("Caught SIGINT, initiating graceful shutdown...")
-            shutdown_requested = True
-        else:
-            LOG.warning("Force exit requested")
-            sys.exit(1)
-
-    # Register signal handler
-    signal.signal(signal.SIGINT, sigint_handler)
-
+async def run_pipeline(pipeline):
+    """Release initialized components on success, error, or task cancellation."""
     try:
-        LOG.info("Initializing pipeline...")
         await pipeline.init()
-
-        LOG.info("Starting pipeline...")
         await pipeline.start()
-    except KeyboardInterrupt:
-        LOG.info("Pipeline interrupted")
-    finally:    # Ensure pipeline is stopped
-        LOG.info("Stopping pipeline...")
+    finally:
         await pipeline.stop()
 
 
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Run the generation and simulation pipeline"
+    )
+    parser.add_argument(
+        "--jobs-filepath", default="jobs.yaml", help="Path to jobs configuration"
+    )
+    args = parser.parse_args()
+    from digit.core.base import LOG, initialize_runtime
+    from digit.core.pipeline import Pipeline
+
+    initialize_runtime()
+    try:
+        # asyncio.run cancels the main task on the first Ctrl+C, allowing the
+        # finally block to finish. A second Ctrl+C interrupts cleanup.
+        asyncio.run(run_pipeline(Pipeline(jobs_filepath=args.jobs_filepath)))
+    except KeyboardInterrupt:
+        LOG.info("Pipeline interrupted")
+        return 130
+    return 0
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    raise SystemExit(main())

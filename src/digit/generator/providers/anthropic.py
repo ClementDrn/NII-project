@@ -1,15 +1,22 @@
 import json
 
 from digit.generator.providers.provider_adapter import ProviderAdapter
-from digit.generator.batch import Batch, BatchRequest, BatchRequestStatus, BatchStatus, BatchRequestResult
+from digit.generator.batch import (
+    Batch,
+    BatchRequest,
+    BatchRequestStatus,
+    BatchStatus,
+    BatchRequestResult,
+)
 from digit.generator.request import Request, RequestContentBlock
 from digit.core.base import LOG, VLM_LOG
 from digit.utils.image_encoder import image_to_jpeg_base64
 
 import anthropic
 from anthropic.types.messages.batch_create_params import Request as AnthropicRequest
-from anthropic.types.message_create_params import MessageCreateParamsNonStreaming as AnthropicMessageCreateParamsNonStreaming
-from anthropic.types.message_create_params import MessageCreateParamsStreaming as AnthropicMessageCreateParamsStreaming
+from anthropic.types.message_create_params import (
+    MessageCreateParamsNonStreaming as AnthropicMessageCreateParamsNonStreaming,
+)
 from anthropic.types.messages.message_batch import MessageBatch as AnthropicMessageBatch
 from anthropic.types.content_block import ContentBlock as AnthropicContentBlock
 
@@ -21,7 +28,10 @@ from typing import Any, AsyncIterator, List
 
 # --- Utils -------------------------------------------------------------------
 
-def _convert_user_messages_to_anthropic_format(user_content: List[RequestContentBlock]) -> List[dict[str, Any]]:
+
+def _convert_user_messages_to_anthropic_format(
+    user_content: List[RequestContentBlock],
+) -> List[dict[str, Any]]:
     """
     Translates user messages to Anthropic format.
 
@@ -44,42 +54,50 @@ def _convert_user_messages_to_anthropic_format(user_content: List[RequestContent
         # Handle different block types
         match block.type:
             case "text":
-                formatted_block.update({
-                    "type": "text",
-                    "text": block.text
-                })
+                formatted_block.update({"type": "text", "text": block.text})
             case "image":
                 # Convert image to base64
                 base64_image = image_to_jpeg_base64(block.image_path)
-                formatted_block.update({
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": "image/jpeg",
-                        "data": base64_image
+                formatted_block.update(
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/jpeg",
+                            "data": base64_image,
+                        },
                     }
-                })
+                )
             case _:
-                LOG.warning(f"Unknown content block type '{block.type}' encountered. Ignoring this block.")
+                LOG.warning(
+                    f"Unknown content block type '{block.type}' encountered. Ignoring this block."
+                )
                 continue  # Skip unknown block types
 
         # Add cache control tag if this is the last block in a sequence of cached blocks
-        is_next_block_cached = user_content[i + 1].to_be_cached if i + 1 < len(user_content) else False
+        is_next_block_cached = (
+            user_content[i + 1].to_be_cached if i + 1 < len(user_content) else False
+        )
         if block.to_be_cached:
             if not is_next_block_cached:
-                LOG.debug(f"Adding cache control tag to block {i} of type '{block.type}'")
-                formatted_block.update({
-                    "cache_control": {
-                        "type": "ephemeral",
-                        "ttl": "1h"     # NOTE: A TTL of 1h doubles the $ cost (yet, hits on cached blocks only cost 10%) 
+                LOG.debug(
+                    f"Adding cache control tag to block {i} of type '{block.type}'"
+                )
+                formatted_block.update(
+                    {
+                        "cache_control": {
+                            "type": "ephemeral",
+                            "ttl": "1h",  # NOTE: A TTL of 1h doubles the $ cost (yet, hits on cached blocks only cost 10%)
+                        }
                     }
-                })
+                )
 
         # Add the formatted block to the content list
         content_list.append(formatted_block)
 
     user_block = {"role": "user", "content": content_list}
     return [user_block]
+
 
 def _clean_model_name(model_name: str) -> str:
     """
@@ -92,10 +110,13 @@ def _clean_model_name(model_name: str) -> str:
         Cleaned model name without provider prefixes.
     """
     if model_name.startswith("anthropic/"):
-        return model_name[len("anthropic/"):]
+        return model_name[len("anthropic/") :]
     return model_name
 
-def _build_anthropic_messages_kwargs(system_text: str, user_content: List[RequestContentBlock], api_parameters: dict) -> dict:
+
+def _build_anthropic_messages_kwargs(
+    system_text: str, user_content: List[RequestContentBlock], api_parameters: dict
+) -> dict:
     """
     Build the kwargs for the Anthropic messages.create() call.
 
@@ -113,11 +134,8 @@ def _build_anthropic_messages_kwargs(system_text: str, user_content: List[Reques
         raise ValueError("Model parameter is required for Anthropic API calls.")
 
     max_tokens = api_parameters.get("max_tokens", 4096)
-    kwargs = {
-        "model": model,
-        "max_tokens": max_tokens
-    }
-    
+    kwargs = {"model": model, "max_tokens": max_tokens}
+
     # Include system and user messages
     anthropic_messages = _convert_user_messages_to_anthropic_format(user_content)
     kwargs["messages"] = anthropic_messages
@@ -126,14 +144,24 @@ def _build_anthropic_messages_kwargs(system_text: str, user_content: List[Reques
 
     # Include other supported API parameters
     # NOTE: Add additional parameters here if needed
-    allowed_keys = {"temperature", "top_p", "top_k", "user_profile_id", "thinking", "timeout"}
+    allowed_keys = {
+        "temperature",
+        "top_p",
+        "top_k",
+        "user_profile_id",
+        "thinking",
+        "timeout",
+    }
     for key, value in api_parameters.items():
         if key in allowed_keys and key not in kwargs:
             kwargs[key] = value
-    
+
     return kwargs
 
-def _extract_anthropic_response_content(content: List[AnthropicContentBlock]) -> tuple[str, str]:
+
+def _extract_anthropic_response_content(
+    content: List[AnthropicContentBlock],
+) -> tuple[str, str]:
     """
     Extracts text and thinking content from a list of Anthropic content blocks.
 
@@ -155,21 +183,31 @@ def _extract_anthropic_response_content(content: List[AnthropicContentBlock]) ->
 
 # --- Anthropic Batch ---------------------------------------------------------
 
+
 class AnthropicBatch(Batch):
     """Implementation of the Batch class for Anthropic model clients."""
-    
-    def __init__(self, client: anthropic.AsyncAnthropic, api_parameters: dict, requests: list[BatchRequest]):
+
+    def __init__(
+        self,
+        client: anthropic.AsyncAnthropic,
+        api_parameters: dict,
+        requests: list[BatchRequest],
+    ):
         super().__init__(requests)
 
         # Save Anthropic SDK client
         self._client: anthropic.AsyncAnthropic = client
         if not self._client.api_key:
-            raise ValueError("AnthropicBatch requires a client that is initialized with an API key.")
+            raise ValueError(
+                "AnthropicBatch requires a client that is initialized with an API key."
+            )
 
         # Check that model name is valid
         self._model = _clean_model_name(api_parameters.get("model", ""))
         if not self._model:
-            raise ValueError("Model parameter is required for Anthropic batch processing.")
+            raise ValueError(
+                "Model parameter is required for Anthropic batch processing."
+            )
 
         self._api_parameters: dict = api_parameters
 
@@ -192,7 +230,7 @@ class AnthropicBatch(Batch):
             kwargs = _build_anthropic_messages_kwargs(
                 system_text=request.system_text,
                 user_content=request.user_content,
-                api_parameters=self._api_parameters
+                api_parameters=self._api_parameters,
             )
             # Add request to the batch
             anthropic_requests.append(
@@ -203,36 +241,50 @@ class AnthropicBatch(Batch):
             )
 
         # Compute size of batch
-        payload = { "requests": anthropic_requests }
-        payload_size = len(json.dumps(payload).encode("utf-8")) / (1024 * 1024) # size in MB
-        LOG.debug(f"Batch payload size: {payload_size:.2f} MB for {len(anthropic_requests)} requests.")
+        payload = {"requests": anthropic_requests}
+        payload_size = len(json.dumps(payload).encode("utf-8")) / (
+            1024 * 1024
+        )  # size in MB
+        LOG.debug(
+            f"Batch payload size: {payload_size:.2f} MB for {len(anthropic_requests)} requests."
+        )
         # NOTE: Anthropic's API has a maximum request size of 256 MB. If the payload exceeds this, it will fail.
         if payload_size > 256:
-            LOG.error(f"Batch payload size exceeds Anthropic's maximum request size of 256 MB. Current size: {payload_size:.2f} MB.")
-            raise ValueError("Batch payload size exceeds Anthropic's maximum request size of 256 MB.")
+            LOG.error(
+                f"Batch payload size exceeds Anthropic's maximum request size of 256 MB. Current size: {payload_size:.2f} MB."
+            )
+            raise ValueError(
+                "Batch payload size exceeds Anthropic's maximum request size of 256 MB."
+            )
 
         # Create and send the batch
-        message_batch: AnthropicMessageBatch = await self._client.messages.batches.create(
-            requests=anthropic_requests
+        message_batch: AnthropicMessageBatch = (
+            await self._client.messages.batches.create(requests=anthropic_requests)
         )
 
         # Save id
         self._batch_id = message_batch.id
 
         # Return status
-        return self._map_anthropic_status_to_batch_status(message_batch.processing_status)
+        return self._map_anthropic_status_to_batch_status(
+            message_batch.processing_status
+        )
 
     async def check_status(self) -> BatchStatus:
         """Check the status of the batch."""
-        message_batch: AnthropicMessageBatch = await self._client.messages.batches.retrieve(self._batch_id)
-        return self._map_anthropic_status_to_batch_status(message_batch.processing_status)
+        message_batch: AnthropicMessageBatch = (
+            await self._client.messages.batches.retrieve(self._batch_id)
+        )
+        return self._map_anthropic_status_to_batch_status(
+            message_batch.processing_status
+        )
 
-    # NOTE: despite the "async def" keywords, there is no need to await 
+    # NOTE: despite the "async def" keywords, there is no need to await
     async def download_results(self) -> AsyncIterator[BatchRequestResult]:
         """
         Download the results of the batch if completed.
         If the batch is not completed, behavior is undefined.
-        
+
         Returns:
             An iterator over the results, yielding each result's content as a list of dictionaries (JSONL format) upon success.
             Content for batch messages that failed is an empty list.
@@ -243,16 +295,20 @@ class AnthropicBatch(Batch):
             return_status: BatchRequestStatus = BatchRequestStatus.UNKNOWN
             return_text: str = ""
             return_thinking: str = ""
-            
+
             match result.result.type:
                 case "succeeded":
-                    LOG.debug(f"Success! Downloaded batch results for '{result.custom_id}'...")
+                    LOG.debug(
+                        f"Success! Downloaded batch results for '{result.custom_id}'..."
+                    )
                     return_status = BatchRequestStatus.SUCCEEDED
                     # Save content
-                    return_text, return_thinking = _extract_anthropic_response_content(result.result.message.content)  # type: ignore
+                    return_text, return_thinking = _extract_anthropic_response_content(
+                        result.result.message.content
+                    )  # type: ignore
 
                 case "errored":
-                    if result.result.error.error.type == "invalid_request_error":   # type: ignore
+                    if result.result.error.error.type == "invalid_request_error":  # type: ignore
                         # NOTE: Request body must be fixed before re-sending request
                         LOG.error(f"Validation error {result.custom_id}")
                     else:
@@ -266,38 +322,43 @@ class AnthropicBatch(Batch):
                     LOG.error(f"Request cancelled {result.custom_id}")
                     return_status = BatchRequestStatus.CANCELLED
                 case _:
-                    LOG.error(f"Unknown result type '{result.result.type}' for request '{result.custom_id}'")
+                    LOG.error(
+                        f"Unknown result type '{result.result.type}' for request '{result.custom_id}'"
+                    )
 
             yield BatchRequestResult(
                 request_id=result.custom_id,
                 status=return_status,
                 text=return_text,
-                thinking=return_thinking
+                thinking=return_thinking,
             )
 
 
 # --- Anthropic Model Adapter -------------------------------------------------
+
 
 class AnthropicAdapter(ProviderAdapter):
     """
     Adapter implementation for the official Anthropic API.
     Converts OpenAI-formatted message arrays into Anthropic's native schema.
     """
+
     _RETRY_MAX_ATTEMPTS = 5
     _RETRY_INITIAL_DELAY_SECONDS = 5.0
     _RETRY_MAX_DELAY_SECONDS = 60.0
     _RETRY_JITTER_SECONDS = 1.0
-    
-    def __init__(self, api_key: str, api_parameters: dict = {}):
+
+    def __init__(self, api_key: str, api_parameters: dict | None = None):
         self.api_key: str = api_key
-        self.api_parameters: dict = api_parameters
+        self.api_parameters: dict = dict(api_parameters or {})
         self.client: anthropic.AsyncAnthropic | None = None
 
         # Fetch model from api_parameters and check it is present
-        self._model = _clean_model_name(api_parameters.get("model", ""))
+        self._model = _clean_model_name(self.api_parameters.get("model", ""))
         if not self._model:
-            raise ValueError("Model parameter is required for AnthropicAdapter initialization.")
-
+            raise ValueError(
+                "Model parameter is required for AnthropicAdapter initialization."
+            )
 
     async def open(self) -> None:
         """Instantiate the async Anthropic client."""
@@ -315,8 +376,8 @@ class AnthropicAdapter(ProviderAdapter):
             LOG.error("Client not initialized. Call open() first.")
             return False
 
-        try:            
-            LOG.info(f"Testing model connection of {self._model} via Anthropic SDK...")            
+        try:
+            LOG.info(f"Testing model connection of {self._model} via Anthropic SDK...")
 
             # Anthropic requires max_tokens
             max_tokens = self.api_parameters.get("max_tokens", 10)
@@ -325,9 +386,9 @@ class AnthropicAdapter(ProviderAdapter):
                 model=self._model,
                 max_tokens=max_tokens,
                 messages=[{"role": "user", "content": "Hello"}],
-                timeout=30.0
+                timeout=30.0,
             )
-            
+
             if response and response.content:
                 LOG.info("Model connection test successful")
                 return True
@@ -339,7 +400,7 @@ class AnthropicAdapter(ProviderAdapter):
     async def send_prompt(self, request: Request) -> str:
         """
         Send a message payload to the Anthropic API and return the text response.
-        
+
         Args:
             request: The request object containing system and user content
 
@@ -350,7 +411,9 @@ class AnthropicAdapter(ProviderAdapter):
             raise ConnectionError("Anthropic client is not initialized.")
 
         # Prepare parameters for the Anthropic messages.create() call
-        kwargs = _build_anthropic_messages_kwargs(request.system_text, request.user_content, self.api_parameters)
+        kwargs = _build_anthropic_messages_kwargs(
+            request.system_text, request.user_content, self.api_parameters
+        )
         # Add timeout if not already specified
         if "timeout" not in kwargs:
             kwargs["timeout"] = 20 * 60  # 20 minutes
@@ -387,14 +450,18 @@ class AnthropicAdapter(ProviderAdapter):
         # Check that response is not None
         if response is None:
             raise RuntimeError("Anthropic request completed without a response.")
-        
+
         # Extract token usage
         prompt_tokens = response.usage.input_tokens
         completion_tokens = response.usage.output_tokens
         total_tokens = prompt_tokens + completion_tokens
-        
-        LOG.debug(f"Anthropic request completed in {elapsed_time:.2f} seconds. Tokens: {total_tokens} (prompt: {prompt_tokens}, completion: {completion_tokens}).")
-        VLM_LOG.debug(f"Anthropic request completed. Token usage: prompt={prompt_tokens}, completion={completion_tokens}, total={total_tokens}")
+
+        LOG.debug(
+            f"Anthropic request completed in {elapsed_time:.2f} seconds. Tokens: {total_tokens} (prompt: {prompt_tokens}, completion: {completion_tokens})."
+        )
+        VLM_LOG.debug(
+            f"Anthropic request completed. Token usage: prompt={prompt_tokens}, completion={completion_tokens}, total={total_tokens}"
+        )
         VLM_LOG.debug(f"Response content: {response.content}")
 
         # Extract response text
@@ -420,7 +487,7 @@ class AnthropicAdapter(ProviderAdapter):
     def _retry_wait_seconds(cls, attempt_index: int) -> float:
         delay = min(
             cls._RETRY_MAX_DELAY_SECONDS,
-            cls._RETRY_INITIAL_DELAY_SECONDS * (2 ** attempt_index),
+            cls._RETRY_INITIAL_DELAY_SECONDS * (2**attempt_index),
         )
         return delay + random.uniform(0.0, cls._RETRY_JITTER_SECONDS)
 

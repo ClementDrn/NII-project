@@ -1,7 +1,7 @@
 from digit.generator.providers.provider_adapter import ProviderAdapter
 from digit.core.base import LOG, VLM_LOG
 from digit.generator.batch import Batch, BatchRequest
-from digit.generator.request import Request, RequestContentBlock
+from digit.generator.request import Request
 from digit.generator.model_config import get_model_config
 from digit.utils.image_encoder import image_to_jpeg_base64
 
@@ -11,7 +11,6 @@ from typing import Any, Optional
 from litellm import acompletion, get_llm_provider
 import asyncio
 import random
-import base64
 
 
 # --- Adapter Implementation for LiteLLM/OpenAI-Compatible Providers ----------
@@ -19,15 +18,16 @@ class LiteLLMAdapter(ProviderAdapter):
     """
     Adapter implementation for LiteLLM and OpenAI-compatible providers.
     """
+
     _RETRY_MAX_ATTEMPTS = 10
     _RETRY_INITIAL_DELAY_SECONDS = 5.0
     _RETRY_MAX_DELAY_SECONDS = 60.0
     _RETRY_JITTER_SECONDS = 1.0
 
-    def __init__(self, host: str, api_key: str, api_parameters: dict = {}):
+    def __init__(self, host: str, api_key: str, api_parameters: dict | None = None):
         self.host = host
         self.api_key = api_key
-        self.api_parameters = api_parameters
+        self.api_parameters = dict(api_parameters or {})
         self.client_context = None
 
     async def open(self) -> None:
@@ -45,25 +45,31 @@ class LiteLLMAdapter(ProviderAdapter):
     async def test_connection(self) -> bool:
         try:
             LOG.info("Testing model connection via LiteLLM...")
-            
+
             max_tokens_param_name: str = (
-                "max_tokens" if "max_tokens" in self.api_parameters else
-                "max_completion_tokens" if "max_completion_tokens" in self.api_parameters else
-                "max_output_tokens" if "max_output_tokens" in self.api_parameters else "max_tokens"
+                "max_tokens"
+                if "max_tokens" in self.api_parameters
+                else "max_completion_tokens"
+                if "max_completion_tokens" in self.api_parameters
+                else "max_output_tokens"
+                if "max_output_tokens" in self.api_parameters
+                else "max_tokens"
             )
-            
+
             connection_test_params = dict(self.api_parameters)
             connection_test_params.pop("max_tokens", None)
             connection_test_params.pop("max_completion_tokens", None)
             connection_test_params.pop("max_output_tokens", None)
             connection_test_params[max_tokens_param_name] = 5
-            connection_test_params.setdefault("model", self.api_parameters.get("model", "default"))
+            connection_test_params.setdefault(
+                "model", self.api_parameters.get("model", "default")
+            )
 
             response = await self._acompletion_with_retries(
                 self._build_completion_kwargs(
                     messages=[
                         {"role": "system", "content": "You are a helpful assistant."},
-                        {"role": "user", "content": "Hello"}
+                        {"role": "user", "content": "Hello"},
                     ],
                     api_parameters=connection_test_params,
                 ),
@@ -92,10 +98,9 @@ class LiteLLMAdapter(ProviderAdapter):
                 case "image":
                     img_base64 = image_to_jpeg_base64(block.image_path)
                     data_url = f"data:image/jpeg;base64,{img_base64}"
-                    user_content.append({
-                        "type": "image_url",
-                        "image_url": {"url": data_url}
-                    })
+                    user_content.append(
+                        {"type": "image_url", "image_url": {"url": data_url}}
+                    )
                 case _:
                     LOG.warning(f"Unsupported content block type: {block.type}")
 
@@ -104,37 +109,55 @@ class LiteLLMAdapter(ProviderAdapter):
 
         start_time = time.time()
         request_kwargs = self._build_completion_kwargs(messages=messages)
-        chat_response = await self._acompletion_with_retries(request_kwargs, timeout=1800)
+        chat_response = await self._acompletion_with_retries(
+            request_kwargs, timeout=1800
+        )
         elapsed_time = time.time() - start_time
 
-        prompt_tokens, completion_tokens, total_tokens = self._extract_token_usage(chat_response)
+        prompt_tokens, completion_tokens, total_tokens = self._extract_token_usage(
+            chat_response
+        )
 
-        LOG.debug(f"Model request completed in {elapsed_time:.2f} seconds and used {total_tokens} tokens (prompt: {prompt_tokens}, completion: {completion_tokens}).")
+        LOG.debug(
+            f"Model request completed in {elapsed_time:.2f} seconds and used {total_tokens} tokens (prompt: {prompt_tokens}, completion: {completion_tokens})."
+        )
         VLM_LOG.debug(f"Model response: {chat_response}")
-        VLM_LOG.debug(f"Token usage: prompt={prompt_tokens}, completion={completion_tokens}, total={total_tokens}")
+        VLM_LOG.debug(
+            f"Token usage: prompt={prompt_tokens}, completion={completion_tokens}, total={total_tokens}"
+        )
 
         return self._extract_response_text(chat_response)
 
     async def create_batch(self, requests: list[BatchRequest]) -> Optional[Batch]:
-        LOG.warning("Batch processing is not implemented for LiteLLM/OpenAI-compatible providers.")
+        LOG.warning(
+            "Batch processing is not implemented for LiteLLM/OpenAI-compatible providers."
+        )
         return None
 
     def _is_retryable_model_error(self, error: Exception) -> bool:
         error_text = f"{type(error).__name__}: {error}".lower()
         retry_indicators = (
-            "overloaded", "overloaded_error", "serviceunavailable", "unavailable",
-            "currently experiencing high demand", "timeout", "timed out", "connection timed out",
+            "overloaded",
+            "overloaded_error",
+            "serviceunavailable",
+            "unavailable",
+            "currently experiencing high demand",
+            "timeout",
+            "timed out",
+            "connection timed out",
         )
         return any(indicator in error_text for indicator in retry_indicators)
 
     def _retry_wait_seconds(self, attempt_index: int) -> float:
         delay = min(
             self._RETRY_MAX_DELAY_SECONDS,
-            self._RETRY_INITIAL_DELAY_SECONDS * (2 ** attempt_index),
+            self._RETRY_INITIAL_DELAY_SECONDS * (2**attempt_index),
         )
         return delay + random.uniform(0.0, self._RETRY_JITTER_SECONDS)
 
-    async def _acompletion_with_retries(self, request_kwargs: dict, timeout: float = 1800) -> Any:
+    async def _acompletion_with_retries(
+        self, request_kwargs: dict, timeout: float = 1800
+    ) -> Any:
         for attempt_index in range(self._RETRY_MAX_ATTEMPTS + 1):
             try:
                 return await acompletion(**request_kwargs, timeout=timeout)
@@ -154,13 +177,19 @@ class LiteLLMAdapter(ProviderAdapter):
                 )
                 await asyncio.sleep(wait_seconds)
 
-    def _build_completion_kwargs(self, messages: list[dict], api_parameters: dict | None = None) -> dict:
-        request_api_parameters = dict(self.api_parameters if api_parameters is None else api_parameters)
+    def _build_completion_kwargs(
+        self, messages: list[dict], api_parameters: dict | None = None
+    ) -> dict:
+        request_api_parameters = dict(
+            self.api_parameters if api_parameters is None else api_parameters
+        )
         request_model_name = request_api_parameters.get("model", "")
-        
+
         if isinstance(request_model_name, str) and "/" not in request_model_name:
             try:
-                request_api_parameters["model"] = get_model_config(request_model_name).model_name
+                request_api_parameters["model"] = get_model_config(
+                    request_model_name
+                ).model_name
             except ValueError:
                 pass
 
@@ -179,23 +208,31 @@ class LiteLLMAdapter(ProviderAdapter):
         host_base = self.host.rstrip("/")
         parsed_host = urlparse(host_base)
         host_has_explicit_path = parsed_host.path not in ("", "/")
-        
+
         if host_has_explicit_path:
             return host_base
 
         provider = ""
         if model_name:
             try:
-                # Assuming get_llm_provider is imported/available in your full code 
+                # Assuming get_llm_provider is imported/available in your full code
                 _, provider, _, _ = get_llm_provider(
                     model=model_name,
                     api_base=host_base,
                     api_key=self.api_key,
                 )
             except Exception:
-                provider = model_name.split("/", 1)[0].lower() if "/" in model_name else ""
+                provider = (
+                    model_name.split("/", 1)[0].lower() if "/" in model_name else ""
+                )
 
-        openai_compatible_providers = {"", "openai", "text-completion-openai", "azure", "azure_ai"}
+        openai_compatible_providers = {
+            "",
+            "openai",
+            "text-completion-openai",
+            "azure",
+            "azure_ai",
+        }
         if provider in openai_compatible_providers:
             return f"{host_base}/v1"
 
@@ -246,7 +283,10 @@ class LiteLLMAdapter(ProviderAdapter):
         if isinstance(content, list):
             text_parts = []
             for content_item in content:
-                if isinstance(content_item, dict) and content_item.get("type") == "text":
+                if (
+                    isinstance(content_item, dict)
+                    and content_item.get("type") == "text"
+                ):
                     text_parts.append(content_item.get("text", ""))
             return "\n".join(part for part in text_parts if part)
 

@@ -1,5 +1,5 @@
 # Configuration file for the project.
-# The following documentation describes version 2.0-dev of this file format.
+# The following documentation describes version 2.0 of this file format.
 #
 # Structure:
 # - version: Version of this file's format
@@ -55,7 +55,7 @@
 # Note: Environment variables (CARLA_PATH, CONDA_PATH, OUTPUT_PATH, HOSTS_PATH)
 #       must be set in a .env file at the root of the project.
 ---
-version: "2.0-dev"
+version: "2.0"
 
 filters:
   - id: "fine_filter"

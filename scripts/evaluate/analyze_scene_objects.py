@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
@@ -49,7 +49,9 @@ def analyze_scene_objects(input_path: Path, output_path: Path) -> int:
         # and redacted (or redacted?), along with any other input columns.
         # Recalculate existing object columns without duplicating their headers.
         fieldnames = list(reader.fieldnames)
-        fieldnames.extend(field for field in OBJECT_FIELDNAMES if field not in fieldnames)
+        fieldnames.extend(
+            field for field in OBJECT_FIELDNAMES if field not in fieldnames
+        )
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         row_count = 0
@@ -67,12 +69,18 @@ def analyze_scene_objects(input_path: Path, output_path: Path) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("input_csv", type=Path, help="Input CSV containing an instruction column")
-    parser.add_argument("output_csv", type=Path, help="Output CSV with scene object mention counts")
+    parser.add_argument(
+        "input_csv", type=Path, help="Input CSV containing an instruction column"
+    )
+    parser.add_argument(
+        "output_csv", type=Path, help="Output CSV with scene object mention counts"
+    )
     args = parser.parse_args()
 
     row_count = analyze_scene_objects(args.input_csv, args.output_csv)
-    print(f"Wrote {row_count} instructions with scene object counts to {args.output_csv}")
+    print(
+        f"Wrote {row_count} instructions with scene object counts to {args.output_csv}"
+    )
 
 
 if __name__ == "__main__":

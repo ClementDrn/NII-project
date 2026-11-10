@@ -1,6 +1,5 @@
 from typing import override
 from digit.core.base import LOG
-from digit.generator.model_config import ModelConfig
 from digit.generator.model_client import ModelClient, ModelType
 from digit.generator.providers.provider_adapter import ProviderAdapter
 
@@ -10,7 +9,13 @@ class RemoteModel(ModelClient):
     Remote model server client (LLM/VLM server is already running elsewhere).
     """
 
-    def __init__(self, model_type: ModelType, priority: int, batch_size: int, adapter: ProviderAdapter):
+    def __init__(
+        self,
+        model_type: ModelType,
+        priority: int,
+        batch_size: int,
+        adapter: ProviderAdapter,
+    ):
         super().__init__(model_type, priority, batch_size, adapter)
         # We assume that remote model server is always running (started)
         self.state = ModelClient.State.STARTED
@@ -31,10 +36,12 @@ class RemoteModel(ModelClient):
         # Disconnect if connected
         if self.state == ModelClient.State.CONNECTED:
             await self.close_connection()
-        
+
         # Check if correctly disconnected
         if self.state != ModelClient.State.STARTED:
-            LOG.warning("Model client status is not STARTED while stopping remote model.")
+            LOG.warning(
+                "Model client status is not STARTED while stopping remote model."
+            )
 
         # NOTE: We do not manage the remote model server lifecycle, therefore we do not stop it here.
 
@@ -51,8 +58,3 @@ class RemoteModel(ModelClient):
         Returns True if the model client is remote.
         """
         return True
-
-
-# Backward compatibility alias
-# WARN: Deprecated TODO: Remove for release
-RemoteVLM = RemoteModel

@@ -1,5 +1,5 @@
 # Define jobs to run in this file.
-# The following documentation describes version 2.0-dev of this file format.
+# The following documentation describes version 2.0 of this file format.
 # 
 # Structure:
 # - version: Version of this file's format
@@ -20,7 +20,7 @@
 #
 # Example:
 # ---
-# version: "2.0-dev"
+# version: "2.0"
 # jobs:
 #   - name: "Small tests"
 #     simulator: "carla_basic"
@@ -38,7 +38,7 @@
 #     instruction_generation_count: 1
 #     instruction_count_per_generation: 3
 ---
-version: "2.0-dev"
+version: "2.0"
 jobs:
   - name: "3-prompt single-step gpt-5-mini experiments"
     simulator: "carla_basic"
@@ -78,7 +78,7 @@ jobs:
     model_instances:
       - "gpt-5-mini_0"
     experiment_nature: "adversarial"
-    instruction_generation_count: 1   # deprecated: how many times to generate instructions, in one iteration
+    instruction_generation_count: 1   # Number of generation calls in each iteration
     instruction_count_per_generation: 3
     repeat_count: 1   # will cause to loop the pipeline, possibly with context-aware generation after the first iteration
     stop_repeat_on_success: false

@@ -13,7 +13,7 @@ The context includes:
 - If we are using the incremental approach
 
 Usage:
-python scripts/generate_next_instruction.py \
+python scripts/vlm/generate_next_instruction.py \
     --ground_truth_cache_dir <path_to_ground_truth_cache_run_dir> \
     --scenario_results_dir <path_to_results_scenario_dir> \
     --run_index <run_index> \
@@ -37,14 +37,27 @@ from pathlib import Path
 from typing import Optional
 
 from digit.core.base import CONFIG, LOG, SIMULATION_FPS
-from digit.core.settings import GeneratorConfig, get_filter_config_by_id, get_generator_config_by_id, get_model_instance_config_by_id
+from digit.core.settings import (
+    GeneratorConfig,
+    get_filter_config_by_id,
+    get_generator_config_by_id,
+    get_model_instance_config_by_id,
+)
 from digit.filter.embedder import DINOEmbedder
 from digit.filter.filter import cluster_frames
 from digit.generator.experiment_nature import ExperimentNature
 from digit.generator.instruction import InjectionWindow, Instruction, InstructionResult
-from digit.generator.multi_step_vlm_instruction_generator import MultiStepVLMInstructionGenerator
-from digit.generator.single_step_vlm_instruction_generator import SingleStepVLMInstructionGenerator
-from digit.simulator.simulation_data import SimulationData, SimulationFrameData, load_metadata
+from digit.generator.multi_step_vlm_instruction_generator import (
+    MultiStepVLMInstructionGenerator,
+)
+from digit.generator.single_step_vlm_instruction_generator import (
+    SingleStepVLMInstructionGenerator,
+)
+from digit.simulator.simulation_data import (
+    SimulationData,
+    SimulationFrameData,
+    load_metadata,
+)
 from digit.simulator.simulation_result import SimulationResult
 
 
@@ -66,7 +79,9 @@ def _non_negative_int(value: str) -> int:
 
 def _parse_args() -> argparse.Namespace:
     # CLI arguments for selecting cache inputs and generation mode.
-    parser = argparse.ArgumentParser(description="Generate the next instruction to inject")
+    parser = argparse.ArgumentParser(
+        description="Generate the next instruction to inject"
+    )
     parser.add_argument(
         "--ground_truth_cache_dir",
         required=True,
@@ -85,9 +100,18 @@ def _parse_args() -> argparse.Namespace:
         type=_non_negative_int,
         help="Run index to use from ground truth cache",
     )
-    parser.add_argument("--filter_id", required=True, type=str, help="Filter ID from config.yaml")
-    parser.add_argument("--generator_id", required=True, type=str, help="Generator ID from config.yaml")
-    parser.add_argument("--model_instance_id", required=True, type=str, help="Model instance ID from config.yaml")
+    parser.add_argument(
+        "--filter_id", required=True, type=str, help="Filter ID from config.yaml"
+    )
+    parser.add_argument(
+        "--generator_id", required=True, type=str, help="Generator ID from config.yaml"
+    )
+    parser.add_argument(
+        "--model_instance_id",
+        required=True,
+        type=str,
+        help="Model instance ID from config.yaml",
+    )
     parser.add_argument(
         "--num_instructions_to_generate",
         required=True,
@@ -106,6 +130,9 @@ def _parse_args() -> argparse.Namespace:
         help="Experiment nature to use for task selection",
     )
     args = parser.parse_args()
+    from digit.core.base import initialize_runtime
+
+    initialize_runtime()
 
     # Dependent-argument validation: incremental mode requires scenario results input.
     if args.incremental and args.scenario_results_dir is None:
@@ -113,16 +140,24 @@ def _parse_args() -> argparse.Namespace:
 
     # Path validation: ground-truth cache directory must exist and be a directory.
     if not args.ground_truth_cache_dir.exists():
-        parser.error(f"--ground_truth_cache_dir does not exist: {args.ground_truth_cache_dir}")
+        parser.error(
+            f"--ground_truth_cache_dir does not exist: {args.ground_truth_cache_dir}"
+        )
     if not args.ground_truth_cache_dir.is_dir():
-        parser.error(f"--ground_truth_cache_dir must be a directory: {args.ground_truth_cache_dir}")
+        parser.error(
+            f"--ground_truth_cache_dir must be a directory: {args.ground_truth_cache_dir}"
+        )
 
     # Path validation for incremental mode.
     if args.incremental and args.scenario_results_dir is not None:
         if not args.scenario_results_dir.exists():
-            parser.error(f"--scenario_results_dir does not exist: {args.scenario_results_dir}")
+            parser.error(
+                f"--scenario_results_dir does not exist: {args.scenario_results_dir}"
+            )
         if not args.scenario_results_dir.is_dir():
-            parser.error(f"--scenario_results_dir must be a directory: {args.scenario_results_dir}")
+            parser.error(
+                f"--scenario_results_dir must be a directory: {args.scenario_results_dir}"
+            )
 
     # ID validation.
     try:
@@ -176,7 +211,8 @@ def _load_simulation_data(run_dir: Path) -> SimulationData:
     image_by_stem = {
         image_path.stem: image_path
         for image_path in image_dir.iterdir()
-        if image_path.is_file() and image_path.suffix.lower() in {".png", ".jpg", ".jpeg"}
+        if image_path.is_file()
+        and image_path.suffix.lower() in {".png", ".jpg", ".jpeg"}
     }
     metadata_by_stem = {
         metadata_path.stem: metadata_path
@@ -227,7 +263,8 @@ def _apply_filter_to_simulation_data(
         if max_frames_per_minute < log_frame_total_per_minute:
             interval = max(1, int(log_frame_total_per_minute / max_frames_per_minute))
             sampled_frames = [
-                frame for index, frame in enumerate(simulation_data.frames)
+                frame
+                for index, frame in enumerate(simulation_data.frames)
                 if index % interval == 0
             ]
             undersampled = SimulationData(
@@ -238,8 +275,12 @@ def _apply_filter_to_simulation_data(
 
     # 2) Similarity clustering (same as pipeline behavior).
     embedder = DINOEmbedder()
-    clusters = cluster_frames(undersampled, embedder, clustering_threshold, max_cluster_count)
-    filtered_frames = [cluster.get_data().frames[0] for cluster in clusters] if clusters else []
+    clusters = cluster_frames(
+        undersampled, embedder, clustering_threshold, max_cluster_count
+    )
+    filtered_frames = (
+        [cluster.get_data().frames[0] for cluster in clusters] if clusters else []
+    )
 
     return SimulationData(
         image_dir=undersampled.image_dir,
@@ -275,14 +316,18 @@ def _select_generator_for_model(
             f"Model instance '{model_instance_id}' is not linked to all required steps of generator '{generator_id}'"
         )
 
-    if any(step.model_name != instance.model_name for step in configured_generator.steps):
+    if any(
+        step.model_name != instance.model_name for step in configured_generator.steps
+    ):
         raise ValueError(
             f"Model instance '{model_instance_id}' model_name='{instance.model_name}' is incompatible "
             f"with generator '{generator_id}' step model(s)"
         )
 
     if configured_generator.design == "single_step_vlm" and instance.type != "vlm":
-        raise ValueError(f"Generator '{generator_id}' requires a VLM instance for single_step_vlm design")
+        raise ValueError(
+            f"Generator '{generator_id}' requires a VLM instance for single_step_vlm design"
+        )
 
     # Use selected generator and override instruction count for this call.
     selected = deepcopy(configured_generator)
@@ -303,8 +348,14 @@ def _evaluate_instruction_success(
         return False
 
     if nature == ExperimentNature.ADVERSARIAL:
-        return ground_truth_result.scores.score_penalty > experiment_result.scores.score_penalty
-    return ground_truth_result.scores.score_penalty < experiment_result.scores.score_penalty
+        return (
+            ground_truth_result.scores.score_penalty
+            > experiment_result.scores.score_penalty
+        )
+    return (
+        ground_truth_result.scores.score_penalty
+        < experiment_result.scores.score_penalty
+    )
 
 
 def _build_previous_instruction_results(
@@ -362,9 +413,15 @@ def _build_previous_instruction_results(
         )
 
         # Compare experiment against ground truth to annotate success/failure.
-        experiment_result = SimulationResult.load_from_json_file(run_dir / "res.json", scenario_id)
-        was_successful = _evaluate_instruction_success(experiment_result, ground_truth_result, nature)
-        previous_results.append(InstructionResult(instruction=instruction, was_successful=was_successful))
+        experiment_result = SimulationResult.load_from_json_file(
+            run_dir / "res.json", scenario_id
+        )
+        was_successful = _evaluate_instruction_success(
+            experiment_result, ground_truth_result, nature
+        )
+        previous_results.append(
+            InstructionResult(instruction=instruction, was_successful=was_successful)
+        )
 
     return previous_results
 
@@ -375,7 +432,8 @@ def _instruction_to_custom_prompt(instruction: Instruction) -> dict:
         "text": instruction.text,
         "flag": 2,
         "injection_time": instruction.injection_window.start_timestamp,
-        "injection_duration": instruction.injection_window.end_timestamp - instruction.injection_window.start_timestamp,
+        "injection_duration": instruction.injection_window.end_timestamp
+        - instruction.injection_window.start_timestamp,
         "target_module_logic": instruction.target_module_logic,
         "reasoning": instruction.reasoning,
     }
@@ -391,7 +449,9 @@ async def _generate(args: argparse.Namespace) -> list[dict]:
 
     # Load the source run from cache and its baseline result.
     gt_simulation_data = _load_simulation_data(gt_run_dir)
-    gt_result = SimulationResult.load_from_json_file(gt_run_dir / "res.json", scenario_id)
+    gt_result = SimulationResult.load_from_json_file(
+        gt_run_dir / "res.json", scenario_id
+    )
 
     # Apply configured filter (undersampling + clustering) to GT samples.
     filter_config = get_filter_config_by_id(CONFIG, args.filter_id)
@@ -424,9 +484,13 @@ async def _generate(args: argparse.Namespace) -> list[dict]:
 
     # Instantiate generator based on selected design
     if generator_config.design == "single_step_vlm":
-        generator = SingleStepVLMInstructionGenerator(experiment_nature, args.incremental)
+        generator = SingleStepVLMInstructionGenerator(
+            experiment_nature, args.incremental
+        )
     elif generator_config.design == "multi_step_vlm":
-        generator = MultiStepVLMInstructionGenerator(experiment_nature, args.incremental)
+        generator = MultiStepVLMInstructionGenerator(
+            experiment_nature, args.incremental
+        )
     else:
         raise ValueError(f"Unsupported generator design: {generator_config.design}")
 
@@ -447,7 +511,10 @@ async def _generate(args: argparse.Namespace) -> list[dict]:
 
     # Return up to requested count (or fewer if model returned less).
     count = min(args.num_instructions_to_generate, len(instruction_set.instructions))
-    return [_instruction_to_custom_prompt(instr) for instr in instruction_set.instructions[:count]]
+    return [
+        _instruction_to_custom_prompt(instr)
+        for instr in instruction_set.instructions[:count]
+    ]
 
 
 def main() -> int:

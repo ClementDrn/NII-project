@@ -1,4 +1,3 @@
 [submodule "vendor/ads/simlingo"]
 	path = vendor/ads/simlingo
-	url = git@github.com:ClementDrn/simlingo.git
-	branch = dev
+	url = https://github.com/ClementDrn/simlingo.git

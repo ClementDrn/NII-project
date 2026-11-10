@@ -10,8 +10,8 @@ Some of them also include the ratings of the naturalness of instructions as well
 | [baseline-x.csv](baseline-x.csv)                         | Baseline                    | ✔️           | ✔️                 |
 | [claude-incremental-x.csv](claude-incremental-x.csv)     | Claude-Opus-4.6 Incremental | ✔️           | ✔️                 |
 | [claude-oneshot-x.csv](claude-oneshot-x.csv)             | Claude-Opus-4.6 One-shot    | ✔️           | ✔️                 |
-| [gpt-5.2-incremental.csv](gpt-5.2-incremental.csv)       | GPT-5.2 Incremental         | ❌           | ❌                 |
-| [gpt-5.2-oneshot.csv](gpt-5.2-oneshot.csv)               | GPT-5.2 One-shot            | ❌           | ❌                 |
+| [gpt-5-2-incremental.csv](gpt-5-2-incremental.csv)       | GPT-5.2 Incremental         | ❌           | ❌                 |
+| [gpt-5-2-oneshot.csv](gpt-5-2-oneshot.csv)               | GPT-5.2 One-shot            | ❌           | ❌                 |
 | [gpt-5-mini-incremental.csv](gpt-5-mini-incremental.csv) | GPT-5-mini Incremental      | ❌           | ❌                 |
 | [gpt-5-mini-oneshot.csv](gpt-5-mini-oneshot.csv)         | GPT-5-mini One-shot         | ❌           | ❌                 |
 
@@ -35,5 +35,5 @@ The data are provided under the [CC-4.0-BY](https://creativecommons.org/licenses
 
 ## Citing
 
-If the data are useful for your work, please cite us.
+Please identify the data files used in your work.
 

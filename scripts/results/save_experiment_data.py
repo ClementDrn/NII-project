@@ -49,7 +49,9 @@ def _load_injection_metadata(
     try:
         injection_step = float(injection_time) * SIMULATION_FPS
     except (TypeError, ValueError):
-        LOG.warning(f"Cannot check hallucinations for {run_dir}: invalid injection time '{injection_time}'.")
+        LOG.warning(
+            f"Cannot check hallucinations for {run_dir}: invalid injection time '{injection_time}'."
+        )
         return None
 
     # JobResults may omit the index if the ground truth result file is missing.
@@ -62,7 +64,9 @@ def _load_injection_metadata(
         except (OSError, ValueError, TypeError, AttributeError):
             ground_truth_index = 0
 
-    ground_truth_relative_dir = Path(f"sce_{scenario_id:03d}") / f"run_{ground_truth_index:03d}"
+    ground_truth_relative_dir = (
+        Path(f"sce_{scenario_id:03d}") / f"run_{ground_truth_index:03d}"
+    )
     metadata_dirs = [
         run_dir / "metadata",
         job_dir / "ground_truths" / ground_truth_relative_dir / "metadata",
@@ -89,11 +93,17 @@ def _load_injection_metadata(
             LOG.warning(f"Cannot read injection metadata from {metadata_path}.")
             continue
         if isinstance(metadata, dict):
-            scene = metadata.get("scene_objects") if "scene_objects" in metadata else metadata.get("scene")
+            scene = (
+                metadata.get("scene_objects")
+                if "scene_objects" in metadata
+                else metadata.get("scene")
+            )
             if isinstance(scene, list):
                 return metadata
 
-    LOG.warning(f"No injection metadata available for {run_dir}; hallucination metrics will be N/A.")
+    LOG.warning(
+        f"No injection metadata available for {run_dir}; hallucination metrics will be N/A."
+    )
     return None
 
 
@@ -122,7 +132,9 @@ def _experiment_rows(
     results = JobResults(job_dir, ground_truth_cache_dir)
 
     for scenario in results.get_all_scenarios():
-        experiments = {experiment.run_id: experiment for experiment in scenario.experiments}
+        experiments = {
+            experiment.run_id: experiment for experiment in scenario.experiments
+        }
         scenario_dir = job_dir / f"sce_{scenario.scenario_id:03d}"
 
         for run_dir in sorted(scenario_dir.glob("run_*")):
@@ -165,13 +177,23 @@ def _experiment_rows(
             # Evaluate the instruction against the scene when it was injected.
             if hallucinations:
                 metadata = _load_injection_metadata(
-                    run_dir, job_dir, ground_truth_cache_dir,
-                    scenario.scenario_id, experiment.ground_truth_index, start,
+                    run_dir,
+                    job_dir,
+                    ground_truth_cache_dir,
+                    scenario.scenario_id,
+                    experiment.ground_truth_index,
+                    start,
                 )
                 if metadata is None:
-                    row.update({field_name: "N/A" for field_name in HALLUCINATION_FIELDNAMES})
+                    row.update(
+                        {field_name: "N/A" for field_name in HALLUCINATION_FIELDNAMES}
+                    )
                 else:
-                    row.update(check_hallucinations_in_instruction(row["instruction"], metadata))
+                    row.update(
+                        check_hallucinations_in_instruction(
+                            row["instruction"], metadata
+                        )
+                    )
 
             yield row
 
@@ -195,8 +217,12 @@ def save_experiment_data(
         writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()
         for row in _experiment_rows(
-            job_dir, ground_truth_cache_dir,
-            hallucinations=hallucinations, model=model, method=method, repetition=repetition,
+            job_dir,
+            ground_truth_cache_dir,
+            hallucinations=hallucinations,
+            model=model,
+            method=method,
+            repetition=repetition,
         ):
             writer.writerow(row)
             row_count += 1
@@ -218,7 +244,9 @@ def _output_path(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Save experiment runs as CSV data")
-    parser.add_argument("experiment_dir", type=Path, help="Path containing job directories")
+    parser.add_argument(
+        "experiment_dir", type=Path, help="Path containing job directories"
+    )
     parser.add_argument(
         "output",
         type=Path,
@@ -232,13 +260,33 @@ def main() -> None:
         help="Path to the ground truth cache directory (default: cache)",
     )
     parser.add_argument(
-        "--hallucinations", "-H", action="store_true",
+        "--hallucinations",
+        "-H",
+        action="store_true",
         help="Check instruction hallucinations using injection metadata and append four metric columns",
     )
-    parser.add_argument("--model", "-M", default="N/A", help="Model label written to each row (default: N/A)")
-    parser.add_argument("--method", "-m", default="N/A", help="Method label written to each row (default: N/A)")
-    parser.add_argument("--repetition", "-r", default="N/A", help="Repetition label written to each row (default: N/A)")
+    parser.add_argument(
+        "--model",
+        "-M",
+        default="N/A",
+        help="Model label written to each row (default: N/A)",
+    )
+    parser.add_argument(
+        "--method",
+        "-m",
+        default="N/A",
+        help="Method label written to each row (default: N/A)",
+    )
+    parser.add_argument(
+        "--repetition",
+        "-r",
+        default="N/A",
+        help="Repetition label written to each row (default: N/A)",
+    )
     args = parser.parse_args()
+    from digit.core.base import initialize_logging
+
+    initialize_logging()
 
     project_root = Path(__file__).parent.parent
     experiment_dir = (
@@ -254,9 +302,7 @@ def main() -> None:
     )
 
     job_dirs = sorted(
-        job_dir
-        for job_dir in experiment_dir.glob("job_*")
-        if job_dir.is_dir()
+        job_dir for job_dir in experiment_dir.glob("job_*") if job_dir.is_dir()
     )
     if not job_dirs:
         parser.error(f"No job directories found in {experiment_dir}")
@@ -264,9 +310,13 @@ def main() -> None:
     for job_dir in job_dirs:
         output_path = _output_path(output, experiment_dir, job_dir, project_root)
         row_count = save_experiment_data(
-            job_dir, output_path, ground_truth_cache_dir,
+            job_dir,
+            output_path,
+            ground_truth_cache_dir,
             hallucinations=args.hallucinations,
-            model=args.model, method=args.method, repetition=args.repetition,
+            model=args.model,
+            method=args.method,
+            repetition=args.repetition,
         )
         print(f"Wrote {row_count} experiment runs to {output_path}")
 

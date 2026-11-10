@@ -9,7 +9,6 @@ import argparse
 import asyncio
 from dataclasses import dataclass
 from pathlib import Path
-from typing import AsyncIterator
 
 import httpx
 
@@ -43,7 +42,9 @@ from digit.simulator.simulator import Simulator
 
 REPETITION_COUNT = 3
 PROPOSALS_PER_REQUEST = 3
-REQUESTS_PER_BATCH = 6      # max batch size in 256MB and a single request can hold up to 40MB of data.
+REQUESTS_PER_BATCH = (
+    6  # max batch size in 256MB and a single request can hold up to 40MB of data.
+)
 GROUND_TRUTH_RUN_ID = 0
 DOWNLOAD_MAX_ATTEMPTS = 5
 DOWNLOAD_INITIAL_DELAY_SECONDS = 5.0
@@ -53,6 +54,7 @@ DEFAULT_CACHE_DIR = PROJECT_ROOT / "cache"
 
 
 # --- Batch context -----------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class RequestContext:
@@ -192,7 +194,9 @@ def _build_batch_requests(
                 simulator,
                 scenario_id,
                 cache_dir,
-                frames_per_minute=(CONFIG.filter.max_frames_per_minute if CONFIG.filter else 0),
+                frames_per_minute=(
+                    CONFIG.filter.max_frames_per_minute if CONFIG.filter else 0
+                ),
             )
             simulation_data_cache[scenario_id] = _filter_simulation_data(
                 simulation_data,
@@ -234,7 +238,10 @@ def _chunk_requests(
     # Anthropic batches are submitted in groups of scenarios x repetitions.
     for start in range(0, len(requests), REQUESTS_PER_BATCH):
         request_chunk = requests[start : start + REQUESTS_PER_BATCH]
-        context_chunk = {request.request_id: contexts[request.request_id] for request in request_chunk}
+        context_chunk = {
+            request.request_id: contexts[request.request_id]
+            for request in request_chunk
+        }
         chunks.append((request_chunk, context_chunk))
     return chunks
 
@@ -257,7 +264,10 @@ def _parse_instruction_set(result: BatchRequestResult) -> InstructionSet | None:
     raw_response = parse_model_response(result.text)
     instruction_set = parse_instructions_from_json(raw_response)
     # Do not create simulation runs from incomplete planner output.
-    if instruction_set is None or len(instruction_set.instructions) < PROPOSALS_PER_REQUEST:
+    if (
+        instruction_set is None
+        or len(instruction_set.instructions) < PROPOSALS_PER_REQUEST
+    ):
         count = len(instruction_set.instructions) if instruction_set else 0
         LOG.error(
             "Request %s returned %d valid instructions; expected %d",
@@ -350,7 +360,7 @@ async def _process_completed_batch(
 
             delay = min(
                 DOWNLOAD_MAX_DELAY_SECONDS,
-                DOWNLOAD_INITIAL_DELAY_SECONDS * (2 ** attempt_index),
+                DOWNLOAD_INITIAL_DELAY_SECONDS * (2**attempt_index),
             )
             LOG.warning(
                 "Results download for batch %s failed on attempt %d/%d (%s). "
@@ -385,7 +395,9 @@ async def _run(args: argparse.Namespace) -> int:
         )
     task = TaskManager.create_planner_task(job.experiment_nature, is_incremental=False)
     model_instance = get_model_instance_config_by_id(CONFIG, job.model_instances[0])
-    client = create_model_client(model_instance, get_api_parameters_from_config(planning_step))
+    client = create_model_client(
+        model_instance, get_api_parameters_from_config(planning_step)
+    )
     if client is None:
         raise RuntimeError("Could not create the configured Claude model client")
 
@@ -429,7 +441,11 @@ async def _run(args: argparse.Namespace) -> int:
             if running_batches:
                 await asyncio.sleep(15)
 
-        LOG.info("Completed %d/%d simulations", simulation_count, expected_request_count * PROPOSALS_PER_REQUEST)
+        LOG.info(
+            "Completed %d/%d simulations",
+            simulation_count,
+            expected_request_count * PROPOSALS_PER_REQUEST,
+        )
         return 0
     finally:
         # Always release the API connection and terminate any simulator processes.
@@ -440,9 +456,12 @@ async def _run(args: argparse.Namespace) -> int:
 
 def main() -> int:
     args = _parse_args()
+    from digit.core.base import initialize_runtime
+
+    initialize_runtime()
     try:
         return asyncio.run(_run(args))
-    except Exception as error:
+    except Exception:
         LOG.exception("One-shot Claude experiment run failed.")
         return 1
 

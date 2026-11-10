@@ -4,13 +4,13 @@ from digit.core.base import LOG
 
 from typing import List
 import asyncio
-from pathlib import Path
 from dataclasses import dataclass
 
 
 @dataclass
 class PromptRequest:
     """A queued prompt request."""
+
     request: Request
     future: asyncio.Future
 
@@ -26,26 +26,29 @@ class PromptDispatcher:
         Internal class to track model client resource usage.
         Sortable by client priority for use in PriorityQueue.
         """
+
         client: ModelClient
         is_idle: asyncio.Event
         is_removal_requested: bool = False
-        
-        def __lt__(self, other: 'PromptDispatcher.ClientResource') -> bool:
+
+        def __lt__(self, other: "PromptDispatcher.ClientResource") -> bool:
             """Compare by client priority for PriorityQueue ordering."""
             return self.client.priority < other.client.priority
 
-    def __init__(self, model_clients: List[ModelClient] = []):
+    def __init__(self, model_clients: List[ModelClient] | None = None):
         # List of all model clients to use for processing prompts
         if model_clients is None:
             model_clients = []
         self._all_clients: List[PromptDispatcher.ClientResource] = [
-            self.ClientResource(client=client, is_idle=asyncio.Event()) 
+            self.ClientResource(client=client, is_idle=asyncio.Event())
             for client in model_clients
         ]
         # Set all clients as initially idle
         for resource in self._all_clients:
             resource.is_idle.set()
-        self._free_clients: asyncio.PriorityQueue[PromptDispatcher.ClientResource] = asyncio.PriorityQueue()    # sorted by client priority
+        self._free_clients: asyncio.PriorityQueue[PromptDispatcher.ClientResource] = (
+            asyncio.PriorityQueue()
+        )  # sorted by client priority
         for resource in self._all_clients:
             self._free_clients.put_nowait(resource)
 
@@ -55,8 +58,9 @@ class PromptDispatcher:
         # Dispatcher task
         self._dispatcher_task: asyncio.Task = None
 
-
-    async def _send_prompt_to_model(self, prompt: PromptRequest, client_resource: ClientResource):
+    async def _send_prompt_to_model(
+        self, prompt: PromptRequest, client_resource: ClientResource
+    ):
         """
         Send a prompt to one of the model clients.
         """
@@ -72,12 +76,16 @@ class PromptDispatcher:
             # Mark prompt as done (to wake up join() waiters)
             self._prompt_queue.task_done()
 
-    async def _dispatch_prompts_to_client(self, prompts: List[PromptRequest], client_resource: ClientResource):
+    async def _dispatch_prompts_to_client(
+        self, prompts: List[PromptRequest], client_resource: ClientResource
+    ):
         """
         Dispatch a list of prompts to a specific model client.
         """
         # Dispatch all prompts to the model client concurrently
-        tasks = [self._send_prompt_to_model(prompt, client_resource) for prompt in prompts]
+        tasks = [
+            self._send_prompt_to_model(prompt, client_resource) for prompt in prompts
+        ]
         await asyncio.gather(*tasks)
 
         # Mark client as idle and available again, unless removal was requested
@@ -101,42 +109,47 @@ class PromptDispatcher:
                 client_resource: PromptDispatcher.ClientResource = None
                 while client_resource is None:
                     client_resource = await self._free_clients.get()
-                    LOG.debug(f"Prompt dispatcher found client.")
+                    LOG.debug("Prompt dispatcher found client.")
                     # If this client is being removed, skip it
                     if client_resource.is_removal_requested:
                         client_resource = None
-                
+
                 # Mark client as busy
-                LOG.debug(f"Prompt dispatcher clearing idle status for client...")
+                LOG.debug("Prompt dispatcher clearing idle status for client...")
                 client_resource.is_idle.clear()
 
                 # 3. Fetch as many prompts as the client can handle
-                LOG.debug(f"Prompt dispatcher preparing prompts for client...")
+                LOG.debug("Prompt dispatcher preparing prompts for client...")
                 prompts = [prompt]
                 prompt_max_count = client_resource.client.batch_size
                 for _ in range(prompt_max_count - 1):
                     try:
                         fetched_prompt: PromptRequest = self._prompt_queue.get_nowait()
                         prompts.append(fetched_prompt)
-                    except asyncio.QueueEmpty:   # no more prompts available
+                    except asyncio.QueueEmpty:  # no more prompts available
                         break
-                
+
                 # 4. Dispatch prompts to the model client (don't wait)
-                LOG.debug(f"Prompt dispatcher dispatching {len(prompts)} prompts to client...")
-                asyncio.create_task(self._dispatch_prompts_to_client(prompts, client_resource))
-                LOG.debug(f"Prompt dispatcher finished one loop iteration.")
+                LOG.debug(
+                    f"Prompt dispatcher dispatching {len(prompts)} prompts to client..."
+                )
+                asyncio.create_task(
+                    self._dispatch_prompts_to_client(prompts, client_resource)
+                )
+                LOG.debug("Prompt dispatcher finished one loop iteration.")
         except asyncio.CancelledError:
             LOG.debug("Prompt dispatcher loop cancelled.")
-
 
     async def start(self):
         """
         Start the prompt dispatcher loop.
         """
         if self._dispatcher_task is not None:
-            LOG.warning("Prompt dispatcher start called but dispatcher is already running.")
+            LOG.warning(
+                "Prompt dispatcher start called but dispatcher is already running."
+            )
             return
-        
+
         # Start the dispatcher loop
         self._dispatcher_task = asyncio.create_task(self._dispatcher_loop())
 
@@ -148,23 +161,23 @@ class PromptDispatcher:
         if self._dispatcher_task is None:
             LOG.warning("Prompt dispatcher stop called but dispatcher is not running.")
             return
-            
+
         # Request stop
         self._dispatcher_task.cancel()
-        
+
         # Wait until the dispatcher loop has stopped
         try:
             await self._dispatcher_task
         except asyncio.CancelledError:
             pass
-        
+
         # Mark task as stopped
         self._dispatcher_task = None
-        
+
         # Wait until all tasks are done
-        await asyncio.gather(*[
-            resource.is_idle.wait() for resource in self._all_clients
-        ])
+        await asyncio.gather(
+            *[resource.is_idle.wait() for resource in self._all_clients]
+        )
 
     async def is_running(self) -> bool:
         """
@@ -184,13 +197,13 @@ class PromptDispatcher:
         """
         # Create new resources and add them to the main list
         new_resources = [
-            self.ClientResource(client=client, is_idle=asyncio.Event()) 
+            self.ClientResource(client=client, is_idle=asyncio.Event())
             for client in new_clients
         ]
         # Set all new clients as initially idle
         for resource in new_resources:
             resource.is_idle.set()
-        
+
         self._all_clients.extend(new_resources)
 
         # Add new resources to the free clients queue
@@ -215,9 +228,9 @@ class PromptDispatcher:
                 resources_to_keep.append(resource)
 
         # Wait until all removed clients are no longer processing prompts
-        await asyncio.gather(*[
-            resource.is_idle.wait() for resource in resources_to_remove
-        ])
+        await asyncio.gather(
+            *[resource.is_idle.wait() for resource in resources_to_remove]
+        )
 
         # Remove clients from the main list
         self._all_clients = resources_to_keep

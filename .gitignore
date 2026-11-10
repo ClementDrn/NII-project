@@ -22,3 +22,24 @@ output/
 # IDE
 .vscode/
 .idea/
+
+# Packaging and tooling
+build/
+dist/
+.ruff_cache/
+*.whl
+
+# Local experiment exports; published data tables remain tracked.
+/*-failed*.json
+/gpt*.json
+/instructions_*.json
+/data/old/
+/data/results/
+/data/baseline-naturalness.csv
+/data/baseline.csv
+/data/claude-incremental-instructions.json
+/data/claude-incremental.csv
+/data/claude-oneshot.csv
+/data/eval_instructions.csv
+/data/eval_naturalness.csv
+/data/old-*.csv

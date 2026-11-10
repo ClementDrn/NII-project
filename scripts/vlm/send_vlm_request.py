@@ -1,54 +1,119 @@
-from digit.core.base import LOG, CONFIG
-from digit.core.settings import get_model_instances_config_by_step_id
-from digit.generator.model import create_model_client
-from digit.generator.instruction_generator import get_api_parameters_from_config
+"""Send explicit text/image requests through a configured model instance."""
 
-from pathlib import Path
+import argparse
 import asyncio
+import json
+from pathlib import Path
 
 
-# --- SET ARGUMENTS BELOW FOR TESTING PURPOSES ---
-# Input images
-images = [
-    Path("cache/sce_005/run_000/images/000005.png"),
-    Path("cache/sce_005/run_000/images/000300.png"),
-    Path("cache/sce_005/run_000/images/000965.png"),
-]
-
-# Text prompts
-system_prompt = "You are a helpful assistant that analyzes images."
-user_prompt = "Describe the contents of the first, second, and third images."
-# ------------------------------------------------
+def positive_int(value: str) -> int:
+    number = int(value)
+    if number < 1:
+        raise argparse.ArgumentTypeError("must be at least 1")
+    return number
 
 
-async def main():
-    # Get first VLM model instance for description step
-    model_config = get_model_instances_config_by_step_id(CONFIG, "description")[0]
-    api_params = get_api_parameters_from_config(CONFIG.generator.steps[0])
+def add_model_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--model-instance", required=True, help="Model instance ID from config.yaml"
+    )
+    parser.add_argument("--max-tokens", type=positive_int, default=512)
+    parser.add_argument("--temperature", type=float, default=0.7)
+    parser.add_argument(
+        "--thinking", choices=["default", "enabled", "disabled"], default="default"
+    )
 
-    # Create VLM client
-    vlm = create_model_client(model_config, api_params)
-    await vlm.start()
-    
+
+def create_configured_client(args):
+    from digit.core.base import CONFIG
+    from digit.core.settings import GeneratorStepConfig, get_model_instance_config_by_id
+    from digit.generator.instruction_generator import get_api_parameters_from_config
+    from digit.generator.model import create_model_client
+
+    instance = get_model_instance_config_by_id(CONFIG, args.model_instance)
+    step = GeneratorStepConfig(
+        id="request",
+        model_name=instance.model_name,
+        max_tokens=args.max_tokens,
+        temperature=args.temperature,
+        thinking_mode=args.thinking,
+    )
+    client = create_model_client(instance, get_api_parameters_from_config(step))
+    if client is None:
+        raise ValueError(
+            f"Model instance {instance.id!r} must define one local or remote configuration"
+        )
+    return client
+
+
+async def send_requests(args, mode: str):
+    from digit.generator.model_client import ModelType
+    from digit.generator.request import Request, TextBlock, ImageBlock
+
+    client = create_configured_client(args)
+    if args.image and client.model_type != ModelType.VLM:
+        raise ValueError("Image requests require a VLM model instance")
+    images_per_request = (
+        [args.image] if mode == "combined" else [[image] for image in args.image]
+    )
+    requests = [
+        Request(
+            args.system,
+            [*(ImageBlock(image) for image in images), TextBlock(args.prompt)],
+        )
+        for images in images_per_request
+    ]
     try:
-        # Open connection to VLM
-        await vlm.open_connection()
+        await client.open_connection()
+        if mode == "concurrent":
+            semaphore = asyncio.Semaphore(args.concurrency)
 
-        # Send request to VLM
-        response = await vlm.prompt(system_text=system_prompt, user_text=user_prompt, user_image_paths=images)
+            async def send(request):
+                async with semaphore:
+                    return await client.prompt(request)
 
-        # Print the raw response
-        LOG.info("Raw VLM Response:")
-        LOG.info(response)
+            return await asyncio.gather(*(send(request) for request in requests))
+        return [await client.prompt(request) for request in requests]
+    finally:
+        await client.stop()
 
-        # Close connection
-        await vlm.close_connection()
-    except Exception as e:
-        LOG.error(e, exc_info=True)
 
-    # Finally, stop the VLM client
-    await vlm.stop()
+def main(mode="combined", require_images=False) -> int:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Send all images in one request"
+            if mode == "combined"
+            else f"Send one request per image ({mode})"
+        )
+    )
+    add_model_arguments(parser)
+    parser.add_argument("--prompt", required=True, help="User prompt text")
+    parser.add_argument("--system", default="", help="System prompt text")
+    parser.add_argument(
+        "--image",
+        type=Path,
+        action="append",
+        default=[],
+        required=require_images,
+        help="Image path; repeat for multiple images",
+    )
+    if mode == "concurrent":
+        parser.add_argument("--concurrency", type=positive_int, default=4)
+    args = parser.parse_args()
+    for image in args.image:
+        if not image.is_file():
+            parser.error(f"Image does not exist: {image}")
+    from digit.core.base import initialize_runtime
+
+    initialize_runtime()
+    responses = asyncio.run(send_requests(args, mode))
+    print(
+        responses[0]
+        if mode == "combined"
+        else json.dumps(responses, ensure_ascii=False)
+    )
+    return 0
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    raise SystemExit(main(mode="combined", require_images=True))

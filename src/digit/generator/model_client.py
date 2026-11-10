@@ -1,17 +1,15 @@
-from digit.core.base import LOG, VLM_LOG
+from digit.core.base import LOG
 from digit.generator.batch import Batch, BatchRequest
 from digit.generator.providers.provider_adapter import ProviderAdapter
 from digit.generator.request import Request
 
 from abc import ABC, abstractmethod
-import io
-from PIL import Image
-from pathlib import Path
 from enum import Enum
 
 
 class ModelType(Enum):
     """Type of model: VLM (Vision-Language Model) or LLM (Language Model)."""
+
     VLM = "vlm"
     LLM = "llm"
 
@@ -26,10 +24,6 @@ def parse_model_response(chat_response: str) -> str:
     after_reasoning = split_response[-1].strip()
     return after_reasoning
 
-# Alias for backward compatibility
-# WARN: Deprecated TODO: Remove for release
-parse_vlm_response = parse_model_response
-
 
 class ModelClient(ABC):
     """
@@ -41,10 +35,16 @@ class ModelClient(ABC):
         STARTED = 1
         CONNECTED = 2
 
-    def __init__(self, model_type: ModelType, priority: int, batch_size: int, adapter: ProviderAdapter):
+    def __init__(
+        self,
+        model_type: ModelType,
+        priority: int,
+        batch_size: int,
+        adapter: ProviderAdapter,
+    ):
         """
         Initialize model client.
-        
+
         Args:
             model_type: Type of model (VLM or LLM)
             priority: Priority for prompt dispatcher
@@ -55,12 +55,12 @@ class ModelClient(ABC):
         self.model_type = model_type
 
         # Attributes for the dispatcher
-        self.priority = priority        
-        self.batch_size = batch_size    
-        
+        self.priority = priority
+        self.batch_size = batch_size
+
         # Provider Adapter strategy
         self.adapter = adapter
-        
+
         self.state = ModelClient.State.DISABLED
         self.is_hot = False
 
@@ -83,7 +83,7 @@ class ModelClient(ABC):
         Set the model client in a hot state.
 
         A hot state indicates not to free resources when stopping as the client will be reused soon.
-        This is especially useful for local model clients to avoid starting/stopping the local server process multiple times. 
+        This is especially useful for local model clients to avoid starting/stopping the local server process multiple times.
         """
         pass
 
@@ -108,7 +108,7 @@ class ModelClient(ABC):
             # Raise connection error
             # NOTE: open_connection needs to be awaited in order to catch this exception.
             raise ConnectionError("Failed to connect to model server.")
-        
+
         self.state = ModelClient.State.CONNECTED
         LOG.info("Model connection established successfully.")
 
@@ -128,19 +128,19 @@ class ModelClient(ABC):
     async def test_connection(self) -> bool:
         """
         Test connection to model server with a dummy prompt.
-        
+
         Returns:
             True if connection is successful and server responds, False otherwise
         """
         return await self.adapter.test_connection()
-        
+
     async def prompt(self, request: Request) -> str:
         """
         Send immediately a prompt to the model.
-        
+
         Args:
             request: The request object containing system and user content
-            
+
         Returns:
             The response text from the model
         """
@@ -152,7 +152,9 @@ class ModelClient(ABC):
         if self.model_type == ModelType.LLM:
             for block in request.user_content:
                 if block.type == "image":
-                    LOG.warning(f"LLM model client received an image block. The following image will be ignored: {block.image_path}")
+                    LOG.warning(
+                        f"LLM model client received an image block. The following image will be ignored: {block.image_path}"
+                    )
 
         # Delegate request entirely to the provider strategy
         response = await self.adapter.send_prompt(request)
@@ -161,7 +163,7 @@ class ModelClient(ABC):
     async def batch(self, requests: list[BatchRequest]) -> Batch:
         """
         Create a batch for processing multiple requests.
-        
+
         Args:
             batch_id: Unique identifier for the batch
             requests: List of BatchRequest objects
@@ -177,7 +179,7 @@ class ModelClient(ABC):
         if batch_object is None:
             LOG.error("Failed to create batch object.")
             raise RuntimeError("Failed to create batch object.")
-        
+
         return batch_object
 
     @abstractmethod
@@ -196,13 +198,8 @@ class ModelClient(ABC):
     def get_state(self) -> State:
         """
         Get the current state of the model client.
-        
+
         Returns:
             ModelClient.State enum value
         """
         return self.state
-
-
-# Backward compatibility alias
-# WARN: Deprecated TODO: Remove for release
-VLMClient = ModelClient

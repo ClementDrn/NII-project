@@ -1,12 +1,15 @@
 # It is recommended to copy this file and modify it with your own hosts.
 # Do not forget to specify its new path in the .env file.
 ---
-version: "1.0-dev"
+version: "1.0"
 
-hosts: 
-  - id: "hosted_vlm"
-    host: "https://hosted-vlm-service.com/api"
-    api_key: "YOUR_KEY_HERE"
-  - id: "private_vlm"
-    host: "http://192.168.1.100:8000"
-    api_key: "EMPTY"
+hosts:
+  - id: "openai"
+    host: "https://api.openai.com"
+    api_key: "YOUR_OPENAI_API_KEY"
+  - id: "google"
+    host: "https://generativelanguage.googleapis.com"
+    api_key: "YOUR_GOOGLE_API_KEY"
+  - id: "anthropic"
+    host: "https://api.anthropic.com"
+    api_key: "YOUR_ANTHROPIC_API_KEY"

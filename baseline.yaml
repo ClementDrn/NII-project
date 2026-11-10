@@ -1,5 +1,5 @@
 # Define jobs to run in this file.
-# The following documentation describes version 2.0-dev of this file format.
+# The following documentation describes version 2.0 of this file format.
 # 
 # Structure:
 # - version: Version of this file's format
@@ -20,7 +20,7 @@
 #
 # Example:
 # ---
-# version: "2.0-dev"
+# version: "2.0"
 # jobs:
 #   - name: "Small tests"
 #     simulator: "carla_basic"
@@ -38,7 +38,7 @@
 #     instruction_generation_count: 1
 #     instruction_count_per_generation: 3
 ---
-version: "2.0-dev"
+version: "2.0"
 jobs:
   - name: "baseline k=2, all scenarios"
     # Simulator

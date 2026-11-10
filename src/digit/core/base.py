@@ -1,45 +1,56 @@
-from digit.core.logs import init_logging, set_console_log_level
-from digit.core.settings import load_config
+"""Shared runtime state; importing DIGIT does not read config or create files."""
 
-import os
 import logging
+import os
 from pathlib import Path
 
+from digit.core.logs import init_logging, set_console_log_level
+from digit.core.settings import Settings, load_config
 
-# Project paths
 PROJECT_NAME = "digit"
-PROJECT_ROOT = Path(__file__).resolve().parents[3]  # this file is at src/digit/core/base.py, so go up 3 levels
+PROJECT_ROOT = Path(
+    os.environ.get("DIGIT_PROJECT_ROOT", Path(__file__).resolve().parents[3])
+).resolve()
 VENDOR_VLM_DIR = PROJECT_ROOT / "vendor" / "vlm"
 VENDOR_CARLA_DIR = PROJECT_ROOT / "vendor" / "ads" / "carla"
 VENDOR_LAMPILOT_DIR = PROJECT_ROOT / "vendor" / "data" / "LaMPilot" / "DbLv1"
-
-# Logs directory
 LOG_DIR = PROJECT_ROOT / "logs"
 
-# Main application log file
-LOG = init_logging(PROJECT_NAME, LOG_DIR, console_level=logging.INFO)
-
-# Log file for VLM requests and responses, since they can be large
-VLM_LOG = init_logging("vlm", LOG_DIR, console_level=logging.INFO)
-
-# Configuration settings
-CONFIG = load_config(PROJECT_ROOT, LOG)
-
-# Important general constants
-# WARN: 20 FPS is the only supported framerate at the moment. SimLingo hardcodes Carla's FPS to 20 too. 
-SIMULATION_FPS = 20  # Frames per second for simulation
-SKIP_SIMULATION = False
-
-# Env variables
-if os.getenv("DIGIT_ENABLE_DEBUG_LOGS", "false").lower() in ("true", "1", "yes"):
-    LOG.info("DIGIT_ENABLE_DEBUG_LOGS is set; enabling debug logs.")
-    set_console_log_level(LOG, logging.DEBUG)
-if os.getenv("DIGIT_SKIP_SIMULATION", "false").lower() in ("true", "1", "yes"):
-    LOG.info("DIGIT_SKIP_SIMULATION is set; skipping simulation.")
-    SKIP_SIMULATION = True
+LOG = logging.getLogger(PROJECT_NAME)
+VLM_LOG = logging.getLogger("vlm")
+CONFIG = Settings()
+SIMULATION_FPS = 20
+SKIP_SIMULATION = os.getenv("DIGIT_SKIP_SIMULATION", "false").lower() in (
+    "true",
+    "1",
+    "yes",
+)
 
 
-# EXPORTS
+def initialize_logging() -> None:
+    """Enable file and console logging when an application is actually started."""
+    init_logging(PROJECT_NAME, LOG_DIR, console_level=logging.INFO)
+    init_logging("vlm", LOG_DIR, console_level=logging.INFO)
+    if os.getenv("DIGIT_ENABLE_DEBUG_LOGS", "false").lower() in ("true", "1", "yes"):
+        set_console_log_level(LOG, logging.DEBUG)
+
+
+def initialize_runtime() -> Settings:
+    """Load source-checkout configuration while preserving imported CONFIG references.
+
+    Library consumers may instead construct Settings and pass configuration to
+    their own components. Command-line entrypoints call this after parsing args,
+    so --help never reads private configuration or initializes model services.
+    """
+    initialize_logging()
+    settings = load_config(PROJECT_ROOT, LOG)
+    CONFIG.__dict__.clear()
+    CONFIG.__dict__.update(settings.__dict__)
+    CONFIG.__pydantic_private__.clear()
+    CONFIG.__pydantic_private__.update(settings.__pydantic_private__)
+    return CONFIG
+
+
 __all__ = [
     "PROJECT_NAME",
     "PROJECT_ROOT",
@@ -47,5 +58,7 @@ __all__ = [
     "LOG",
     "VLM_LOG",
     "SIMULATION_FPS",
-    "SKIP_SIMULATION"
+    "SKIP_SIMULATION",
+    "initialize_logging",
+    "initialize_runtime",
 ]

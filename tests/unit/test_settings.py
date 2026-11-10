@@ -900,3 +900,27 @@ OUTPUT_PATH=/path/to/output
         # Should raise ValueError
         with pytest.raises(ValueError, match="Incompatible config version"):
             load_config(tmp_path, logger)
+
+def test_relative_hosts_path_is_resolved_from_config_root(
+    tmp_path, monkeypatch, logger
+):
+    config_root = tmp_path / "config"
+    config_root.mkdir()
+    (config_root / "config.yaml").write_text('version: "2.0"\n')
+    (config_root / "hosts.yaml").write_text(
+        'version: "1.0"\nhosts:\n  - id: example\n    host: http://example.invalid\n    api_key: test\n'
+    )
+    monkeypatch.setenv("HOSTS_PATH", "hosts.yaml")
+    monkeypatch.chdir(tmp_path)
+    settings = load_config(config_root, logger)
+    assert [host.id for host in settings.hosts] == ["example"]
+
+
+def test_shell_environment_overrides_dotenv(tmp_path, monkeypatch, logger):
+    (tmp_path / "config.yaml").write_text('version: "2.0"\n')
+    (tmp_path / ".env").write_text("OUTPUT_PATH=/from/dotenv\n")
+    monkeypatch.setenv("OUTPUT_PATH", "/from/shell")
+    load_config(tmp_path, logger)
+    import os
+
+    assert os.environ["OUTPUT_PATH"] == "/from/shell"
